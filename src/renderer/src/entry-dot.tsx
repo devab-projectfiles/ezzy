@@ -1,11 +1,11 @@
-import './assets/main.css'
+import './styles/dot.css'
 
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
-import App from './App'
+import Dot from './Dot'
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <App />
+    <Dot />
   </StrictMode>
 )

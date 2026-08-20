@@ -1,0 +1,53 @@
+@import './base.css';
+
+#root {
+  display: grid;
+  place-items: center;
+}
+
+.dot {
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: radial-gradient(circle at 50% 30%, #2c2e39, #15161c 72%);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.5);
+  cursor: pointer;
+  transition:
+    transform 120ms ease,
+    border-color 160ms ease,
+    box-shadow 160ms ease;
+}
+
+.dot:hover {
+  transform: scale(1.06);
+  border-color: rgba(150, 180, 255, 0.45);
+  box-shadow:
+    0 0 0 4px rgba(110, 150, 255, 0.14),
+    0 6px 20px rgba(0, 0, 0, 0.55);
+}
+
+.dot--dragging,
+.dot--dragging:hover {
+  transform: scale(0.94);
+  cursor: grabbing;
+}
+
+.dot__glyph {
+  position: relative;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  border: 2px solid rgba(226, 232, 255, 0.8);
+}
+
+.dot__glyph::after {
+  content: '';
+  position: absolute;
+  inset: 3px;
+  border-radius: 50%;
+  background: rgba(226, 232, 255, 0.9);
+}

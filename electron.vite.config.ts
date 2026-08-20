@@ -11,6 +11,15 @@ export default defineConfig({
         '@renderer': resolve('src/renderer/src')
       }
     },
+    build: {
+      rollupOptions: {
+        // The dot and the panel are separate always-on-top windows (PLAN.md §5, §6).
+        input: {
+          dot: resolve('src/renderer/dot.html'),
+          panel: resolve('src/renderer/panel.html')
+        }
+      }
+    },
     plugins: [react()]
   }
 })
