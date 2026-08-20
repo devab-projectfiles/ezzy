@@ -141,11 +141,22 @@ function dotBoundsAt(position: DotPosition): Electron.Rectangle {
   return { ...position, ...dotFrame }
 }
 
+/** How much of the dot may be tucked past a display edge. Half of it stays on screen in
+ *  every direction, which is enough to remain visible and grabbable, while letting the
+ *  user park it mostly out of the way. Tray > Reset dot position brings it fully back. */
+const OFF_SCREEN_ALLOWANCE = 0.5
+
 function clampBounds(bounds: Electron.Rectangle, display: Display): DotPosition {
   const area = display.workArea
+  const slackX = Math.round(bounds.width * OFF_SCREEN_ALLOWANCE)
+  const slackY = Math.round(bounds.height * OFF_SCREEN_ALLOWANCE)
   return {
-    x: Math.round(Math.min(Math.max(bounds.x, area.x), area.x + area.width - bounds.width)),
-    y: Math.round(Math.min(Math.max(bounds.y, area.y), area.y + area.height - bounds.height))
+    x: Math.round(
+      Math.min(Math.max(bounds.x, area.x - slackX), area.x + area.width - bounds.width + slackX)
+    ),
+    y: Math.round(
+      Math.min(Math.max(bounds.y, area.y - slackY), area.y + area.height - bounds.height + slackY)
+    )
   }
 }
 

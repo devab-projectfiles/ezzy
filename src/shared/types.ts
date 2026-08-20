@@ -22,10 +22,10 @@ export const DEFAULT_CONFIG: EzzyConfig = {
   lastDisplayId: null
 }
 
-/** Window geometry from PLAN.md §6. The dot glyph is 44px; the window carries 6px of
- *  slack on each side so the hover glow is not clipped by the window bounds. */
-export const DOT_GLYPH_SIZE = 44
-export const DOT_SIZE = 56
+/** Window geometry. The dot glyph is 32px; the window carries 6px of slack on each side
+ *  so the hover glow is not clipped by the window bounds. */
+export const DOT_GLYPH_SIZE = 32
+export const DOT_SIZE = 44
 export const PANEL_WIDTH = 480
 export const PANEL_HEIGHT = 420
 export const PANEL_GAP = 12

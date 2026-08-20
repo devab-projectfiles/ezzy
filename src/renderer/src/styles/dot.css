@@ -6,8 +6,8 @@
 }
 
 .dot {
-  width: 44px;
-  height: 44px;
+  width: 32px;
+  height: 32px;
   padding: 0;
   display: grid;
   place-items: center;
@@ -38,8 +38,8 @@
 
 .dot__glyph {
   position: relative;
-  width: 16px;
-  height: 16px;
+  width: 12px;
+  height: 12px;
   border-radius: 50%;
   border: 2px solid rgba(226, 232, 255, 0.8);
 }
@@ -47,7 +47,7 @@
 .dot__glyph::after {
   content: '';
   position: absolute;
-  inset: 3px;
+  inset: 2px;
   border-radius: 50%;
   background: rgba(226, 232, 255, 0.9);
 }
