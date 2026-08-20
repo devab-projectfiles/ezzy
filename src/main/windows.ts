@@ -146,8 +146,11 @@ function dotBoundsAt(position: DotPosition): Electron.Rectangle {
  *  user park it mostly out of the way. Tray > Reset dot position brings it fully back. */
 const OFF_SCREEN_ALLOWANCE = 0.5
 
+/** Clamped against the display's full bounds rather than its work area, so the dot can be
+ *  pushed down past the taskbar instead of stopping on top of it. The work area is still
+ *  what the default position and the panel are placed within. */
 function clampBounds(bounds: Electron.Rectangle, display: Display): DotPosition {
-  const area = display.workArea
+  const area = display.bounds
   const slackX = Math.round(bounds.width * OFF_SCREEN_ALLOWANCE)
   const slackY = Math.round(bounds.height * OFF_SCREEN_ALLOWANCE)
   return {
