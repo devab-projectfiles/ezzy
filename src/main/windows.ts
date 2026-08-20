@@ -10,13 +10,23 @@ let panelWindow: BrowserWindow | null = null
 let quitting = false
 let drag: DragState | null = null
 
+/** The sizes Windows actually granted these windows, captured once at creation.
+ *
+ *  setPosition() re-applies the window's current size internally, and reading that size
+ *  back at a fractional scale factor returns a larger value than was set — 1.3625 here.
+ *  Every move therefore grew the window: measured, one drag took the dot from 82x82 to
+ *  201x199 physical pixels. A transparent, always-on-top window that has quietly grown to
+ *  cover much of the desktop still receives mouse input across its whole rectangle, so it
+ *  swallows the clicks meant for every app underneath it. Passing a fixed size on every
+ *  move is what stops that, which is why nothing below ever reads a size back. */
+let dotFrame = { width: DOT_SIZE, height: DOT_SIZE }
+let panelFrame = { width: PANEL_WIDTH, height: PANEL_HEIGHT }
+
 interface DragState {
   /** Pointer position, in screen coordinates, when the drag began. */
   pointerOrigin: DotPosition
   /** Window position when the drag began. */
   windowOrigin: DotPosition
-  /** The size to clamp against, captured once so the drag never reads the window back. */
-  size: { width: number; height: number }
   /** The last position we asked for, which is what the next move is compared against. */
   commanded: DotPosition
   startedAt: number
@@ -53,6 +63,7 @@ export function createWindows(): void {
     show: false,
     webPreferences: webPreferences()
   })
+  dotFrame = { width: dotWindow.getBounds().width, height: dotWindow.getBounds().height }
   applyAlwaysPresent(dotWindow)
   clampDotIntoBounds()
   dotWindow.once('ready-to-show', () => dotWindow?.showInactive())
@@ -74,6 +85,10 @@ export function createWindows(): void {
     show: false,
     webPreferences: webPreferences()
   })
+  panelFrame = {
+    width: panelWindow.getBounds().width,
+    height: panelWindow.getBounds().height
+  }
   applyAlwaysPresent(panelWindow)
   panelWindow.on('blur', () => {
     if (panelWindow?.webContents.isDevToolsOpened()) return
@@ -118,6 +133,14 @@ function applyAlwaysPresent(win: BrowserWindow): void {
 /** Windows floors very small windows to a minimum size, and fractional display scaling
  *  rounds the rest, so a window is rarely the exact size it was asked for. Every
  *  calculation below therefore measures the live window instead of trusting the constant. */
+function moveDotTo(position: DotPosition): void {
+  dotWindow?.setBounds({ ...position, ...dotFrame })
+}
+
+function dotBoundsAt(position: DotPosition): Electron.Rectangle {
+  return { ...position, ...dotFrame }
+}
+
 function clampBounds(bounds: Electron.Rectangle, display: Display): DotPosition {
   const area = display.workArea
   return {
@@ -133,19 +156,24 @@ function restoreDotPosition(): DotPosition {
     const display =
       screen.getAllDisplays().find((d) => String(d.id) === config.lastDisplayId) ??
       screen.getPrimaryDisplay()
-    return clampBounds({ ...saved, width: DOT_SIZE, height: DOT_SIZE }, display)
+    return clampBounds(dotBoundsAt(saved), display)
   }
   // First run: park it against the right edge, vertically centred.
+  return defaultDotPosition()
+}
+
+/** Right edge, vertically centred, inset from the work area. */
+function defaultDotPosition(): DotPosition {
   const area = screen.getPrimaryDisplay().workArea
   return {
-    x: Math.round(area.x + area.width - DOT_SIZE - 24),
-    y: Math.round(area.y + area.height / 2 - DOT_SIZE / 2)
+    x: Math.round(area.x + area.width - dotFrame.width - 24),
+    y: Math.round(area.y + area.height / 2 - dotFrame.height / 2)
   }
 }
 
 function persistDotPosition(): void {
   if (!dotWindow) return
-  const bounds = dotWindow.getBounds()
+  const bounds = dotBoundsAt(dotWindow.getBounds())
   const display = screen.getDisplayMatching(bounds)
   // Store the clamped value, so a position that is somehow off-screen can never be the
   // one restored at the next launch.
@@ -161,10 +189,16 @@ function persistDotPosition(): void {
  *  while DPI contexts settle, and persisting those would overwrite the spot the user chose. */
 export function clampDotIntoBounds(): void {
   if (!dotWindow) return
-  const bounds = dotWindow.getBounds()
+  const live = dotWindow.getBounds()
+  // A pixel or two of difference is the DIP rounding and is expected; anything larger
+  // would mean the window is inflating again and is worth shouting about.
+  if (Math.abs(live.width - dotFrame.width) > 4 || Math.abs(live.height - dotFrame.height) > 4) {
+    console.warn(`[ezzy] dot inflated to ${live.width}x${live.height}, forcing it back`)
+  }
+  const bounds = dotBoundsAt(live)
   const next = clampBounds(bounds, screen.getDisplayMatching(bounds))
   if (next.x === bounds.x && next.y === bounds.y) return
-  dotWindow.setPosition(next.x, next.y)
+  moveDotTo(next)
   log(`dot re-clamped from ${bounds.x},${bounds.y} to ${next.x},${next.y}`)
 }
 
@@ -196,7 +230,6 @@ export function beginDotDrag(pointer: DotPosition): void {
   drag = {
     pointerOrigin: pointer,
     windowOrigin: { x: bounds.x, y: bounds.y },
-    size: { width: bounds.width, height: bounds.height },
     commanded: { x: bounds.x, y: bounds.y },
     startedAt: performance.now()
   }
@@ -209,15 +242,14 @@ export function moveDotDrag(pointer: DotPosition): void {
     endDotDrag()
     return
   }
-  const target = {
+  const target = dotBoundsAt({
     x: drag.windowOrigin.x + (pointer.x - drag.pointerOrigin.x),
-    y: drag.windowOrigin.y + (pointer.y - drag.pointerOrigin.y),
-    ...drag.size
-  }
+    y: drag.windowOrigin.y + (pointer.y - drag.pointerOrigin.y)
+  })
   const next = clampBounds(target, screen.getDisplayMatching(target))
   if (next.x === drag.commanded.x && next.y === drag.commanded.y) return
   drag.commanded = next
-  dotWindow.setPosition(next.x, next.y)
+  moveDotTo(next)
 }
 
 export function endDotDrag(): void {
@@ -230,12 +262,7 @@ export function endDotDrag(): void {
 /** Tray rescue for a dot that has ended up somewhere unreachable. */
 export function resetDotPosition(): void {
   if (!dotWindow) return
-  const { width, height } = dotWindow.getBounds()
-  const area = screen.getPrimaryDisplay().workArea
-  dotWindow.setPosition(
-    Math.round(area.x + area.width - width - 24),
-    Math.round(area.y + area.height / 2 - height / 2)
-  )
+  moveDotTo(defaultDotPosition())
   dotWindow.showInactive()
   persistDotPosition()
   log('dot position reset')
@@ -245,13 +272,8 @@ export function resetDotPosition(): void {
 
 /** §6: the panel opens next to the dot, clamped to stay on-screen near edges. */
 function panelPosition(): DotPosition {
-  const dot = dotWindow?.getBounds() ?? { x: 0, y: 0, width: DOT_SIZE, height: DOT_SIZE }
-  const panel = panelWindow?.getBounds() ?? {
-    x: 0,
-    y: 0,
-    width: PANEL_WIDTH,
-    height: PANEL_HEIGHT
-  }
+  const dot = dotBoundsAt(dotWindow?.getBounds() ?? { x: 0, y: 0 })
+  const panel = panelFrame
   const area = screen.getDisplayMatching(dot).workArea
 
   let x = dot.x + dot.width + PANEL_GAP
@@ -272,7 +294,7 @@ export function togglePanel(): void {
     return
   }
   const { x, y } = panelPosition()
-  panelWindow.setPosition(x, y)
+  panelWindow.setBounds({ x, y, ...panelFrame })
   panelWindow.show()
   since('hotkey -> panel visible', startedAt)
 }
