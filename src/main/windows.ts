@@ -8,7 +8,22 @@ import { log, since } from './verbose'
 let dotWindow: BrowserWindow | null = null
 let panelWindow: BrowserWindow | null = null
 let quitting = false
-let dragOffset: DotPosition | null = null
+let drag: DragState | null = null
+
+interface DragState {
+  /** Pointer position, in screen coordinates, when the drag began. */
+  pointerOrigin: DotPosition
+  /** Window position when the drag began. */
+  windowOrigin: DotPosition
+  /** The size to clamp against, captured once so the drag never reads the window back. */
+  size: { width: number; height: number }
+  /** The last position we asked for, which is what the next move is compared against. */
+  commanded: DotPosition
+  startedAt: number
+}
+
+/** A drag still running after this long is a lost pointerup, not a patient user. */
+const MAX_DRAG_MS = 20_000
 
 /** Set from the tray Quit item so the close handlers stop hiding and let the app exit. */
 export function setQuitting(value: boolean): void {
@@ -131,10 +146,13 @@ function restoreDotPosition(): DotPosition {
 function persistDotPosition(): void {
   if (!dotWindow) return
   const bounds = dotWindow.getBounds()
-  const id = String(screen.getDisplayMatching(bounds).id)
+  const display = screen.getDisplayMatching(bounds)
+  // Store the clamped value, so a position that is somehow off-screen can never be the
+  // one restored at the next launch.
+  const position = clampBounds(bounds, display)
   updateConfig({
-    dotPositions: { ...getConfig().dotPositions, [id]: { x: bounds.x, y: bounds.y } },
-    lastDisplayId: id
+    dotPositions: { ...getConfig().dotPositions, [String(display.id)]: position },
+    lastDisplayId: String(display.id)
   })
 }
 
@@ -158,27 +176,69 @@ export function watchDisplays(): void {
 
 // ---------------------------------------------------------------------- dragging
 
-// The renderer only reports that a drag is happening; the cursor position is read here
-// so the dot never has to convert between CSS pixels and DIP across mixed-DPI monitors.
+// Dragging is driven entirely by screen coordinates the renderer reports from its pointer
+// events, and the window position is never read back while a drag is in flight. Both rules
+// exist because of measured behaviour on a 1.3625 scale factor display:
+//
+//   * setPosition(x, y) followed by getBounds() comes back one pixel short on each axis,
+//     because the DIP -> physical -> DIP round trip rounds. Feeding that result into the
+//     next move subtracts another pixel, every frame, forever.
+//   * screen.getCursorScreenPoint() shifts in lockstep with this window as it moves, so a
+//     physically stationary mouse reports a moving cursor. Deriving the target from it is
+//     self-referential.
+//
+// Together those made the dot walk off the screen under a still mouse, at one SetWindowPos
+// call per pointer event on an always-on-top window, which is what wedged desktop input.
 
-export function beginDotDrag(): void {
+export function beginDotDrag(pointer: DotPosition): void {
   if (!dotWindow) return
-  const cursor = screen.getCursorScreenPoint()
-  const [x, y] = dotWindow.getPosition()
-  dragOffset = { x: cursor.x - x, y: cursor.y - y }
+  const bounds = dotWindow.getBounds()
+  drag = {
+    pointerOrigin: pointer,
+    windowOrigin: { x: bounds.x, y: bounds.y },
+    size: { width: bounds.width, height: bounds.height },
+    commanded: { x: bounds.x, y: bounds.y },
+    startedAt: performance.now()
+  }
 }
 
-export function moveDotDrag(): void {
-  if (!dotWindow || !dragOffset) return
-  const cursor = screen.getCursorScreenPoint()
-  dotWindow.setPosition(cursor.x - dragOffset.x, cursor.y - dragOffset.y)
+export function moveDotDrag(pointer: DotPosition): void {
+  if (!dotWindow || !drag) return
+  if (performance.now() - drag.startedAt > MAX_DRAG_MS) {
+    log('drag ran past its safety timeout, ending it')
+    endDotDrag()
+    return
+  }
+  const target = {
+    x: drag.windowOrigin.x + (pointer.x - drag.pointerOrigin.x),
+    y: drag.windowOrigin.y + (pointer.y - drag.pointerOrigin.y),
+    ...drag.size
+  }
+  const next = clampBounds(target, screen.getDisplayMatching(target))
+  if (next.x === drag.commanded.x && next.y === drag.commanded.y) return
+  drag.commanded = next
+  dotWindow.setPosition(next.x, next.y)
 }
 
 export function endDotDrag(): void {
-  if (!dragOffset) return
-  dragOffset = null
+  if (!drag) return
+  drag = null
   clampDotIntoBounds()
   persistDotPosition()
+}
+
+/** Tray rescue for a dot that has ended up somewhere unreachable. */
+export function resetDotPosition(): void {
+  if (!dotWindow) return
+  const { width, height } = dotWindow.getBounds()
+  const area = screen.getPrimaryDisplay().workArea
+  dotWindow.setPosition(
+    Math.round(area.x + area.width - width - 24),
+    Math.round(area.y + area.height / 2 - height / 2)
+  )
+  dotWindow.showInactive()
+  persistDotPosition()
+  log('dot position reset')
 }
 
 // ------------------------------------------------------------------------- panel

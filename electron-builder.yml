@@ -1,5 +1,5 @@
-appId: com.ezy.app
-productName: Ezy
+appId: com.ezzy.app
+productName: Ezzy
 directories:
   buildResources: build
 files:
@@ -12,9 +12,9 @@ files:
 asarUnpack:
   - resources/**
 win:
-  executableName: Ezy
+  executableName: Ezzy
 nsis:
-  artifactName: Ezy-Setup-${version}.${ext}
+  artifactName: Ezzy-Setup-${version}.${ext}
   shortcutName: ${productName}
   uninstallDisplayName: ${productName}
   createDesktopShortcut: always

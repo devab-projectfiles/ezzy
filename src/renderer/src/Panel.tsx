@@ -4,12 +4,12 @@ function Panel(): React.JSX.Element {
   const [hotkey, setHotkey] = useState('')
 
   useEffect(() => {
-    window.ezy.getHotkey().then(setHotkey)
+    window.ezzy.getHotkey().then(setHotkey)
   }, [])
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent): void => {
-      if (event.key === 'Escape') window.ezy.closePanel()
+      if (event.key === 'Escape') window.ezzy.closePanel()
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
@@ -22,7 +22,7 @@ function Panel(): React.JSX.Element {
         <span className="panel__placeholder">Search windows and apps…</span>
       </div>
       <div className="panel__body">
-        <p className="panel__title">Ezy</p>
+        <p className="panel__title">Ezzy</p>
         <p className="panel__hint">
           {hotkey && (
             <>

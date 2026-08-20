@@ -1,18 +1,18 @@
 import { app } from 'electron'
 import { readFileSync, writeFileSync } from 'fs'
 import { join } from 'path'
-import { DEFAULT_CONFIG, DotPosition, EzyConfig } from '../shared/types'
+import { DEFAULT_CONFIG, DotPosition, EzzyConfig } from '../shared/types'
 import { log } from './verbose'
 
-let current: EzyConfig = { ...DEFAULT_CONFIG }
+let current: EzzyConfig = { ...DEFAULT_CONFIG }
 
 export function configFilePath(): string {
   return join(app.getPath('userData'), 'config.json')
 }
 
-export function loadConfig(): EzyConfig {
+export function loadConfig(): EzzyConfig {
   try {
-    const raw = JSON.parse(readFileSync(configFilePath(), 'utf8')) as Partial<EzyConfig>
+    const raw = JSON.parse(readFileSync(configFilePath(), 'utf8')) as Partial<EzzyConfig>
     current = normalise(raw)
     log(`config loaded from ${configFilePath()}`)
   } catch {
@@ -23,11 +23,11 @@ export function loadConfig(): EzyConfig {
   return current
 }
 
-export function getConfig(): EzyConfig {
+export function getConfig(): EzzyConfig {
   return current
 }
 
-export function updateConfig(patch: Partial<EzyConfig>): void {
+export function updateConfig(patch: Partial<EzzyConfig>): void {
   current = { ...current, ...patch }
   save()
 }
@@ -36,12 +36,12 @@ function save(): void {
   try {
     writeFileSync(configFilePath(), `${JSON.stringify(current, null, 2)}\n`, 'utf8')
   } catch (err) {
-    console.error('[ezy] could not write config:', err)
+    console.error('[ezzy] could not write config:', err)
   }
 }
 
 /** The config file is hand-editable, so every field is checked rather than trusted. */
-function normalise(raw: Partial<EzyConfig>): EzyConfig {
+function normalise(raw: Partial<EzzyConfig>): EzzyConfig {
   const dotPositions: Record<string, DotPosition> = {}
   if (raw.dotPositions && typeof raw.dotPositions === 'object') {
     for (const [id, pos] of Object.entries(raw.dotPositions)) {

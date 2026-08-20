@@ -5,7 +5,7 @@ export interface DotPosition {
   y: number
 }
 
-export interface EzyConfig {
+export interface EzzyConfig {
   /** Electron accelerator string, e.g. 'Alt+Space'. */
   hotkey: string
   openAtLogin: boolean
@@ -15,7 +15,7 @@ export interface EzyConfig {
   lastDisplayId: string | null
 }
 
-export const DEFAULT_CONFIG: EzyConfig = {
+export const DEFAULT_CONFIG: EzzyConfig = {
   hotkey: 'Alt+Space',
   openAtLogin: true,
   dotPositions: {},
@@ -39,10 +39,12 @@ export const IPC = {
   getHotkey: 'app:get-hotkey'
 } as const
 
-/** The surface the preload exposes on `window.ezy`. Named functions only. */
-export interface EzyApi {
-  startDotDrag(): void
-  moveDotDrag(): void
+/** The surface the preload exposes on `window.ezzy`. Named functions only.
+ *  Drag coordinates come from the renderer's pointer events rather than being read in the
+ *  main process — see the note in main/windows.ts for why that distinction matters. */
+export interface EzzyApi {
+  startDotDrag(screenX: number, screenY: number): void
+  moveDotDrag(screenX: number, screenY: number): void
   endDotDrag(): void
   clickDot(): void
   closePanel(): void

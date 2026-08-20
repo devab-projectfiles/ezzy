@@ -1,7 +1,7 @@
-import type { EzyApi } from '../shared/types'
+import type { EzzyApi } from '../shared/types'
 
 declare global {
   interface Window {
-    ezy: EzyApi
+    ezzy: EzzyApi
   }
 }
