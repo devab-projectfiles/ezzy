@@ -6,7 +6,7 @@ import { registerIpc } from './ipc'
 import { createTray, refreshTray } from './tray'
 import {
   createWindows,
-  publishWindowList,
+  publishPanelData,
   setQuitting,
   showDot,
   stopWatchingCursor,
@@ -14,7 +14,9 @@ import {
   watchCursor,
   watchDisplays
 } from './windows'
-import { onWindowsChanged, restartTracking, startTracking, stopTracking } from './window-tracker'
+import { restartTracking, startTracking, stopTracking } from './window-tracker'
+import { onPanelDataChanged } from './panel-data'
+import { refreshAppIndex, startAppIndex } from './app-index'
 import { log, since } from './verbose'
 
 const startedAt = performance.now()
@@ -44,13 +46,19 @@ function start(): void {
     // Hooks are registered after app.whenReady because SetWinEventHook delivers through the
     // thread's message loop, and Electron only has one running from here onward (§5).
     startTracking()
-    onWindowsChanged(publishWindowList)
+    onPanelDataChanged(publishPanelData)
+    // Scanning the Start Menu touches a few hundred directories, so it is deliberately not
+    // awaited — the window list is what the panel needs in the first 50ms, and the apps
+    // section fills in behind it.
+    void startAppIndex()
     const hotkey = registerHotkey(togglePanel)
     watchForResume(() => {
       refreshTray()
       // §5: the process survives sleep but the hook subscription does not, which leaves the
       // list frozen at its pre-sleep state with no visible symptom until you look for it.
       restartTracking()
+      // Apps installed while the machine slept would otherwise be missing until a restart.
+      void refreshAppIndex()
     })
     createTray(quit, hotkey)
 

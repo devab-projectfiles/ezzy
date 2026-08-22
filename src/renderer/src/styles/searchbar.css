@@ -1,0 +1,66 @@
+@import './base.css';
+
+/* §6's search bar recipe, verbatim: 54px tall, 27px radius, fill 0.15, rim 0.42, and the
+   dual rim's dark contrast ring so the edge survives a white desktop.
+
+   The window is transparent, so this radius is the real edge of the pill. */
+.searchbar {
+  position: relative;
+  overflow: hidden;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 0 18px;
+  border-radius: 27px;
+  border: 0.5px solid var(--glass-rim-search);
+  background: var(--glass-fill-search);
+  box-shadow:
+    inset 0 1px 0 var(--glass-highlight-search),
+    0 0 0 1px var(--rim-contrast-panel),
+    0 10px 34px rgba(10, 12, 22, 0.42);
+}
+
+.searchbar__sheen {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  /* A shallower angle than the panel's — §6 gives the search bar its own sheen. */
+  background: linear-gradient(
+    114deg,
+    rgba(255, 255, 255, 0.3) 0%,
+    rgba(255, 255, 255, 0.02) 34%,
+    rgba(255, 255, 255, 0) 58%,
+    rgba(255, 255, 255, 0.16) 100%
+  );
+}
+
+.searchbar > svg,
+.searchbar > span:not(.searchbar__sheen) {
+  position: relative;
+}
+
+.searchbar__search {
+  flex: 0 0 auto;
+  width: 18px;
+  height: 18px;
+  color: var(--glyph-search);
+}
+
+.searchbar__placeholder {
+  flex: 1 1 auto;
+  font-size: 15px;
+  color: var(--text-placeholder);
+  text-shadow: var(--text-shadow);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.searchbar__mic {
+  flex: 0 0 auto;
+  width: 19px;
+  height: 19px;
+  color: var(--glyph-mic);
+}

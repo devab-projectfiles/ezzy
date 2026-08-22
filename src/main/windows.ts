@@ -1,29 +1,35 @@
 import { BrowserWindow, Display, screen } from 'electron'
-import { release } from 'os'
 import { join } from 'path'
 import { is } from '@electron-toolkit/utils'
 import {
   DOT_VISUAL,
   DOT_WINDOW,
   DotPosition,
-  EzzyWindow,
+  PanelData,
   IPC,
   PANEL_GAP,
-  PANEL_HEIGHT,
+  PANEL_MAX_HEIGHT,
+  PANEL_MIN_HEIGHT,
   PANEL_WIDTH,
   PILL_DELTA,
   PILL_VISUAL,
   PILL_WINDOW,
-  PillDirection
+  PillDirection,
+  SEARCH_HEIGHT,
+  SEARCH_PANEL_GAP
 } from '../shared/types'
 import { getConfig, updateConfig } from './config'
 import { log, since } from './verbose'
-import { listWindows } from './window-tracker'
+import { panelData } from './panel-data'
 
 let dotWindow: BrowserWindow | null = null
 let panelWindow: BrowserWindow | null = null
+/** §6's second glass surface: the 420x54 pill above the panel. */
+let searchWindow: BrowserWindow | null = null
 let quitting = false
 let drag: DragState | null = null
+/** The panel's current height. It hugs its content, so the renderer drives this. */
+let panelHeight = PANEL_MIN_HEIGHT
 
 /** Where the collapsed glass circle sits, expressed as the top-left of the square window
  *  it would occupy on its own. This is the single source of truth for the dot's position:
@@ -59,7 +65,6 @@ let pillFrame = { width: PILL_WINDOW, height: DOT_WINDOW }
 let dotFrame = { width: DOT_WINDOW, height: DOT_WINDOW }
 /** How much wider the window is than that square, i.e. how far the pill can open. */
 let pillDelta = PILL_DELTA
-let panelFrame = { width: PANEL_WIDTH, height: PANEL_HEIGHT }
 
 interface DragState {
   /** Pointer position, in screen coordinates, when the drag began. */
@@ -77,10 +82,6 @@ const MAX_DRAG_MS = 20_000
 /** Cursor sampling rate for hover. One GetCursorPos per tick costs far less than the
  *  alternative: a pill-wide window that swallows every click aimed underneath it. */
 const HOVER_POLL_MS = 30
-
-/** Acrylic arrived with Windows 11. On 10 the flag is simply ignored, which would leave a
- *  see-through unreadable panel, so §6 calls for a solid fallback instead. */
-const SUPPORTS_ACRYLIC = Number(release().split('.')[2] ?? 0) >= 22000
 
 /** Set from the tray Quit item so the close handlers stop hiding and let the app exit. */
 export function setQuitting(value: boolean): void {
@@ -123,16 +124,42 @@ export function createWindows(): void {
   dotWindow.once('ready-to-show', () => dotWindow?.showInactive())
   loadRenderer(dotWindow, 'dot')
 
-  panelWindow = new BrowserWindow({
+  // §6, "Three windows, not one". The search bar and the panel are separate windows so the
+  // 11px gap between them shows the desktop rather than a seam. They move as one unit.
+  searchWindow = createGlassWindow(SEARCH_HEIGHT)
+  panelWindow = createGlassWindow(PANEL_MIN_HEIGHT)
+
+  // Only the panel takes focus; the search bar is furniture until chunk C gives it an input.
+  // Keeping it unfocusable means the arrow keys and Enter keep landing on the list.
+  searchWindow.setFocusable(false)
+
+  panelWindow.on('blur', () => {
+    if (panelWindow?.webContents.isDevToolsOpened()) return
+    hidePanel()
+  })
+
+  loadRenderer(searchWindow, 'searchbar')
+  loadRenderer(panelWindow, 'panel')
+}
+
+/** One of the two glass surfaces. Both are the same window underneath — only their height
+ *  and contents differ.
+ *
+ *  `transparent: true` rather than §6's `backgroundMaterial: 'acrylic'`. Acrylic tints the
+ *  surface with the Windows theme, which on a dark theme reads as a dark slab sitting over
+ *  the desktop instead of glass over it. The trade §6 warned about stands: what is behind is
+ *  now clear rather than blurred, because CSS cannot blur outside its own window. In exchange
+ *  the corner radii are ordinary CSS again, and therefore anti-aliased. */
+function createGlassWindow(height: number): BrowserWindow {
+  const win = new BrowserWindow({
     width: PANEL_WIDTH,
-    height: PANEL_HEIGHT,
+    height,
     frame: false,
-    // §6: acrylic and `transparent` are mutually exclusive, and real Windows 11 glass needs
-    // the non-transparent window. The cost is corner radius — Windows rounds a frameless
-    // window at its own ~8px and the acrylic fills the square behind any CSS radius, so the
-    // panel cannot have §6's 24px corners. That is the trade §6 already made; don't chase it.
-    backgroundMaterial: SUPPORTS_ACRYLIC ? 'acrylic' : 'none',
-    backgroundColor: SUPPORTS_ACRYLIC ? '#00000000' : '#16181C',
+    transparent: true,
+    backgroundColor: '#00000000',
+    // The OS drop shadow would be drawn around the window's square, not around the rounded
+    // surface inside it, so it reads as a grey box behind the glass. The CSS shadow replaces it.
+    hasShadow: false,
     resizable: false,
     maximizable: false,
     minimizable: false,
@@ -142,17 +169,8 @@ export function createWindows(): void {
     show: false,
     webPreferences: webPreferences()
   })
-  panelFrame = {
-    width: panelWindow.getBounds().width,
-    height: panelWindow.getBounds().height
-  }
-  applyAlwaysPresent(panelWindow)
-  panelWindow.on('blur', () => {
-    if (panelWindow?.webContents.isDevToolsOpened()) return
-    panelWindow?.hide()
-  })
-  loadRenderer(panelWindow, 'panel')
-  log(SUPPORTS_ACRYLIC ? 'panel using acrylic' : 'panel using the Windows 10 solid fallback')
+  applyAlwaysPresent(win)
+  return win
 }
 
 function webPreferences(): Electron.WebPreferences {
@@ -164,7 +182,7 @@ function webPreferences(): Electron.WebPreferences {
   }
 }
 
-function loadRenderer(win: BrowserWindow, page: 'dot' | 'panel'): void {
+function loadRenderer(win: BrowserWindow, page: 'dot' | 'searchbar' | 'panel'): void {
   win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
   win.webContents.on('console-message', (details) => {
     log(`[${page}] ${details.level}: ${details.message}`)
@@ -428,11 +446,15 @@ export function resetDotPosition(): void {
   log('dot position reset')
 }
 
-// ------------------------------------------------------------------------- panel
+// ------------------------------------------------------------- search bar + panel
 
-/** §6: the panel opens next to the dot, clamped to stay on-screen near edges. It is
- *  anchored to the visible circle rather than the padded square, so the gap looks right. */
-function panelPosition(): DotPosition {
+/** §6: the search bar sits 11px above the panel and the two move as one unit, anchored to
+ *  the dot and clamped on-screen near edges. This lays the pair out together so the gap
+ *  between them is fixed no matter where the dot is parked.
+ *
+ *  Anchored to the visible circle rather than the padded dot window, or the gap would
+ *  silently include DOT_SLACK and read as too wide. */
+function layoutPair(): { search: Electron.Rectangle; panel: Electron.Rectangle } {
   const inset = visualInset()
   const dot = {
     x: dotAnchor.x + inset,
@@ -440,44 +462,79 @@ function panelPosition(): DotPosition {
     width: DOT_VISUAL,
     height: DOT_VISUAL
   }
-  const panel = panelFrame
   const area = screen.getDisplayMatching(dotBoundsAt(dotAnchor)).workArea
+  const totalHeight = SEARCH_HEIGHT + SEARCH_PANEL_GAP + panelHeight
 
+  // Open away from the dot, and flip to its other side when there is no room.
   let x = dot.x + dot.width + PANEL_GAP
-  if (x + panel.width > area.x + area.width) x = dot.x - panel.width - PANEL_GAP
-  x = Math.min(Math.max(x, area.x + PANEL_GAP), area.x + area.width - panel.width - PANEL_GAP)
+  if (x + PANEL_WIDTH > area.x + area.width) x = dot.x - PANEL_WIDTH - PANEL_GAP
+  x = Math.min(Math.max(x, area.x + PANEL_GAP), area.x + area.width - PANEL_WIDTH - PANEL_GAP)
 
-  let y = dot.y + dot.height / 2 - panel.height / 2
-  y = Math.min(Math.max(y, area.y + PANEL_GAP), area.y + area.height - panel.height - PANEL_GAP)
+  // Centre the whole pair on the dot, then clamp the pair — not each window — so the 11px
+  // gap survives being pushed against the top or bottom of the work area.
+  let y = dot.y + dot.height / 2 - totalHeight / 2
+  y = Math.min(Math.max(y, area.y + PANEL_GAP), area.y + area.height - totalHeight - PANEL_GAP)
 
-  return { x: Math.round(x), y: Math.round(y) }
+  const left = Math.round(x)
+  const top = Math.round(y)
+  return {
+    search: { x: left, y: top, width: PANEL_WIDTH, height: SEARCH_HEIGHT },
+    panel: {
+      x: left,
+      y: top + SEARCH_HEIGHT + SEARCH_PANEL_GAP,
+      width: PANEL_WIDTH,
+      height: panelHeight
+    }
+  }
+}
+
+/** Move both surfaces together. */
+function applyPairBounds(): void {
+  if (!searchWindow || !panelWindow) return
+  const { search, panel } = layoutPair()
+  searchWindow.setBounds(search)
+  panelWindow.setBounds(panel)
+}
+
+/** §6: the panel hugs its list rather than being a fixed slab, so the renderer measures its
+ *  own content and reports it here. Bounded at both ends — one row minimum, ~8 rows before
+ *  it starts scrolling instead of growing. */
+export function setPanelHeight(height: number): void {
+  const next = Math.round(Math.min(Math.max(height, PANEL_MIN_HEIGHT), PANEL_MAX_HEIGHT))
+  if (next === panelHeight) return
+  panelHeight = next
+  if (panelWindow?.isVisible()) applyPairBounds()
 }
 
 export function togglePanel(): void {
   const startedAt = performance.now()
-  if (!panelWindow) return
+  if (!panelWindow || !searchWindow) return
   if (panelWindow.isVisible()) {
-    panelWindow.hide()
+    hidePanel()
     return
   }
-  const { x, y } = panelPosition()
-  panelWindow.setBounds({ x, y, ...panelFrame })
+  applyPairBounds()
   // The list rides along with the show event rather than being fetched back by the renderer.
   // It is already in memory, so this costs one IPC hop instead of a round trip (§7).
-  panelWindow.webContents.send(IPC.panelShown, listWindows())
+  panelWindow.webContents.send(IPC.panelShown, panelData())
+  // The search bar is unfocusable, so showInactive keeps the panel as the focused window and
+  // the keyboard keeps landing on the list.
+  searchWindow.showInactive()
   panelWindow.show()
   since('hotkey -> panel visible', startedAt)
 }
 
 /** Live updates while the panel is open — a window opening, closing or being renamed behind
- *  it. Skipped when hidden: the next show sends a fresh list anyway. */
-export function publishWindowList(windows: EzzyWindow[]): void {
+ *  it, or the app index finishing its scan. Skipped when hidden: the next show sends fresh
+ *  data anyway. */
+export function publishPanelData(data: PanelData): void {
   if (!panelWindow || !panelWindow.isVisible()) return
-  panelWindow.webContents.send(IPC.windowsChanged, windows)
+  panelWindow.webContents.send(IPC.panelChanged, data)
 }
 
 export function hidePanel(): void {
   panelWindow?.hide()
+  searchWindow?.hide()
 }
 
 export function showDot(): void {

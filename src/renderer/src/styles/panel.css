@@ -1,15 +1,12 @@
 @import './base.css';
 
-/* The glass recipe at panel values, drawn over the window's acrylic. The 24px radius
-   applies to this layer only — the acrylic backing is the window itself, and Windows
-   rounds a frameless window at its own radius. §6 accepted that when it chose acrylic
-   over transparency. */
+/* §6's panel recipe: 420 wide, 24px radius, 10px 8px inner padding, fill 0.13, rim 0.36,
+   plus the dual rim's dark contrast ring. The window is transparent, so this radius is the
+   real edge of the surface and it is anti-aliased. */
 .panel {
   position: relative;
   overflow: hidden;
   height: 100%;
-  display: flex;
-  flex-direction: column;
   border-radius: 24px;
   border: 0.5px solid var(--glass-rim);
   background: var(--glass-fill-panel);
@@ -30,6 +27,23 @@
   }
 }
 
+/* The scrolling surface. Its scrollHeight is what the window is sized to, so the padding
+   lives here rather than on .panel — otherwise the measurement would miss it. */
+.panel__surface {
+  position: relative;
+  height: 100%;
+  padding: 10px 8px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  /* §6: two-finger scroll works for free as ordinary scroll events. Don't add custom
+     scroll handling. */
+  scrollbar-width: none;
+}
+
+.panel__surface::-webkit-scrollbar {
+  display: none;
+}
+
 .panel__sheen {
   position: absolute;
   inset: 0;
@@ -38,55 +52,12 @@
   background: var(--glass-sheen);
 }
 
-.panel__search {
-  height: 54px;
-  flex: 0 0 auto;
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 0 18px;
-  border-bottom: 0.5px solid rgba(255, 255, 255, 0.12);
-}
-
-.panel__caret {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: var(--text-faint);
-}
-
-.panel__placeholder {
-  font-size: 15px;
-  color: var(--text-faint);
-  text-shadow: var(--text-shadow);
-}
-
-.panel__empty {
-  flex: 1 1 auto;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 10px;
-  padding: 24px;
-  text-align: center;
-}
-
-/* ------------------------------------------------------------------ the list */
-
-.panel__list {
-  position: relative;
-  flex: 1 1 auto;
-  padding: 10px 8px;
-  overflow-y: auto;
-  overflow-x: hidden;
-  /* §6: two-finger scroll works for free as ordinary scroll events. Don't add custom
-     scroll handling, and don't take the scrollbar away from the pointer either. */
-  scrollbar-width: none;
-}
-
-.panel__list::-webkit-scrollbar {
-  display: none;
+/* §6: 1px, 8px 14px margin. Separates the two sections without boxing either of them. */
+.panel__divider {
+  display: block;
+  height: 1px;
+  margin: 8px 14px;
+  background: var(--divider);
 }
 
 .panel__section {
@@ -94,6 +65,15 @@
   padding: 6px 14px 8px;
   font-size: 11px;
   letter-spacing: 0.08em;
+  color: var(--text-faint);
+  text-shadow: var(--text-shadow);
+}
+
+.panel__empty {
+  margin: 0;
+  padding: 14px;
+  text-align: center;
+  font-size: 13px;
   color: var(--text-faint);
   text-shadow: var(--text-shadow);
 }
@@ -146,8 +126,8 @@
   width: 19px;
   height: 19px;
   color: var(--icon);
-  stroke-width: 1.2;
-  filter: drop-shadow(0 1px 2px rgba(8, 10, 20, 0.7));
+  /* §6: keeps the mark legible over bright desktop content. */
+  filter: drop-shadow(0 1px 2px rgba(8, 10, 20, 0.5));
 }
 
 .panel__row.is-selected .panel__icon {
@@ -186,43 +166,19 @@
 
 /* §6: the hint column stays reserved even when empty, so titles do not shift sideways as
    the selection moves. Future per-app actions land here. */
-.panel__hint-chip {
-  flex: 0 0 auto;
-  min-width: 26px;
-  height: 19px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0 7px;
-  border-radius: 6px;
-  font-size: 11px;
-  color: var(--text-dim);
-}
-
-.panel__row.is-selected .panel__hint-chip {
-  border: 0.5px solid var(--chip-rim);
-}
-
-.panel__title {
-  margin: 0;
-  font-size: 13px;
-  color: var(--text-dim);
-  text-shadow: var(--text-shadow);
-}
-
 .panel__hint {
-  margin: 0;
-  font-size: 12px;
-  line-height: 1.7;
-  color: var(--text-faint);
-  text-shadow: var(--text-shadow);
+  flex: 0 0 auto;
+  display: flex;
+  justify-content: flex-end;
+  min-width: 26px;
 }
 
-kbd {
+.panel__hint-chip {
   padding: 2px 7px;
-  border-radius: 5px;
+  border-radius: 6px;
   border: 0.5px solid var(--chip-rim);
-  color: var(--text-dim);
-  font-family: inherit;
   font-size: 11px;
+  line-height: 1.35;
+  color: var(--text-dim);
+  text-shadow: var(--text-shadow);
 }

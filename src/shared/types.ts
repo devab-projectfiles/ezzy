@@ -39,9 +39,29 @@ export const DOT_SLACK = 16
 export const DOT_WINDOW = DOT_VISUAL + DOT_SLACK * 2
 export const PILL_WINDOW = PILL_VISUAL + DOT_SLACK * 2
 export const DOT_GLYPH_SIZE = 32
-export const PANEL_WIDTH = 430
-export const PANEL_HEIGHT = 420
+/** §6: the search bar and the panel are two separate windows that show, hide and move as a
+ *  unit, 11px apart — not one window with a divider.
+ *
+ *  Both are `transparent: true`. §6 originally specified `backgroundMaterial: 'acrylic'`,
+ *  but acrylic tints the surface with the Windows theme and on a dark theme that reads as a
+ *  dark slab rather than glass. Transparency was chosen over frosting deliberately: the
+ *  trade is that the desktop behind is clear rather than blurred, since CSS backdrop-filter
+ *  cannot blur anything outside its own window. The radii below are plain CSS again, which
+ *  also means they are anti-aliased. */
+export const PANEL_WIDTH = 420
+export const SEARCH_HEIGHT = 54
+/** Gap between the search bar and the panel below it. */
+export const SEARCH_PANEL_GAP = 11
+/** Gap between the dot and the search-bar/panel pair. */
 export const PANEL_GAP = 12
+
+/** The panel hugs its content, so its height is measured in the renderer. These bound it:
+ *  never shorter than one row, never taller than the ~8 rows §6 asks for before scrolling. */
+export const PANEL_MIN_HEIGHT = 64
+/** Four window rows plus a peek at the fifth, so the list reads as scrollable rather than
+ *  as a slab. Everything past that — the rest of the windows, then the APPS section — is
+ *  reached by scrolling. */
+export const PANEL_MAX_HEIGHT = 248
 
 /** Which side of its window the pill is pinned to. The dot normally opens leftward, so the
  *  circle sits at the window's right edge; parked against the left of a display it mirrors
@@ -59,6 +79,20 @@ export interface EzzyWindow {
   app: string
 }
 
+/** An installed application that is not currently running, from the Start Menu index. */
+export interface EzzyApp {
+  /** Stable identity for React keys and launch requests: the shortcut's full path. */
+  id: string
+  name: string
+}
+
+/** Everything the panel renders. Windows and apps travel together so the two sections can
+ *  never disagree about which apps count as "not running". */
+export interface PanelData {
+  windows: EzzyWindow[]
+  apps: EzzyApp[]
+}
+
 export const IPC = {
   dotDragStart: 'dot:drag-start',
   dotDragMove: 'dot:drag-move',
@@ -69,10 +103,12 @@ export const IPC = {
   pillSide: 'dot:pill-side',
   panelClose: 'panel:close',
   getHotkey: 'app:get-hotkey',
-  listWindows: 'windows:list',
-  windowsChanged: 'windows:changed',
+  panelData: 'panel:data',
+  panelChanged: 'panel:changed',
   focusWindow: 'windows:focus',
-  panelShown: 'panel:shown'
+  panelShown: 'panel:shown',
+  launchApp: 'apps:launch',
+  setPanelHeight: 'panel:set-height'
 } as const
 
 /** The surface the preload exposes on `window.ezzy`. Named functions only.
@@ -93,17 +129,22 @@ export interface EzzyApi {
   onPillSide(callback: (side: PillDirection) => void): () => void
   closePanel(): void
   getHotkey(): Promise<string>
-  /** The cached, MRU-ordered window list. Reads a variable in the main process — no OS
+  /** The cached window list and app index. Reads variables in the main process — no OS
    *  enumeration happens here, which is what keeps the panel inside §7's 50ms budget. */
-  listWindows(): Promise<EzzyWindow[]>
+  getPanelData(): Promise<PanelData>
   /** Fires while the panel is open, so a window that opens or is renamed behind it shows up
    *  without the user closing and reopening. Returns an unsubscribe function. */
-  onWindowsChanged(callback: (windows: EzzyWindow[]) => void): () => void
+  onPanelChanged(callback: (data: PanelData) => void): () => void
   /** Brings a window to the front. Resolves false when Windows refused, so the panel can
    *  stay open rather than dismissing over a switch that never happened. */
   focusWindow(id: number): Promise<boolean>
   /** Fires each time the panel is shown, carrying the list as of that moment. The renderer
    *  never re-requests on open — the list rides along with the event, which removes a round
    *  trip from the hotkey path. Returns an unsubscribe function. */
-  onPanelShown(callback: (windows: EzzyWindow[]) => void): () => void
+  onPanelShown(callback: (data: PanelData) => void): () => void
+  /** Starts an installed app that is not running. Resolves false if Windows refused. */
+  launchApp(id: string): Promise<boolean>
+  /** The panel hugs its content (§6 shows it sized to the list, not a fixed slab), so the
+   *  renderer measures the rendered rows and the main process resizes the window to match. */
+  setPanelHeight(height: number): void
 }

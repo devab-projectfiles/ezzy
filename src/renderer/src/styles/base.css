@@ -1,7 +1,10 @@
 /* The glass recipe from PLAN.md §6, as tokens. True glass is LOW opacity plus a specular
-   sheen — the fills below deliberately never go above 0.20. The real blur is the window's
-   backgroundMaterial: 'acrylic', never CSS backdrop-filter, which cannot see the desktop
-   behind an Electron window at all. */
+   sheen — the fills below deliberately never go above 0.20.
+
+   The surfaces are `transparent: true` windows rather than §6's acrylic: acrylic tints with
+   the Windows theme and on a dark theme it reads as a dark slab over the desktop rather than
+   glass over it. So what is behind shows through clear rather than frosted, and these fills
+   plus the rim and the text shadow are the whole of the legibility budget. */
 
 :root {
   --ease-glass: cubic-bezier(0.32, 0.72, 0, 1);
@@ -11,7 +14,12 @@
   --pill-visual: 212px;
 
   --glass-fill-dot: rgba(255, 255, 255, 0.18);
-  --glass-fill-panel: rgba(255, 255, 255, 0.13);
+  /* §6 puts the panel at 0.13 and the search bar at 0.15, but those numbers assume the
+     window's acrylic is blurring the desktop underneath. These windows are transparent, so
+     nothing mutes what is behind them and at 0.13 the desktop's own text reads straight
+     through the rows. Raised until the backdrop is a wash rather than content — still
+     clearly see-through, which is the point. */
+  --glass-fill-panel: rgba(255, 255, 255, 0.3);
   /* The rim is what separates glass from background; without it everything mushes together. */
   --glass-rim: rgba(255, 255, 255, 0.42);
   --glass-rim-bright: rgba(255, 255, 255, 0.62);
@@ -35,8 +43,14 @@
     rgba(255, 255, 255, 0.2) 100%
   );
 
-  /* At 13-18% fill you are reading over arbitrary desktop content, so this is not optional. */
-  --text-shadow: 0 1px 3px rgba(10, 12, 22, 0.5);
+  /* Reading over arbitrary desktop content, so this is not optional — and with transparent
+     windows it has to work harder than §6's value assumed. A white translucent fill cannot
+     mute bright text behind it (white over white is still white, at any opacity), so the
+     separation has to come from a dark halo around our own text rather than from the
+     surface. Two shadows: a tight one for edge definition, a wide soft one that darkens
+     whatever the desktop put directly behind the glyphs. */
+  --text-shadow:
+    0 1px 3px rgba(6, 8, 16, 0.85), 0 0 10px rgba(6, 8, 16, 0.55);
   --text-strong: rgba(255, 255, 255, 0.96);
   --text-dim: rgba(255, 255, 255, 0.78);
   --text-faint: rgba(255, 255, 255, 0.58);
@@ -46,10 +60,19 @@
   --icon-selected: rgba(255, 255, 255, 1);
   --row-selected: rgba(255, 255, 255, 0.2);
   --row-selected-rim: rgba(255, 255, 255, 0.34);
+
+  /* The search bar sits a touch brighter than the panel, as §6 has it. */
+  --glass-fill-search: rgba(255, 255, 255, 0.32);
+  --glass-rim-search: rgba(255, 255, 255, 0.42);
+  --glass-highlight-search: rgba(255, 255, 255, 0.65);
+  --glyph-search: rgba(255, 255, 255, 0.72);
+  --glyph-mic: rgba(255, 255, 255, 0.92);
+  --text-placeholder: rgba(255, 255, 255, 0.66);
+  --divider: rgba(255, 255, 255, 0.2);
 }
 
-/* White on a white desktop disappears. This follows the same OS theme signal acrylic does,
-   so the mark and the labels invert with it and no IPC is involved. */
+/* White on a white desktop disappears. This follows the OS theme, so the mark and the
+   labels invert with it and no IPC is involved. */
 @media (prefers-color-scheme: light) {
   :root {
     --glass-rim: rgba(255, 255, 255, 0.5);
@@ -61,12 +84,21 @@
     --text-faint: rgba(60, 66, 84, 0.58);
     --mark: rgba(60, 66, 84, 0.88);
 
+    --glass-fill-panel: rgba(255, 255, 255, 0.62);
     --icon: rgba(30, 34, 44, 0.75);
     --icon-selected: rgba(22, 25, 33, 0.94);
     /* §6: on light glass the selected row gets more OPAQUE, not darker. Reaching for a
        darker fill here is the mistake the table exists to prevent. */
     --row-selected: rgba(255, 255, 255, 0.72);
     --row-selected-rim: rgba(255, 255, 255, 0.9);
+
+    --glass-fill-search: rgba(255, 255, 255, 0.66);
+    --glass-rim-search: rgba(255, 255, 255, 0.85);
+    --glass-highlight-search: rgba(255, 255, 255, 0.95);
+    --glyph-search: rgba(38, 42, 52, 0.6);
+    --glyph-mic: rgba(30, 34, 44, 0.8);
+    --text-placeholder: rgba(38, 42, 52, 0.55);
+    --divider: rgba(38, 42, 52, 0.12);
   }
 }
 
@@ -75,8 +107,8 @@ body {
   margin: 0;
   padding: 0;
   height: 100%;
-  /* Transparent on the dot window because it is transparent: true, and on the panel window
-     because that is what lets the acrylic behind the page show through. */
+  /* Every window is transparent: true, so the page must not paint a ground of its own —
+     the only fill is the glass surface each component draws. */
   background: transparent;
   overflow: hidden;
   color: var(--text-strong);
