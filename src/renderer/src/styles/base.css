@@ -38,23 +38,24 @@
   --glass-fill-search: rgba(255, 255, 255, 0.14);
   --glass-fill-dot: rgba(255, 255, 255, 0.16);
 
-  /* Step 02 of the tutorial, verbatim: three white inner shadows at 20%. Together they light
-     the inside of the edge all the way round, which is what makes the reference cards read as
-     a thick pane rather than a tinted rectangle. This is the technique doing the work that
-     the tint used to do. */
-  --glass-inner:
-    inset 4px 4px 12px 2px rgba(255, 255, 255, 0.2),
-    inset -2px -2px 15px 1px rgba(255, 255, 255, 0.2),
-    inset 0 0 15px 2px rgba(255, 255, 255, 0.2);
+  /* Step 02 of the tutorial, scaled down rather than copied.
+     Verbatim it is three white inner shadows at 20% with 12-15px blur and 1-2px spread. That
+     reads as a subtle edge glow on the tutorial's ~500px card, but this panel is 248px tall,
+     so the same blur reaches from both edges across most of the surface — and three of them
+     compound with the fill, the sheen and the top highlight. Stacked, that was landing near
+     50-60% white at the edges, which is the milky look the material is supposed to avoid.
+     One soft ring at a third of the alpha gives the same thick-pane cue without washing the
+     surface out. */
+  --glass-inner: inset 0 0 14px 0 rgba(255, 255, 255, 0.07);
 
   /* The bright hairline that reads as the cut edge of a pane of glass. On dark glass this is
      the primary shape cue, so it runs brighter than §6's value. */
   --glass-rim: rgba(255, 255, 255, 0.34);
   --glass-rim-search: rgba(255, 255, 255, 0.38);
   --glass-rim-bright: rgba(255, 255, 255, 0.5);
-  /* Top-edge specular. Light lands on the top lip of a pane, so it is brighter than the rim. */
-  --glass-highlight: rgba(255, 255, 255, 0.5);
-  --glass-highlight-search: rgba(255, 255, 255, 0.55);
+  /* Top-edge specular — a one-pixel lip, so it can be bright without tinting the surface. */
+  --glass-highlight: rgba(255, 255, 255, 0.4);
+  --glass-highlight-search: rgba(255, 255, 255, 0.45);
   --chip-rim: rgba(255, 255, 255, 0.26);
 
   /* The dual rim (§6). A dark ring OUTSIDE the light one so the edge keeps contrast against
@@ -62,14 +63,16 @@
   --rim-contrast-dot: rgba(4, 6, 12, 0.6);
   --rim-contrast-panel: rgba(4, 6, 12, 0.5);
 
-  /* The diagonal light band that makes glass read as thick rather than as a film. */
+  /* The diagonal light band that makes glass read as thick rather than as a film. Kept faint
+     on purpose — it lands in the same corners as the inner ring, so anything stronger adds
+     straight on top of it. */
   --glass-sheen: linear-gradient(
     122deg,
-    rgba(255, 255, 255, 0.16) 0%,
-    rgba(255, 255, 255, 0.02) 26%,
+    rgba(255, 255, 255, 0.09) 0%,
+    rgba(255, 255, 255, 0.01) 26%,
     rgba(255, 255, 255, 0) 52%,
-    rgba(255, 255, 255, 0.03) 76%,
-    rgba(255, 255, 255, 0.12) 100%
+    rgba(255, 255, 255, 0.02) 76%,
+    rgba(255, 255, 255, 0.07) 100%
   );
 
   /* Much lighter than the white-glass version needed: the dark fill is now doing the work of
