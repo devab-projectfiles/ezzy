@@ -25,19 +25,18 @@
   --dot-slack: 16px;
   --pill-visual: 212px;
 
-  /* Back to §6's fills, because the window's acrylic is doing the tinting and the blurring
-     now. The arithmetic that forced 0.66 on a transparent window does not apply here: blur
-     destroys the contrast of whatever is behind rather than covering it, so legibility no
-     longer has to be bought with opacity. These sit on TOP of the acrylic as the thin glass
-     layer §6 describes, which is why they are back down at a film. */
-  --glass-fill-panel: rgba(255, 255, 255, 0.13);
-  --glass-fill-search: rgba(255, 255, 255, 0.15);
-  /* The dot is the exception and stays DARK glass in both themes. It cannot use acrylic —
-     acrylic needs a non-transparent window and the dot needs transparency for its circular
-     shape — so it gets no blur to hide behind. White glass with a white glyph vanishes
-     completely on a white document, which is precisely the case §6 answers by pairing dark
-     glass with a white glyph. Doing that unconditionally keeps the dot visible on every
-     background without sampling one. */
+  /* A DARK film over the acrylic, not §6's white one.
+     Acrylic supplies the blur; this supplies the colour. §6 layers white glass on top
+     because it assumed the material would be doing the tinting, but a white film over a
+     frosted surface is what produces the milky slab look. Tinting downward instead keeps the
+     blur and gives back the dark liquid-glass surface, with the luminous inner edge and the
+     rim below carrying the "pane of glass" read. */
+  --glass-fill-panel: rgba(9, 12, 20, 0.42);
+  --glass-fill-search: rgba(9, 12, 20, 0.38);
+  /* The dot is the exception only in that it has no acrylic to sit on — it needs a
+     transparent window for its circular shape — so its fill has to be heavier to do the same
+     job alone. White glass with a white glyph vanishes outright on a white document, which is
+     the case §6 answers by pairing dark glass with a white glyph. */
   --glass-fill-dot: rgba(20, 24, 36, 0.58);
 
   /* Step 02 of the tutorial, verbatim: three white inner shadows at 20%. Together they light
@@ -97,40 +96,13 @@
   --divider: rgba(255, 255, 255, 0.12);
 }
 
-/* §6's light-mode table, required again now that the surface is acrylic: acrylic follows the
-   Windows theme, so on a light theme the surface itself turns light and white content on it
-   would be unreadable. Two things §6 flags as commonly wrong are honoured here — the text
-   shadow is removed entirely (a dark shadow under dark text just looks like a printing
-   error), and the selected row gets more OPAQUE rather than darker. */
-@media (prefers-color-scheme: light) {
-  :root {
-    --glass-fill-panel: rgba(255, 255, 255, 0.45);
-    --glass-fill-search: rgba(255, 255, 255, 0.5);
-    --glass-rim: rgba(255, 255, 255, 0.85);
-    --glass-rim-search: rgba(255, 255, 255, 0.85);
-    --glass-rim-bright: rgba(255, 255, 255, 0.95);
-    --glass-highlight: rgba(255, 255, 255, 0.95);
-    --glass-highlight-search: rgba(255, 255, 255, 0.95);
-    --chip-rim: rgba(38, 42, 52, 0.22);
-
-    --text-shadow: none;
-    --text-strong: rgba(22, 25, 33, 0.94);
-    --text-dim: rgba(38, 42, 52, 0.8);
-    --text-faint: rgba(38, 42, 52, 0.45);
-    --text-placeholder: rgba(38, 42, 52, 0.55);
-    /* No --mark override: the dot stays dark glass in light mode too, so the glyph on it
-       stays white. Inverting it here would put a dark glyph on dark glass. */
-
-    --icon: rgba(30, 34, 44, 0.75);
-    --icon-selected: rgba(22, 25, 33, 0.94);
-    --glyph-search: rgba(38, 42, 52, 0.6);
-    --glyph-mic: rgba(30, 34, 44, 0.8);
-
-    --row-selected: rgba(255, 255, 255, 0.72);
-    --row-selected-rim: rgba(255, 255, 255, 0.9);
-    --divider: rgba(38, 42, 52, 0.12);
-  }
-}
+/* No light-mode inversion.
+ *
+ * §6's light-mode table exists because acrylic follows the Windows theme, so on a light theme
+ * the surface turns light and white content on it becomes unreadable. main/index.ts pins
+ * `nativeTheme.themeSource = 'dark'` instead, which is what stops the material rendering as
+ * the milky white slab, so the surface no longer changes with the OS theme and there is
+ * nothing left to invert. This block is deliberately absent, not forgotten. */
 
 html,
 body {

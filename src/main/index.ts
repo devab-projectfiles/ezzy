@@ -1,4 +1,4 @@
-import { app } from 'electron'
+import { app, nativeTheme } from 'electron'
 import { electronApp, optimizer } from '@electron-toolkit/utils'
 import { getConfig, loadConfig } from './config'
 import { registerHotkey, unregisterHotkey, watchForResume } from './hotkey'
@@ -36,6 +36,12 @@ function start(): void {
   app.whenReady().then(() => {
     electronApp.setAppUserModelId('com.ezzy.app')
     app.on('browser-window-created', (_, window) => optimizer.watchWindowShortcuts(window))
+
+    // Acrylic is tinted by the WINDOW's theme, not by the desktop wallpaper. Left alone
+    // Electron picks light, which renders the panel as the milky white slab this is not
+    // meant to be. Pinning it dark is what makes the material read as dark frosted glass
+    // while still doing the blurring.
+    nativeTheme.themeSource = 'dark'
 
     loadConfig()
     applyLoginItem()
