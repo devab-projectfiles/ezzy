@@ -6,13 +6,22 @@ import { log } from './verbose'
 
 let current: EzzyConfig = { ...DEFAULT_CONFIG }
 
+/** A byte order mark, which JSON.parse rejects as an unexpected token. */
+const BOM = 0xfeff
+
 export function configFilePath(): string {
   return join(app.getPath('userData'), 'config.json')
 }
 
 export function loadConfig(): EzzyConfig {
   try {
-    const raw = JSON.parse(readFileSync(configFilePath(), 'utf8')) as Partial<EzzyConfig>
+    // Tray > Settings opens this file in whatever editor Windows picks, and Notepad saves
+    // UTF-8 with a BOM by default. Without this the parse throws, the catch below resets
+    // every setting — dot position included — and writes the defaults back over the file.
+    // Editing your own hotkey through the app's menu would silently wipe it.
+    const text = readFileSync(configFilePath(), 'utf8')
+    const json = text.charCodeAt(0) === BOM ? text.slice(1) : text
+    const raw = JSON.parse(json) as Partial<EzzyConfig>
     current = normalise(raw)
     log(`config loaded from ${configFilePath()}`)
   } catch {

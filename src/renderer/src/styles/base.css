@@ -1,11 +1,66 @@
+/* The glass recipe from PLAN.md §6, as tokens. True glass is LOW opacity plus a specular
+   sheen — the fills below deliberately never go above 0.20. The real blur is the window's
+   backgroundMaterial: 'acrylic', never CSS backdrop-filter, which cannot see the desktop
+   behind an Electron window at all. */
+
+:root {
+  --ease-glass: cubic-bezier(0.32, 0.72, 0, 1);
+
+  --dot-visual: 56px;
+  --dot-slack: 16px;
+  --pill-visual: 212px;
+
+  --glass-fill-dot: rgba(255, 255, 255, 0.18);
+  --glass-fill-panel: rgba(255, 255, 255, 0.13);
+  /* The rim is what separates glass from background; without it everything mushes together. */
+  --glass-rim: rgba(255, 255, 255, 0.42);
+  --glass-rim-bright: rgba(255, 255, 255, 0.62);
+  --glass-highlight: rgba(255, 255, 255, 0.7);
+  --chip-rim: rgba(255, 255, 255, 0.32);
+
+  /* The diagonal light band that makes glass read as thick rather than as a film. */
+  --glass-sheen: linear-gradient(
+    122deg,
+    rgba(255, 255, 255, 0.26) 0%,
+    rgba(255, 255, 255, 0.03) 26%,
+    rgba(255, 255, 255, 0) 52%,
+    rgba(255, 255, 255, 0.05) 76%,
+    rgba(255, 255, 255, 0.2) 100%
+  );
+
+  /* At 13-18% fill you are reading over arbitrary desktop content, so this is not optional. */
+  --text-shadow: 0 1px 3px rgba(10, 12, 22, 0.5);
+  --text-strong: rgba(255, 255, 255, 0.96);
+  --text-dim: rgba(255, 255, 255, 0.78);
+  --text-faint: rgba(255, 255, 255, 0.58);
+  --mark: rgba(255, 255, 255, 0.94);
+}
+
+/* White on a white desktop disappears. This follows the same OS theme signal acrylic does,
+   so the mark and the labels invert with it and no IPC is involved. */
+@media (prefers-color-scheme: light) {
+  :root {
+    --glass-rim: rgba(255, 255, 255, 0.5);
+    --glass-rim-bright: rgba(255, 255, 255, 0.72);
+    --chip-rim: rgba(60, 66, 84, 0.3);
+    --text-shadow: 0 1px 3px rgba(255, 255, 255, 0.45);
+    --text-strong: rgba(38, 42, 56, 0.95);
+    --text-dim: rgba(60, 66, 84, 0.78);
+    --text-faint: rgba(60, 66, 84, 0.58);
+    --mark: rgba(60, 66, 84, 0.88);
+  }
+}
+
 html,
 body {
   margin: 0;
   padding: 0;
   height: 100%;
+  /* Transparent on the dot window because it is transparent: true, and on the panel window
+     because that is what lets the acrylic behind the page show through. */
   background: transparent;
   overflow: hidden;
-  color: #e6e7ee;
+  color: var(--text-strong);
   font-family: 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif;
   -webkit-user-select: none;
   user-select: none;

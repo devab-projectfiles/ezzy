@@ -1,53 +1,136 @@
 @import './base.css';
 
-#root {
-  display: grid;
-  place-items: center;
+/* The window is DOT_SLACK larger than the glass on every side so the drop shadow has
+   somewhere to fall. The shell holds the pill against whichever window edge stayed put
+   when the main process resized it: growing leftward anchors the right edge, and the
+   mirrored case anchors the left. The window itself is never resized — only this pill is. */
+.dot-shell {
+  height: 100%;
+  display: flex;
+  align-items: center;
+  padding: var(--dot-slack);
 }
 
-.dot {
-  width: 32px;
-  height: 32px;
+.dot-shell--open-left {
+  justify-content: flex-end;
+}
+
+.dot-shell--open-right {
+  justify-content: flex-start;
+}
+
+/* Glyph -> Ezzy -> Alt + Space, left to right, in both growth directions. */
+.pill {
+  position: relative;
+  overflow: hidden;
+  flex: 0 0 auto;
+  height: var(--dot-visual);
   padding: 0;
-  display: grid;
-  place-items: center;
-  border-radius: 50%;
-  border: 1px solid rgba(255, 255, 255, 0.14);
-  background: radial-gradient(circle at 50% 30%, #2c2e39, #15161c 72%);
-  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  border-radius: 28px;
+  border: 0.5px solid var(--glass-rim);
+  background: var(--glass-fill-dot);
+  box-shadow:
+    inset 0 1px 0 var(--glass-highlight),
+    0 8px 22px rgba(10, 12, 22, 0.44);
+  color: var(--mark);
   cursor: pointer;
   transition:
-    transform 120ms ease,
-    border-color 160ms ease,
-    box-shadow 160ms ease;
+    width 340ms var(--ease-glass),
+    box-shadow 340ms var(--ease-glass),
+    border-color 180ms var(--ease-glass);
 }
 
-.dot:hover {
-  transform: scale(1.06);
-  border-color: rgba(150, 180, 255, 0.45);
+.pill--expanded {
+  border-color: var(--glass-rim-bright);
   box-shadow:
-    0 0 0 4px rgba(110, 150, 255, 0.14),
-    0 6px 20px rgba(0, 0, 0, 0.55);
+    inset 0 1px 0 var(--glass-highlight),
+    0 12px 30px rgba(10, 12, 22, 0.5);
 }
 
-.dot--dragging,
-.dot--dragging:hover {
-  transform: scale(0.94);
+.pill--instant,
+.pill--instant .pill__label,
+.pill--instant .pill__glyph #ezyCardLeft,
+.pill--instant .pill__glyph #ezyCardRight {
+  transition: none;
+}
+
+.pill--dragging {
   cursor: grabbing;
 }
 
-.dot__glyph {
-  position: relative;
-  width: 12px;
-  height: 12px;
-  border-radius: 50%;
-  border: 2px solid rgba(226, 232, 255, 0.8);
+.pill__glyph {
+  flex: 0 0 var(--dot-visual);
+  width: var(--dot-visual);
+  height: var(--dot-visual);
+  display: grid;
+  place-items: center;
 }
 
-.dot__glyph::after {
-  content: '';
+.pill__glyph svg {
+  display: block;
+  width: 32px;
+  height: 32px;
+}
+
+/* The two back cards slide outward, so the mark performs a window-switch on every hover. */
+.pill__glyph #ezyCardLeft,
+.pill__glyph #ezyCardRight {
+  transition: transform 380ms var(--ease-glass);
+}
+
+.pill--expanded .pill__glyph #ezyCardLeft {
+  transform: translateX(-9px);
+}
+
+.pill--expanded .pill__glyph #ezyCardRight {
+  transform: translateX(9px);
+}
+
+/* Clipped by the pill's overflow while collapsed. The delay is what makes the pill reveal
+   the text rather than stretch it. */
+.pill__label {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding-right: 12px;
+  white-space: nowrap;
+  opacity: 0;
+  transform: translateX(-10px);
+  transition:
+    opacity 220ms var(--ease-glass) 90ms,
+    transform 220ms var(--ease-glass) 90ms;
+}
+
+.pill--expanded .pill__label {
+  opacity: 1;
+  transform: translateX(0);
+}
+
+.pill__name {
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--text-strong);
+  text-shadow: var(--text-shadow);
+}
+
+.pill__chip {
+  padding: 2px 7px;
+  border: 0.5px solid var(--chip-rim);
+  border-radius: 5px;
+  font-size: 11px;
+  color: var(--text-dim);
+  text-shadow: var(--text-shadow);
+}
+
+/* pointer-events:none or it eats the drag. */
+.pill__sheen {
   position: absolute;
-  inset: 2px;
-  border-radius: 50%;
-  background: rgba(226, 232, 255, 0.9);
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  background: var(--glass-sheen);
 }

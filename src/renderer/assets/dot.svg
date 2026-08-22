@@ -1,0 +1,6 @@
+<svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Ezzy">
+  <!-- back cards: give these ids so the renderer can translate them on hover -->
+  <rect id="ezyCardLeft"  x="8"  y="18" width="20" height="28" rx="6" fill="currentColor" opacity="0.38"/>
+  <rect id="ezyCardRight" x="36" y="18" width="20" height="28" rx="6" fill="currentColor" opacity="0.38"/>
+  <rect id="ezyCardFront" x="22" y="13" width="20" height="38" rx="6" fill="currentColor"/>
+</svg>

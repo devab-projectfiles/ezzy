@@ -4,7 +4,15 @@ import { getConfig, loadConfig } from './config'
 import { registerHotkey, unregisterHotkey, watchForResume } from './hotkey'
 import { registerIpc } from './ipc'
 import { createTray, refreshTray } from './tray'
-import { createWindows, setQuitting, showDot, togglePanel, watchDisplays } from './windows'
+import {
+  createWindows,
+  setQuitting,
+  showDot,
+  stopWatchingCursor,
+  togglePanel,
+  watchCursor,
+  watchDisplays
+} from './windows'
 import { log, since } from './verbose'
 
 const startedAt = performance.now()
@@ -30,6 +38,7 @@ function start(): void {
     registerIpc()
     createWindows()
     watchDisplays()
+    watchCursor()
     const hotkey = registerHotkey(togglePanel)
     watchForResume(() => refreshTray())
     createTray(quit, hotkey)
@@ -41,7 +50,10 @@ function start(): void {
   // default of quitting once the last window goes away (§5, item 4).
   app.on('window-all-closed', () => {})
 
-  app.on('will-quit', unregisterHotkey)
+  app.on('will-quit', () => {
+    unregisterHotkey()
+    stopWatchingCursor()
+  })
 }
 
 function quit(): void {

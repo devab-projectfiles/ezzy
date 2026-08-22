@@ -33,6 +33,7 @@ function Panel(): React.JSX.Element {
           <kbd>Esc</kbd> closes it.
         </p>
       </div>
+      <span className="panel__sheen" aria-hidden="true" />
     </div>
   )
 }
