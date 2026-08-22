@@ -35,6 +35,24 @@
   /* Mirrors PANEL_HEADROOM in shared/types.ts — see the note on .panel in panel.css. */
   --panel-headroom: 2px;
 
+  /* The same trick as --panel-headroom, on the two edges it did not cover: the RIGHT and the
+     BOTTOM of both surfaces.
+
+     Chromium lays out in CSS pixels and snaps a box up to whole device pixels. At this
+     display's 1.3625 the panel is 420 x 1.3625 = 572.25 device columns and the search bar is
+     54 x 1.3625 = 73.6 rows, so the last column and the last row of each are fractional and
+     land outside the window's own integer rectangle, where nothing composites. The rim drawn
+     there is lost — and worse, so is the end of the corner arc, which is why the curve ran
+     flat into the bottom edge instead of tapering. Measured on the search bar: the top row of
+     the arc reached x=1184 and the bottom row only got to 1187, three pixels short of the
+     taper the top completes.
+
+     Holding both surfaces two pixels short of their window puts the whole box inside it with
+     rows to spare. Unlike --panel-headroom this is not coordinated with anything in the main
+     process — it is pure slack for the anti-aliasing to finish in, and it costs two pixels of
+     surface that nothing is drawn on. */
+  --surface-slack: 2px;
+
   /* Frosted glass, not clear glass.
 
      The previous fills were a thin white film at 0.12-0.16. That looked right on the one

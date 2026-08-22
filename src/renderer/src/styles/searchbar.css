@@ -7,7 +7,11 @@
 .searchbar {
   position: relative;
   overflow: hidden;
-  height: 100%;
+  /* Two pixels short of the window on both axes. The panel has held itself short vertically
+     since the bottom rim went missing on it; the search bar never did, which is why its
+     bottom edge kept a flatter corner than its top. See --surface-slack. */
+  height: calc(100% - var(--surface-slack));
+  width: calc(100% - var(--surface-slack));
   display: flex;
   align-items: center;
   gap: 11px;

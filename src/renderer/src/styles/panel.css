@@ -20,6 +20,8 @@
      spare. Panel.tsx adds the same two pixels to the height it asks for, so the content area
      is unchanged and no row gets clipped. */
   height: calc(100% - var(--panel-headroom));
+  /* And the same on the right, for the same reason — see --surface-slack. */
+  width: calc(100% - var(--surface-slack));
 
   /* The layout arithmetic, in one place. The window height is measured from the surface, so
      changing a number here resizes the panel to match with nothing else to update. */
