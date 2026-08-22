@@ -114,8 +114,10 @@
   --glass-highlight: rgba(255, 255, 255, 0.4);
   --chip-rim: rgba(255, 255, 255, 0.26);
 
-  /* The dual rim (§6). A dark ring OUTSIDE the light one so the edge keeps contrast against
-     a bright desktop. Deliberately not overridden by theme: it costs nothing on a dark one.
+  /* The dual rim (§6). A dark ring inboard of the light one so the edge keeps contrast against
+     a bright desktop. Near-black at this alpha, which is right where it is barely visible —
+     on a dark desktop, against a near-opaque fill — and far too heavy once the desktop is
+     light; the light block at the bottom of this file softens it there.
      The dot no longer uses one — on a 56px circle the ring reads as a grey halo rather than
      as an edge, which is why only the two large surfaces keep it. */
   --rim-contrast-panel: rgba(4, 6, 12, 0.5);
@@ -216,6 +218,18 @@
      inside the one dark rim. Not a shadow of its own: `none` is not legal in the middle of a
      box-shadow list, so it is a zero-sized transparent one. */
   --glass-inner: inset 0 0 0 0 transparent;
+
+  /* And with the hairline and the glow gone, the contrast ring is the whole edge — so its
+     weight is now the only thing left to get wrong, and at 0.5 it was wrong. Near-black over
+     the lifted fill it composited to 57 against a fill of 105: not a second line any more, but
+     a hard outline drawn around the panel, which is what still read as unfinished along every
+     side rather than just at the corners.
+     
+     Softened to land around 84 instead. That is roughly a fifth darker than the fill — enough
+     to be a definite edge, and still an enormous step against a 255 desktop, which is the job
+     the ring actually has to do. It only has to separate the surface from the desktop; it was
+     drawing a border. */
+  --rim-contrast-panel: rgba(8, 12, 22, 0.22);
 }
 
 html,
