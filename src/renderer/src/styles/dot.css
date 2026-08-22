@@ -39,14 +39,10 @@
   box-shadow: inset 0 1px 0 var(--glass-highlight);
   color: var(--mark);
   cursor: pointer;
-  /* width, box-shadow and border-color are the hover animation; background is the backdrop
-     cross-fade (§6). It goes in this list rather than a rule of its own — a second transition
-     declaration would replace this one, taking the hover animation with it. */
   transition:
     width 340ms var(--ease-glass),
     box-shadow 340ms var(--ease-glass),
-    border-color 180ms var(--ease-glass),
-    background var(--backdrop-fade) var(--ease-glass);
+    border-color 180ms var(--ease-glass);
 }
 
 .pill--expanded {

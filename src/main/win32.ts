@@ -1,8 +1,8 @@
 /** The Win32 calls this app needs, bound through koffi (PLAN.md §3).
  *
- *  Everything here is a thin, typed wrapper over user32/kernel32/dwmapi/gdi32 — no policy
- *  and no caching. The rules about *which* windows count live in window-tracker.ts, the
- *  foreground dance lives in focus.ts, and what a sampled pixel means lives in backdrop.ts.
+ *  Everything here is a thin, typed wrapper over user32/kernel32/dwmapi — no policy and no
+ *  caching. The rules about *which* windows count live in window-tracker.ts, the
+ *  foreground dance lives in focus.ts.
  *
  *  HWNDs, HANDLEs and thread ids cross as `uintptr_t`. Window handles carry only 32
  *  significant bits on Windows, so they arrive as ordinary safe integers and can be
@@ -13,7 +13,6 @@ import koffi from 'koffi'
 const user32 = koffi.load('user32.dll')
 const kernel32 = koffi.load('kernel32.dll')
 const dwmapi = koffi.load('dwmapi.dll')
-const gdi32 = koffi.load('gdi32.dll')
 
 /** A window handle. Zero is the null handle, which every call below treats as "no window". */
 export type Hwnd = number
@@ -55,11 +54,6 @@ export const WINEVENT_OUTOFCONTEXT = 0x0000
 
 const PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
 
-/** BitBlt: copy the source over the destination, no raster op. */
-const SRCCOPY = 0x00cc_0020
-/** GetDIBits: the colour table is literal RGB, not palette indices. */
-const DIB_RGB_COLORS = 0
-
 /** keybd_event flags, for the synthetic ALT in focus.ts. */
 const KEYEVENTF_KEYUP = 0x0002
 const VK_MENU = 0x12
@@ -72,20 +66,6 @@ koffi.struct('RECT', {
   top: 'int32_t',
   right: 'int32_t',
   bottom: 'int32_t'
-})
-
-koffi.struct('BITMAPINFOHEADER', {
-  biSize: 'uint32_t',
-  biWidth: 'int32_t',
-  biHeight: 'int32_t',
-  biPlanes: 'uint16_t',
-  biBitCount: 'uint16_t',
-  biCompression: 'uint32_t',
-  biSizeImage: 'uint32_t',
-  biXPelsPerMeter: 'int32_t',
-  biYPelsPerMeter: 'int32_t',
-  biClrUsed: 'uint32_t',
-  biClrImportant: 'uint32_t'
 })
 
 const EnumWindowsProc = koffi.proto('bool __stdcall EnumWindowsProc(uintptr_t hwnd, intptr_t lp)')
@@ -134,21 +114,6 @@ const fn = {
   CloseHandle: kernel32.func('bool __stdcall CloseHandle(uintptr_t handle)'),
   QueryFullProcessImageNameW: kernel32.func(
     'bool __stdcall QueryFullProcessImageNameW(uintptr_t proc, uint32_t flags, _Out_ uint16_t *buf, _Inout_ uint32_t *size)'
-  ),
-  GetDC: user32.func('uintptr_t __stdcall GetDC(uintptr_t hwnd)'),
-  ReleaseDC: user32.func('int __stdcall ReleaseDC(uintptr_t hwnd, uintptr_t dc)'),
-  CreateCompatibleDC: gdi32.func('uintptr_t __stdcall CreateCompatibleDC(uintptr_t dc)'),
-  CreateCompatibleBitmap: gdi32.func(
-    'uintptr_t __stdcall CreateCompatibleBitmap(uintptr_t dc, int w, int h)'
-  ),
-  SelectObject: gdi32.func('uintptr_t __stdcall SelectObject(uintptr_t dc, uintptr_t obj)'),
-  DeleteObject: gdi32.func('bool __stdcall DeleteObject(uintptr_t obj)'),
-  DeleteDC: gdi32.func('bool __stdcall DeleteDC(uintptr_t dc)'),
-  BitBlt: gdi32.func(
-    'bool __stdcall BitBlt(uintptr_t dst, int x, int y, int w, int h, uintptr_t src, int sx, int sy, uint32_t rop)'
-  ),
-  GetDIBits: gdi32.func(
-    'int __stdcall GetDIBits(uintptr_t dc, uintptr_t bmp, uint32_t start, uint32_t lines, _Out_ void *bits, _Inout_ BITMAPINFOHEADER *info, uint32_t usage)'
   ),
   DwmGetWindowAttribute: dwmapi.func(
     'int32_t __stdcall DwmGetWindowAttribute(uintptr_t hwnd, uint32_t attr, _Out_ int32_t *value, uint32_t size)'
@@ -281,118 +246,6 @@ export function findHostedChildProcessId(hwnd: Hwnd, hostPid: number): number {
     koffi.unregister(callback)
   }
   return found
-}
-
-// ------------------------------------------------------------------- backdrop
-
-/** A rectangle of the composited desktop, read back into memory.
- *
- *  `bits` is BGRA, top-down, four bytes per pixel, `width * height * 4` long. It is the
- *  scratch buffer, not a copy: it stays valid until the next capture. Coordinates are
- *  PHYSICAL screen pixels, not DIPs — GDI knows nothing about Electron's scale factor, so
- *  callers convert with `screen.dipToScreenPoint` first. The origin is the primary display's
- *  top-left, so a monitor above or to the left of it is legitimately negative. */
-export interface ScreenCapture {
-  width: number
-  height: number
-  bits: Buffer
-}
-
-/** The one piece of state in this file, and it is resource management rather than policy: a
- *  DC and a bitmap live longer than one call so that a poll running every second does not
- *  create and destroy two GDI objects each time.
- *
- *  Kept at EXACTLY the requested size, and rebuilt whenever either dimension changes rather
- *  than only when it is too small. Reusing an oversized bitmap looks like an obvious saving
- *  and is a silent corruption: BitBlt fills its top-left corner, but GetDIBits counts scan
- *  lines from the BOTTOM of the bitmap whichever way up the destination buffer is, so asking
- *  for `height` lines of a taller bitmap returns the rows *below* the capture — never written,
- *  therefore black. It reads correctly exactly once, on the pass that allocates it, and goes
- *  dark on every pass after the region shrinks. */
-let scratch: {
-  dc: number
-  bitmap: number
-  previous: number
-  width: number
-  height: number
-} | null = null
-let scratchBits = Buffer.alloc(0)
-
-/** Read a rectangle of what is currently ON SCREEN, our own windows included.
- *
- *  Reading the desktop costs one vblank sync per blit — measured at 16.7ms on this machine,
- *  and flat: a 76x76 region and a 440x420 region cost the same, two blits cost twice as much,
- *  and GetDIBits off the resulting memory DC is 0.07ms. GetPixel is a blit too, so the
- *  obvious implementation of "sample eight points around the window" was eight syncs, 133ms,
- *  and it is why this returns a region instead of points: callers take ONE capture per pass,
- *  big enough to cover everything they need, and read whatever they like out of it for free.
- *
- *  Returns null if any of the GDI calls fail, which is a transient state during a display
- *  change rather than something to handle. */
-export function captureScreenRegion(
-  x: number,
-  y: number,
-  width: number,
-  height: number
-): ScreenCapture | null {
-  if (width <= 0 || height <= 0) return null
-  const screenDc = fn.GetDC(0)
-  if (!screenDc) return null
-  try {
-    if (!ensureScratch(screenDc, width, height) || scratch === null) return null
-    if (!fn.BitBlt(scratch.dc, 0, 0, width, height, screenDc, x, y, SRCCOPY)) return null
-    // Negative biHeight asks for a top-down buffer; the default is bottom-up, which would put
-    // row 0 at the bottom of the region.
-    const info = {
-      biSize: 40,
-      biWidth: width,
-      biHeight: -height,
-      biPlanes: 1,
-      biBitCount: 32,
-      biCompression: 0,
-      biSizeImage: 0,
-      biXPelsPerMeter: 0,
-      biYPelsPerMeter: 0,
-      biClrUsed: 0,
-      biClrImportant: 0
-    }
-    if (
-      fn.GetDIBits(scratch.dc, scratch.bitmap, 0, height, scratchBits, info, DIB_RGB_COLORS) === 0
-    )
-      return null
-    return { width, height, bits: scratchBits }
-  } finally {
-    fn.ReleaseDC(0, screenDc)
-  }
-}
-
-function ensureScratch(screenDc: number, width: number, height: number): boolean {
-  if (scratch && scratch.width === width && scratch.height === height) return true
-  releaseScratch()
-  const dc = fn.CreateCompatibleDC(screenDc)
-  if (!dc) return false
-  // Compatible with the SCREEN dc, not the memory one: a memory DC's default bitmap is 1x1
-  // monochrome, and a bitmap made compatible with it comes back monochrome too.
-  const bitmap = fn.CreateCompatibleBitmap(screenDc, width, height)
-  if (!bitmap) {
-    fn.DeleteDC(dc)
-    return false
-  }
-  const previous = fn.SelectObject(dc, bitmap)
-  scratch = { dc, bitmap, previous, width, height }
-  scratchBits = Buffer.alloc(width * height * 4)
-  return true
-}
-
-/** GDI objects are per-process and finite, so the scratch pair is handed back on shutdown
- *  rather than left for process teardown. */
-export function releaseScratch(): void {
-  if (scratch === null) return
-  fn.SelectObject(scratch.dc, scratch.previous)
-  fn.DeleteObject(scratch.bitmap)
-  fn.DeleteDC(scratch.dc)
-  scratch = null
-  scratchBits = Buffer.alloc(0)
 }
 
 // ------------------------------------------------------------------ foreground

@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron'
-import { BackdropTheme, EzzyApi, IPC, PanelData, PillDirection } from '../shared/types'
+import { EzzyApi, IPC, PanelData, PillDirection } from '../shared/types'
 
 // Only named functions cross the bridge — `ipcRenderer` itself is never exposed.
 const ezzy: EzzyApi = {
@@ -34,13 +34,7 @@ const ezzy: EzzyApi = {
     return () => void ipcRenderer.removeListener(IPC.panelShown, handler)
   },
   launchApp: (id) => ipcRenderer.invoke(IPC.launchApp, id),
-  setPanelHeight: (height) => ipcRenderer.send(IPC.setPanelHeight, height),
-  getBackdropTheme: () => ipcRenderer.invoke(IPC.getBackdropTheme),
-  onBackdropTheme: (callback) => {
-    const handler = (_event: unknown, theme: BackdropTheme): void => callback(theme)
-    ipcRenderer.on(IPC.backdropTheme, handler)
-    return () => void ipcRenderer.removeListener(IPC.backdropTheme, handler)
-  }
+  setPanelHeight: (height) => ipcRenderer.send(IPC.setPanelHeight, height)
 }
 
 contextBridge.exposeInMainWorld('ezzy', ezzy)

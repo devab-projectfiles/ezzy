@@ -9,10 +9,8 @@ import {
   publishPanelData,
   setQuitting,
   showDot,
-  stopWatchingBackdrop,
   stopWatchingCursor,
   togglePanel,
-  watchBackdrop,
   watchCursor,
   watchDisplays
 } from './windows'
@@ -39,10 +37,9 @@ function start(): void {
     electronApp.setAppUserModelId('com.ezzy.app')
     app.on('browser-window-created', (_, window) => optimizer.watchWindowShortcuts(window))
 
-    // The surfaces pick their own theme from the desktop they are sitting on (§6 adaptive
-    // contrast, backdrop.ts), which has nothing to do with the machine's Windows theme — a
-    // light Windows theme over a dark wallpaper is still a dark backdrop. Pinning this keeps
-    // `prefers-color-scheme` from being a second, contradictory theme signal.
+    // The surfaces are transparent and always white-on-dark-glass, so nothing should follow
+    // the OS into light mode and quietly invert the text under them. Pinning the theme keeps
+    // `prefers-color-scheme` deterministic rather than leaving that to the machine's setting.
     nativeTheme.themeSource = 'dark'
 
     loadConfig()
@@ -51,8 +48,6 @@ function start(): void {
     createWindows()
     watchDisplays()
     watchCursor()
-    // §6 adaptive contrast. After createWindows, because it samples around live windows.
-    watchBackdrop()
     // Hooks are registered after app.whenReady because SetWinEventHook delivers through the
     // thread's message loop, and Electron only has one running from here onward (§5).
     startTracking()
@@ -82,7 +77,6 @@ function start(): void {
   app.on('will-quit', () => {
     unregisterHotkey()
     stopWatchingCursor()
-    stopWatchingBackdrop()
     // Leaving a WinEvent hook behind makes Windows keep calling into a process that is on
     // its way out.
     stopTracking()

@@ -12,11 +12,11 @@
    actually mutes a busy backdrop: white desktop text behind the panel lands around mid-grey,
    and our white text sits cleanly on top of it.
 
-   That is the recipe on every backdrop — white text on dark glass, everywhere. The one thing
-   it gets wrong is over a WHITE window, where an alpha chosen to mute bright content has
-   nothing bright left to mute and just reads as a hole punched in the screen. The block at the
-   bottom of this file gives those few points of alpha back for that case; main/backdrop.ts
-   decides when it applies by sampling the desktop each surface is sitting on.
+   White text on dark glass, on every backdrop, with no second set and nothing sampling the
+   desktop to choose between them. That was built — two token sets and a polling screen capture
+   to pick one — and then removed by preference once the fills went properly translucent: at
+   these alphas the surface reads as glass over a white window as well as a dark one, which is
+   the whole thing the second set existed to fix.
 
    And the fill is not low-opacity. §6's 0.13-0.18 assumes acrylic is blurring the desktop
    underneath; without that blur the same number just leaves the desktop legible through the
@@ -62,17 +62,16 @@
 
      These windows are `transparent: true`, so `backdrop-filter` has nothing to blur: the
      compositor hands us no backdrop, only the desktop showing through where we do not paint.
-     The only lever that actually mutes what is behind is opacity. So the fill is now a dark
-     neutral slab at ~0.95 with a diagonal ramp — dark enough that the backdrop survives as a
-     faint suggestion of movement rather than legible content, neutral enough that it reads
-     the same over black, over blue, and over a bright window. The remaining few percent is
-     what keeps it glass and not a solid card.
+     Whatever reads through the glass therefore reads through SHARP — there is no frosting
+     available here at any alpha, and acrylic, which would blur it, cannot coexist with a
+     transparent window.
 
-     0.95 rather than the 0.85 this was first tuned to, because the case that decides the
-     number is not a busy wallpaper, it is bright text on a dark window. Dark glass mutes
-     light content by however much of it is left showing, so at 0.85 an editor's white text
-     behind the panel was still comfortably readable through the rows. It takes the low
-     nineties before it drops to a ghost.
+     These alphas are a deliberate reversal of what this file used to say. It ran at ~0.95, and
+     that number was measured rather than chosen: at 0.85 an editor's white text behind the
+     panel was still comfortably readable through the rows, so the fill was pushed into the low
+     nineties to kill it. That is the cost being paid here on purpose. At 0.62 the surface
+     finally reads as glass rather than as a card, which is what was wanted; bright content on
+     a dark window behind it is more visible than it has ever been.
 
      Ramped rather than flat because a single flat alpha reads as a plastic sheet; the
      lighter top-left corner is what sells a pane catching light. */
@@ -125,10 +124,6 @@
      offset smears into a widening bright arc. The sheen gradient still carries the
      light-from-above cue without touching the edge. */
   --glass-rim: rgba(255, 255, 255, 0.5);
-  /* The same hairline, but only on the two large surfaces. Split from --glass-rim because
-     those two also carry the dark contrast ring and the dot does not, so on a light backdrop
-     they need to drop this and the dot still needs to keep it. */
-  --glass-rim-panel: rgba(255, 255, 255, 0.5);
   --glass-rim-search: rgba(255, 255, 255, 0.55);
   --glass-rim-bright: rgba(255, 255, 255, 0.5);
   /* §6's top-edge specular. Only the dot still uses it — the panel and the search bar
@@ -137,9 +132,8 @@
   --chip-rim: rgba(255, 255, 255, 0.26);
 
   /* The dual rim (§6). A dark ring inboard of the light one so the edge keeps contrast against
-     a bright desktop. Near-black at this alpha, which is right where it is barely visible —
-     on a dark desktop, against a near-opaque fill — and far too heavy once the desktop is
-     light; the light block at the bottom of this file softens it there.
+     a bright desktop. Deliberately not varied by what is behind it: it costs nothing on a dark
+     desktop and is what holds the edge on a bright one.
      The dot no longer uses one — on a 56px circle the ring reads as a grey halo rather than
      as an edge, which is why only the two large surfaces keep it. */
   --rim-contrast-panel: rgba(4, 6, 12, 0.5);
@@ -147,10 +141,6 @@
   /* The diagonal light band that makes glass read as thick rather than as a film. Kept faint
      on purpose — it lands in the same corners as the inner ring, so anything stronger adds
      straight on top of it. */
-  /* How long a backdrop swap takes to cross-fade (§6). Long enough not to snap, short enough
-     that walking the dot across a window edge does not trail behind the cursor. */
-  --backdrop-fade: 220ms;
-
   --glass-sheen: linear-gradient(
     122deg,
     rgba(255, 255, 255, 0.18) 0%,
@@ -181,67 +171,6 @@
   --row-selected-rim: rgba(255, 255, 255, 0.3);
 
   --divider: rgba(255, 255, 255, 0.12);
-}
-
-/* Over a light backdrop — §6 adaptive contrast, applied by main/backdrop.ts.
-
-   NOT a light theme, and not a second palette. Every colour here is the one directly above it,
-   to the digit. The only thing that changes is the alpha.
-
-   The alphas above are set by the worst case, which is bright text on a dark window: it takes
-   0.95 before an editor's white text stops reading straight through the panel. A white desktop
-   is the opposite problem — there is nothing bright behind the panel that needs muting, only a
-   page — so the fill can afford to let it through. Composited over white the mid stop moves
-   from 42 to 98, and the page reads as a ghost under the glass instead of stopping dead at its
-   edge. Still dark glass with white text on it — the floor is readability, and at this alpha
-   the 12px subtitle still clears 5.9:1 against white text — but it now sits on a white screen
-   instead of punching a hole in one.
-
-   Same colours, same stops, same positions. That is also what lets the swap cross-fade instead
-   of cutting — Chromium interpolates two gradients only when their stop lists line up. */
-:root[data-backdrop='light'] {
-  --glass-fill-panel: linear-gradient(
-    148deg,
-    rgba(52, 58, 74, 0.52) 0%,
-    rgba(34, 38, 50, 0.55) 44%,
-    rgba(22, 25, 35, 0.58) 100%
-  );
-  --glass-fill-search: linear-gradient(
-    148deg,
-    rgba(55, 61, 78, 0.54) 0%,
-    rgba(36, 40, 53, 0.57) 52%,
-    rgba(24, 27, 37, 0.6) 100%
-  );
-  /* The dot gives up the least of the three, for the reason it holds the most above: it is
-     56px parked on top of whatever the user left it over, and unlike the panel it cannot
-     assume that what is behind it is bright. */
-  --glass-fill-dot: linear-gradient(148deg, rgba(56, 62, 80, 0.66) 0%, rgba(30, 34, 46, 0.7) 100%);
-
-  /* One edge, not two — and now it is the BRIGHT one.
-
-     These surfaces can draw a dark contrast ring and a bright hairline one pixel inside it.
-     Both at once is what read as an extra line here: measured across the panel's top edge back
-     when the fill was near-opaque, white 255, ring 113, hairline 163, fill 112 — a dark line,
-     then a light line, then the surface. Non-monotonic, so the eye counts two edges.
-
-     The first fix was to drop the hairline and keep the ring, which was right while the fill
-     was a slab. It is wrong now: the hairline is the lit edge that makes the material read as
-     glass, and dropping it is why a white backdrop got the transparency without the glass. So
-     it comes back and the ring goes instead. Against white the fill alone is a 120-level step
-     (255 to ~135), which is far more edge than the ring was contributing. */
-  --glass-rim-panel: rgba(255, 255, 255, 0.5);
-  --glass-rim-search: rgba(255, 255, 255, 0.55);
-
-  /* The inner glow comes back with it, for the same reason: it is the bloom that sells depth
-     in the pane, and it was only a smudge while it sat inside a hard dark outline that is no
-     longer there. */
-  --glass-inner: inset 0 0 26px 0 rgba(255, 255, 255, 0.11);
-
-  /* And the contrast ring goes entirely. Its job is holding the edge against a bright desktop,
-     which a translucent fill already does on its own — and keeping it would put a dark line
-     immediately outside the bright one, which is the exact shape that read as two edges. Even
-     softened to a fifth darker than the fill it was drawing a border around glass. */
-  --rim-contrast-panel: transparent;
 }
 
 html,

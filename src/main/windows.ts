@@ -2,7 +2,6 @@ import { BrowserWindow, Display, screen } from 'electron'
 import { join } from 'path'
 import { is } from '@electron-toolkit/utils'
 import {
-  BackdropTheme,
   DOT_VISUAL,
   DOT_WINDOW,
   DotPosition,
@@ -22,7 +21,6 @@ import {
 import { getConfig, updateConfig } from './config'
 import { log, since } from './verbose'
 import { panelData } from './panel-data'
-import { backdropTheme, stopWatchingBackdrops, watchBackdrops } from './backdrop'
 
 let dotWindow: BrowserWindow | null = null
 let panelWindow: BrowserWindow | null = null
@@ -156,9 +154,7 @@ export function createWindows(): void {
  *  `transparent: true`, not §6's acrylic. Acrylic does blur the desktop, which nothing else
  *  on Windows can, but it frosts the surface into a milky slab and it follows the Windows
  *  theme, neither of which is the look this is aiming at. The cost is that there is no blur,
- *  so the fill has to mute the backdrop on opacity alone — and a fill dark enough to mute a
- *  white window is too dark to sit on one, which is why the surface reads its own backdrop
- *  and swaps. See watchBackdrop below and backdrop.ts.
+ *  so what shows through the glass shows through sharp.
  *
  *  It also buys back real CSS corner radii, which are anti-aliased, where acrylic needed a
  *  window region that was not. */
@@ -556,69 +552,4 @@ export function showDot(): void {
   if (!dotWindow) return
   clampDotIntoBounds()
   dotWindow.showInactive()
-}
-
-// --------------------------------------------------------------------- backdrop
-
-/** The pair as one rectangle: the search bar, the panel, and the 11px of desktop between
- *  them. One reading for both, because they move as a unit and two surfaces 11px apart
- *  disagreeing about the theme would read as a rendering fault rather than as adaptation.
- *
- *  Derived from layoutPair, so it is equally valid while the pair is hidden — it is where the
- *  panel would open right now, not where it currently is. */
-function pairScreenRect(): Electron.Rectangle {
-  const { search, panel } = layoutPair()
-  return {
-    x: search.x,
-    y: search.y,
-    width: PANEL_WIDTH,
-    height: panel.y + panel.height - search.y
-  }
-}
-
-/** Adaptive contrast (PLAN.md §6). The geometry and the IPC live here; what a sampled pixel
- *  means lives in backdrop.ts.
- *
- *  Two independent targets, not one: the dot is parked at a screen edge and the panel opens
- *  wherever there is room for it, so they are routinely over completely different things. */
-export function watchBackdrop(): void {
-  watchBackdrops([
-    {
-      name: 'dot',
-      // The rectangle the pill actually paints, which grows on hover — the window is far
-      // wider than that and mostly transparent, so its bounds would put half the band inside
-      // our own window.
-      rect: () => (dotWindow?.isVisible() ? pillScreenRect() : null),
-      // The pair opens 12px away and the band reaches 10px out, which is three device pixels
-      // of clearance — not a margin worth trusting.
-      exclude: () => (panelWindow?.isVisible() ? [pairScreenRect()] : []),
-      apply: (theme) => dotWindow?.webContents.send(IPC.backdropTheme, theme)
-    },
-    {
-      name: 'pair',
-      // Sampled whether or not it is open, at the position it *would* open at — which
-      // layoutPair knows from the dot's position alone. That is what stops the panel opening
-      // dark over a white window and flipping half a second later, and it is free: it only
-      // widens the one capture the pass already takes.
-      rect: pairScreenRect,
-      // The pill, at whatever width it is currently drawn. This is the half that matters: it
-      // expands to 212px on hover, which is exactly when the dot is being dragged, and that
-      // dark glass reaches straight into the panel's band.
-      exclude: () => (dotWindow?.isVisible() ? [pillScreenRect()] : []),
-      apply: (theme) => {
-        searchWindow?.webContents.send(IPC.backdropTheme, theme)
-        panelWindow?.webContents.send(IPC.backdropTheme, theme)
-      }
-    }
-  ])
-}
-
-export function stopWatchingBackdrop(): void {
-  stopWatchingBackdrops()
-}
-
-/** Answers the renderer's one-off request at load. Which target applies is decided from the
- *  sender rather than passed in, so a renderer cannot ask for a surface that is not its own. */
-export function backdropThemeFor(sender: Electron.WebContents): BackdropTheme {
-  return backdropTheme(sender === dotWindow?.webContents ? 'dot' : 'pair')
 }
