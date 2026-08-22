@@ -8,3 +8,4 @@ models/
 *.bin
 *.exe
 .env
+*.tsbuildinfo
