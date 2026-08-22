@@ -14,9 +14,8 @@
 
    White text on dark glass, on every backdrop, with no second set and nothing sampling the
    desktop to choose between them. That was built — two token sets and a polling screen capture
-   to pick one — and then removed by preference once the fills went properly translucent: at
-   these alphas the surface reads as glass over a white window as well as a dark one, which is
-   the whole thing the second set existed to fix.
+   to pick one — and then removed: one alpha chosen for the bright case covers the dark one for
+   free, which is the whole thing the second set existed to do.
 
    And the fill is not low-opacity. §6's 0.13-0.18 assumes acrylic is blurring the desktop
    underneath; without that blur the same number just leaves the desktop legible through the
@@ -66,26 +65,32 @@
      available here at any alpha, and acrylic, which would blur it, cannot coexist with a
      transparent window.
 
-     These alphas are a deliberate reversal of what this file used to say. It ran at ~0.95, and
-     that number was measured rather than chosen: at 0.85 an editor's white text behind the
-     panel was still comfortably readable through the rows, so the fill was pushed into the low
-     nineties to kill it. That is the cost being paid here on purpose. At 0.62 the surface
-     finally reads as glass rather than as a card, which is what was wanted; bright content on
-     a dark window behind it is more visible than it has ever been.
+     ~0.80 is the settled point between two failures either side of it. This file used to run
+     at ~0.95, and that number was measured rather than chosen: at 0.85 an editor's white text
+     behind the panel was still comfortably readable through the rows. But a slab that opaque
+     stops being glass. The other side was tested too: at 0.62 the surface read beautifully as
+     glass over a dark desktop and fell apart over a bright one, with the wallpaper's shapes
+     legible straight through the rows.
+
+     The important part is that this is ONE number, not two. The same surface looks solid on a
+     dark backdrop and see-through on a bright one, because dark glass over dark hides nothing
+     and dark glass over bright hides everything it is asked to. So raising the alpha for the
+     bright case costs nothing in the dark one — which is precisely why the second token set
+     that used to exist for bright backdrops was unnecessary. See §6.
 
      Ramped rather than flat because a single flat alpha reads as a plastic sheet; the
      lighter top-left corner is what sells a pane catching light. */
   --glass-fill-panel: linear-gradient(
     148deg,
-    rgba(72, 80, 104, 0.58) 0%,
-    rgba(42, 47, 63, 0.62) 44%,
-    rgba(26, 30, 42, 0.66) 100%
+    rgba(72, 80, 104, 0.76) 0%,
+    rgba(42, 47, 63, 0.8) 44%,
+    rgba(26, 30, 42, 0.84) 100%
   );
   --glass-fill-search: linear-gradient(
     148deg,
-    rgba(76, 84, 108, 0.6) 0%,
-    rgba(44, 49, 65, 0.64) 52%,
-    rgba(28, 32, 44, 0.68) 100%
+    rgba(76, 84, 108, 0.78) 0%,
+    rgba(44, 49, 65, 0.82) 52%,
+    rgba(28, 32, 44, 0.86) 100%
   );
   /* The dot carries the most opacity of the three. It is 56px of surface sitting on top of
      whatever the user parked it over, usually body text, and dark glass cannot mute dark
@@ -93,8 +98,8 @@
      through the mark. */
   --glass-fill-dot: linear-gradient(
     148deg,
-    rgba(74, 82, 106, 0.74) 0%,
-    rgba(34, 39, 53, 0.78) 100%
+    rgba(74, 82, 106, 0.84) 0%,
+    rgba(34, 39, 53, 0.88) 100%
   );
 
   /* Step 02 of the tutorial, scaled down rather than copied.
