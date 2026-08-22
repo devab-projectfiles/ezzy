@@ -234,7 +234,7 @@ function Panel(): React.JSX.Element {
           <span
             className="panel__highlight"
             aria-hidden="true"
-            style={{ transform: `translateY(${highlight.top}px)`, height: highlight.height }}
+            style={{ top: highlight.top, height: highlight.height }}
           />
         )}
         {sectionRows.map((row, position) => {
