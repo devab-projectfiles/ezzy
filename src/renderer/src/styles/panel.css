@@ -33,9 +33,15 @@
      radius and the window's square corners. It filled them and the window clipped it square,
      which is the dark plate that showed behind the glass at the wrong radius. The 1px
      contrast ring stays: zero blur and 1px spread keeps it on the rounded path. */
+  /* The contrast ring is drawn INSIDE the surface, for the same reason the hairline below is.
+     As an outer `0 0 0 1px` it sits beyond the element's box, which is past the window's own
+     device rectangle on whichever edges the box snaps up — so it composited on the top and
+     left and was clipped away entirely on the bottom and right. Measured on a white desktop:
+     the top edge read white/113/163/fill, the bottom edge read fill/124/162/white with no ring
+     at all. Inset, it is on all four sides and nothing can clip it. */
   box-shadow:
     var(--glass-inner),
-    0 0 0 1px var(--rim-contrast-panel);
+    inset 0 0 0 1px var(--rim-contrast-panel);
   /* §6: 220ms entrance. It replays on every open because the panel is keyed by its open
      count in Panel.tsx — the window is hidden and shown, never rebuilt, so without that
      key the animation would run exactly once in the app's lifetime. */
@@ -59,7 +65,7 @@
   inset: 1px;
   border-radius: 23px;
   pointer-events: none;
-  box-shadow: inset 0 0 0 1px var(--glass-rim);
+  box-shadow: inset 0 0 0 1px var(--glass-rim-panel);
 }
 
 @keyframes panel-in {

@@ -103,6 +103,10 @@
      offset smears into a widening bright arc. The sheen gradient still carries the
      light-from-above cue without touching the edge. */
   --glass-rim: rgba(255, 255, 255, 0.34);
+  /* The same hairline, but only on the two large surfaces. Split from --glass-rim because
+     those two also carry the dark contrast ring and the dot does not, so on a light backdrop
+     they need to drop this and the dot still needs to keep it. */
+  --glass-rim-panel: rgba(255, 255, 255, 0.34);
   --glass-rim-search: rgba(255, 255, 255, 0.38);
   --glass-rim-bright: rgba(255, 255, 255, 0.5);
   /* §6's top-edge specular. Only the dot still uses it — the panel and the search bar
@@ -188,6 +192,30 @@
      56px parked on top of whatever the user left it over, and unlike the panel it cannot
      assume that what is behind it is bright. */
   --glass-fill-dot: linear-gradient(148deg, rgba(48, 53, 68, 0.76) 0%, rgba(23, 26, 35, 0.78) 100%);
+
+  /* One edge, not three.
+
+     The two large surfaces carry a dark contrast ring AND a bright hairline one pixel inside
+     it. Against a dark desktop the dark ring disappears into the desktop and the pair reads as
+     a single lit edge, which is the whole idea. Against a white one both are plainly visible
+     and 1px apart: measured across the panel's top edge, white 255, ring 113, hairline 163,
+     fill 112 — a dark line, then a light line, then the surface. That is the extra line, and at
+     the corners those two arcs plus the fill's own edge are three independently anti-aliased
+     strokes inside three pixels, which is what makes the curve look chewed.
+
+     So on a light backdrop the bright hairline goes. The dark ring is the correct edge there
+     and it is enough by itself. The dot keeps --glass-rim: it has no contrast ring, so its
+     hairline is the only edge it has. */
+  --glass-rim-panel: transparent;
+  --glass-rim-search: transparent;
+
+  /* And the inner glow goes with it. It is a 14px white bloom just inside the edge, so it
+     pools where two edges meet — which is why what is left after dropping the hairline shows
+     up at the CORNERS rather than along the sides. On the near-opaque dark fill it reads as
+     thickness in the pane; over the lifted fill on a white desktop it is just a pale smudge
+     inside the one dark rim. Not a shadow of its own: `none` is not legal in the middle of a
+     box-shadow list, so it is a zero-sized transparent one. */
+  --glass-inner: inset 0 0 0 0 transparent;
 }
 
 html,

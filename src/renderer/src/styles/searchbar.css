@@ -16,9 +16,10 @@
   background: var(--glass-fill-search);
   /* Same as the panel: the outer drop shadow only had the corner notches to fall into, and
      the window clipped it into a square dark plate behind the pill. */
+  /* Inset, not outside — see the note in panel.css. */
   box-shadow:
     var(--glass-inner),
-    0 0 0 1px var(--rim-contrast-panel);
+    inset 0 0 0 1px var(--rim-contrast-panel);
 }
 
 /* One pixel inside the edge, for the reason spelled out in panel.css. */
