@@ -37,10 +37,9 @@ function start(): void {
     electronApp.setAppUserModelId('com.ezzy.app')
     app.on('browser-window-created', (_, window) => optimizer.watchWindowShortcuts(window))
 
-    // Acrylic is tinted by the WINDOW's theme, not by the desktop wallpaper. Left alone
-    // Electron picks light, which renders the panel as the milky white slab this is not
-    // meant to be. Pinning it dark is what makes the material read as dark frosted glass
-    // while still doing the blurring.
+    // The surfaces are transparent and always dark-on-light-film, so nothing should follow
+    // the OS into light mode and quietly invert the text under them. Pinning the theme keeps
+    // `prefers-color-scheme` deterministic rather than leaving that to the machine's setting.
     nativeTheme.themeSource = 'dark'
 
     loadConfig()

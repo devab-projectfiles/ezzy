@@ -50,11 +50,6 @@ export const DOT_GLYPH_SIZE = 32
  *  also means they are anti-aliased. */
 export const PANEL_WIDTH = 420
 export const SEARCH_HEIGHT = 54
-/** §6's corner radii. With acrylic these cannot come from CSS — DWM paints the material
- *  behind the page, so a CSS radius rounds the content and leaves the material filling the
- *  square underneath. They are applied as a window region instead; see setRoundedRegion. */
-export const SEARCH_RADIUS = 27
-export const PANEL_RADIUS = 24
 /** Gap between the search bar and the panel below it. */
 export const SEARCH_PANEL_GAP = 11
 /** Gap between the dot and the search-bar/panel pair. */
