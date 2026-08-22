@@ -25,16 +25,34 @@
   --dot-slack: 16px;
   --pill-visual: 212px;
 
-  /* Dark glass. Low enough to read as translucent — the desktop is clearly visible through
-     it — but dark enough to pull bright backdrop content down into a wash. */
-  --glass-fill-panel: rgba(16, 19, 28, 0.66);
-  --glass-fill-search: rgba(16, 19, 28, 0.62);
-  --glass-fill-dot: rgba(22, 26, 38, 0.55);
+  /* Dark glass, and the darkness is not a style choice — it is the readability floor.
+     The surface is translucent, so its brightness follows the desktop. For white text to
+     clear 4.5:1 the surface has to land at or below ~110 luminance, and over a WHITE window
+     that requires 255(1-a) + 22a <= 110, i.e. a >= 0.62. Anything lighter and the rows go
+     invisible on a white document — measured, not guessed.
+
+     The consequence is honest and unavoidable: over a white window this reads as a dark
+     card, over a dark one it nearly disappears into the desktop. Escaping that means tinting
+     from the backdrop itself (the reference tutorial's step 01), which for an arbitrary
+     desktop is §6's v2 adaptive contrast. The glass read at this opacity is carried by the
+     luminous inner edge below rather than by letting the backdrop through. */
+  --glass-fill-panel: rgba(18, 22, 34, 0.66);
+  --glass-fill-search: rgba(18, 22, 34, 0.63);
+  --glass-fill-dot: rgba(24, 28, 42, 0.55);
+
+  /* Step 02 of the tutorial, verbatim: three white inner shadows at 20%. Together they light
+     the inside of the edge all the way round, which is what makes the reference cards read as
+     a thick pane rather than a tinted rectangle. This is the technique doing the work that
+     the tint used to do. */
+  --glass-inner:
+    inset 4px 4px 12px 2px rgba(255, 255, 255, 0.2),
+    inset -2px -2px 15px 1px rgba(255, 255, 255, 0.2),
+    inset 0 0 15px 2px rgba(255, 255, 255, 0.2);
 
   /* The bright hairline that reads as the cut edge of a pane of glass. On dark glass this is
      the primary shape cue, so it runs brighter than §6's value. */
-  --glass-rim: rgba(255, 255, 255, 0.3);
-  --glass-rim-search: rgba(255, 255, 255, 0.32);
+  --glass-rim: rgba(255, 255, 255, 0.4);
+  --glass-rim-search: rgba(255, 255, 255, 0.42);
   --glass-rim-bright: rgba(255, 255, 255, 0.5);
   /* Top-edge specular. Light lands on the top lip of a pane, so it is brighter than the rim. */
   --glass-highlight: rgba(255, 255, 255, 0.34);
@@ -58,7 +76,7 @@
 
   /* Much lighter than the white-glass version needed: the dark fill is now doing the work of
      separating our text from the desktop, so the shadow only has to define edges. */
-  --text-shadow: 0 1px 2px rgba(0, 0, 0, 0.55);
+  --text-shadow: 0 1px 3px rgba(0, 0, 0, 0.7);
   --text-strong: rgba(255, 255, 255, 0.98);
   --text-dim: rgba(255, 255, 255, 0.82);
   --text-faint: rgba(255, 255, 255, 0.55);

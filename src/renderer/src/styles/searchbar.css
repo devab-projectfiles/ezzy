@@ -16,6 +16,7 @@
   border: 0.5px solid var(--glass-rim-search);
   background: var(--glass-fill-search);
   box-shadow:
+    var(--glass-inner),
     inset 0 1px 0 var(--glass-highlight-search),
     0 0 0 1px var(--rim-contrast-panel),
     0 10px 34px rgba(10, 12, 22, 0.42);
