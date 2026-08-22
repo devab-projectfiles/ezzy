@@ -217,41 +217,31 @@
      assume that what is behind it is bright. */
   --glass-fill-dot: linear-gradient(148deg, rgba(56, 62, 80, 0.66) 0%, rgba(30, 34, 46, 0.7) 100%);
 
-  /* One edge, not three.
+  /* One edge, not two — and now it is the BRIGHT one.
 
-     The two large surfaces carry a dark contrast ring AND a bright hairline one pixel inside
-     it. Against a dark desktop the dark ring disappears into the desktop and the pair reads as
-     a single lit edge, which is the whole idea. Against a white one both are plainly visible
-     and 1px apart: measured across the panel's top edge, white 255, ring 113, hairline 163,
-     fill 112 — a dark line, then a light line, then the surface. That is the extra line, and at
-     the corners those two arcs plus the fill's own edge are three independently anti-aliased
-     strokes inside three pixels, which is what makes the curve look chewed.
+     These surfaces can draw a dark contrast ring and a bright hairline one pixel inside it.
+     Both at once is what read as an extra line here: measured across the panel's top edge back
+     when the fill was near-opaque, white 255, ring 113, hairline 163, fill 112 — a dark line,
+     then a light line, then the surface. Non-monotonic, so the eye counts two edges.
 
-     So on a light backdrop the bright hairline goes. The dark ring is the correct edge there
-     and it is enough by itself. The dot keeps --glass-rim: it has no contrast ring, so its
-     hairline is the only edge it has. */
-  --glass-rim-panel: transparent;
-  --glass-rim-search: transparent;
+     The first fix was to drop the hairline and keep the ring, which was right while the fill
+     was a slab. It is wrong now: the hairline is the lit edge that makes the material read as
+     glass, and dropping it is why a white backdrop got the transparency without the glass. So
+     it comes back and the ring goes instead. Against white the fill alone is a 120-level step
+     (255 to ~135), which is far more edge than the ring was contributing. */
+  --glass-rim-panel: rgba(255, 255, 255, 0.5);
+  --glass-rim-search: rgba(255, 255, 255, 0.55);
 
-  /* And the inner glow goes with it. It is a 14px white bloom just inside the edge, so it
-     pools where two edges meet — which is why what is left after dropping the hairline shows
-     up at the CORNERS rather than along the sides. On the near-opaque dark fill it reads as
-     thickness in the pane; over the lifted fill on a white desktop it is just a pale smudge
-     inside the one dark rim. Not a shadow of its own: `none` is not legal in the middle of a
-     box-shadow list, so it is a zero-sized transparent one. */
-  --glass-inner: inset 0 0 0 0 transparent;
+  /* The inner glow comes back with it, for the same reason: it is the bloom that sells depth
+     in the pane, and it was only a smudge while it sat inside a hard dark outline that is no
+     longer there. */
+  --glass-inner: inset 0 0 26px 0 rgba(255, 255, 255, 0.11);
 
-  /* And with the hairline and the glow gone, the contrast ring is the whole edge — so its
-     weight is now the only thing left to get wrong, and at 0.5 it was wrong. Near-black over
-     the lifted fill it composited to 57 against a fill of 105: not a second line any more, but
-     a hard outline drawn around the panel, which is what still read as unfinished along every
-     side rather than just at the corners.
-     
-     Softened to land around 84 instead. That is roughly a fifth darker than the fill — enough
-     to be a definite edge, and still an enormous step against a 255 desktop, which is the job
-     the ring actually has to do. It only has to separate the surface from the desktop; it was
-     drawing a border. */
-  --rim-contrast-panel: rgba(8, 12, 22, 0.22);
+  /* And the contrast ring goes entirely. Its job is holding the edge against a bright desktop,
+     which a translucent fill already does on its own — and keeping it would put a dark line
+     immediately outside the bright one, which is the exact shape that read as two edges. Even
+     softened to a fifth darker than the fill it was drawing a border around glass. */
+  --rim-contrast-panel: transparent;
 }
 
 html,
