@@ -6,9 +6,21 @@
 .panel {
   position: relative;
   overflow: hidden;
-  height: 100%;
+  /* Two pixels short of the window, and this is what finally made the bottom rim match the
+     other three.
+
+     Chromium lays the page out in CSS pixels but snaps a box up to whole device pixels.
+     Measured here: dpr 1.3625, viewport 249 CSS px, and this element resolving to 249.54 —
+     340 device rows inside a window that has 338. The overflowing rows are outside the
+     window, so nothing drawn on this element's bottom edge is ever composited, which is why
+     the bottom rim read 0 while the top read 117. The search bar only overflows by one row,
+     which is why it recovered from the inset alone and this does not.
+
+     Holding the surface two pixels short puts the whole box inside the window with room to
+     spare. Panel.tsx adds the same two pixels to the height it asks for, so the content area
+     is unchanged and no row gets clipped. */
+  height: calc(100% - var(--panel-headroom));
   border-radius: 24px;
-  border: 0.5px solid var(--glass-rim);
   background: var(--glass-fill-panel);
   /* No outer drop shadow. The window is exactly this element's size, so a blurred outer
      shadow has nowhere to fall except the four corner notches — the gaps between this 24px
@@ -17,12 +29,31 @@
      contrast ring stays: zero blur and 1px spread keeps it on the rounded path. */
   box-shadow:
     var(--glass-inner),
-    inset 0 1px 0 var(--glass-highlight),
     0 0 0 1px var(--rim-contrast-panel);
   /* §6: 220ms entrance. It replays on every open because the panel is keyed by its open
      count in Panel.tsx — the window is hidden and shown, never rebuilt, so without that
      key the animation would run exactly once in the app's lifetime. */
   animation: panel-in 220ms var(--ease-glass) both;
+}
+
+/* The rim, drawn one pixel INSIDE the surface rather than on its edge.
+
+   On the edge it was still uneven: 117 top and 121 left against 65 right and 0 bottom. The
+   ring itself is fine — what cuts it is the window. These pages are laid out to a CSS size
+   whose device equivalent does not land exactly on the window's integer device rectangle, so
+   the last fraction of a device pixel along the right and bottom falls outside the window and
+   is never composited. A rim sitting on the boundary loses whatever part of itself is in that
+   fraction; on the panel, whose height comes from a measured scrollHeight, it lost all of it.
+
+   Inset by one pixel the ring is nowhere near the boundary, so all four sides composite whole.
+   The radius is the surface's minus that pixel, so the curve stays concentric. */
+.panel::after {
+  content: '';
+  position: absolute;
+  inset: 1px;
+  border-radius: 23px;
+  pointer-events: none;
+  box-shadow: inset 0 0 0 1px var(--glass-rim);
 }
 
 @keyframes panel-in {
@@ -94,8 +125,7 @@
   border-radius: 14px;
   pointer-events: none;
   background: var(--row-selected);
-  border: 0.5px solid var(--row-selected-rim);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.16);
+  box-shadow: inset 0 0 0 1px var(--row-selected-rim);
   transition:
     transform 120ms var(--ease-glass),
     height 120ms var(--ease-glass);
@@ -181,7 +211,7 @@
 .panel__hint-chip {
   padding: 2px 7px;
   border-radius: 6px;
-  border: 0.5px solid var(--chip-rim);
+  box-shadow: inset 0 0 0 1px var(--chip-rim);
   font-size: 11px;
   line-height: 1.35;
   color: var(--text-dim);

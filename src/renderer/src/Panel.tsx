@@ -1,4 +1,5 @@
 import { Fragment, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { PANEL_HEADROOM } from '../../shared/types'
 import type { EzzyApp, EzzyWindow, PanelData } from '../../shared/types'
 
 /** Geometry for the sliding selection highlight. §6: slide it between rows, never
@@ -107,7 +108,10 @@ function Panel(): React.JSX.Element {
   // frame the rows appear, rather than snapping a beat later.
   useLayoutEffect(() => {
     const surface = surfaceRef.current
-    if (surface) window.ezzy.setPanelHeight(surface.scrollHeight)
+    // The window is asked for PANEL_HEADROOM more than the content needs, because panel.css
+    // holds the surface that far short of the window's bottom edge. Without the extra the
+    // content would overflow by exactly that much and clip the last row.
+    if (surface) window.ezzy.setPanelHeight(surface.scrollHeight + PANEL_HEADROOM)
   }, [data])
 
   // Measure after layout, not after paint, so the highlight never renders a frame behind.

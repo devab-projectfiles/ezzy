@@ -30,6 +30,8 @@
   --dot-visual: 56px;
   --dot-slack: 16px;
   --pill-visual: 212px;
+  /* Mirrors PANEL_HEADROOM in shared/types.ts — see the note on .panel in panel.css. */
+  --panel-headroom: 2px;
 
   /* Frosted glass, not clear glass.
 
@@ -83,13 +85,27 @@
   --glass-inner: inset 0 0 14px 0 rgba(255, 255, 255, 0.07);
 
   /* The bright hairline that reads as the cut edge of a pane of glass. On dark glass this is
-     the primary shape cue, so it runs brighter than §6's value. */
+     the primary shape cue, so it runs brighter than §6's value.
+
+     An inset ring, not a `border`. A border here was 0.5px, and this display runs at 125%,
+     so that is 0.625 device pixels: Chromium snaps each edge of the border box separately
+     and the fraction survived on the top and left while rounding away to nothing on the
+     right and bottom. Measured against black, the top read 128 and the bottom read 0 — the
+     pane had a rim on two sides. A spread-only inset shadow is rasterised as one rounded
+     stroke rather than four independently-snapped edges, so it comes out even the whole way
+     round, corners included.
+
+     There is no separate top-edge specular any more either. §6 asks for a bright one-pixel
+     lip along the top, and it is the other half of why the edge looked inconsistent: it
+     stacked on the top border to make a 3px band, and at the rounded corners a 1px vertical
+     offset smears into a widening bright arc. The sheen gradient still carries the
+     light-from-above cue without touching the edge. */
   --glass-rim: rgba(255, 255, 255, 0.34);
   --glass-rim-search: rgba(255, 255, 255, 0.38);
   --glass-rim-bright: rgba(255, 255, 255, 0.5);
-  /* Top-edge specular — a one-pixel lip, so it can be bright without tinting the surface. */
+  /* §6's top-edge specular. Only the dot still uses it — the panel and the search bar
+     dropped it because it was half of why their edge read differently top to bottom. */
   --glass-highlight: rgba(255, 255, 255, 0.4);
-  --glass-highlight-search: rgba(255, 255, 255, 0.45);
   --chip-rim: rgba(255, 255, 255, 0.26);
 
   /* The dual rim (§6). A dark ring OUTSIDE the light one so the edge keeps contrast against

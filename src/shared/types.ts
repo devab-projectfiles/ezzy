@@ -63,6 +63,12 @@ export const PANEL_MIN_HEIGHT = 64
  *  reached by scrolling. */
 export const PANEL_MAX_HEIGHT = 248
 
+/** The gap panel.css holds between the glass surface and the bottom of its window, and so
+ *  the amount the renderer adds to the height it asks for. Chromium snaps a box up to whole
+ *  device pixels, which pushed the surface's bottom edge outside the window and clipped the
+ *  rim drawn on it; the surface stops short instead. Keep in step with `--panel-headroom`. */
+export const PANEL_HEADROOM = 2
+
 /** Which side of its window the pill is pinned to. The dot normally opens leftward, so the
  *  circle sits at the window's right edge; parked against the left of a display it mirrors
  *  and opens rightward instead (§6). */

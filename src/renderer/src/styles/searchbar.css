@@ -13,14 +13,22 @@
   gap: 11px;
   padding: 0 18px;
   border-radius: 27px;
-  border: 0.5px solid var(--glass-rim-search);
   background: var(--glass-fill-search);
   /* Same as the panel: the outer drop shadow only had the corner notches to fall into, and
      the window clipped it into a square dark plate behind the pill. */
   box-shadow:
     var(--glass-inner),
-    inset 0 1px 0 var(--glass-highlight-search),
     0 0 0 1px var(--rim-contrast-panel);
+}
+
+/* One pixel inside the edge, for the reason spelled out in panel.css. */
+.searchbar::after {
+  content: '';
+  position: absolute;
+  inset: 1px;
+  border-radius: 26px;
+  pointer-events: none;
+  box-shadow: inset 0 0 0 1px var(--glass-rim-search);
 }
 
 .searchbar__sheen {
