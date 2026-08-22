@@ -1,10 +1,22 @@
-/* The glass recipe from PLAN.md §6, as tokens. True glass is LOW opacity plus a specular
-   sheen — the fills below deliberately never go above 0.20.
+/* The glass recipe, as tokens.
 
-   The surfaces are `transparent: true` windows rather than §6's acrylic: acrylic tints with
-   the Windows theme and on a dark theme it reads as a dark slab over the desktop rather than
-   glass over it. So what is behind shows through clear rather than frosted, and these fills
-   plus the rim and the text shadow are the whole of the legibility budget. */
+   §6 specifies WHITE glass at 0.13-0.18 over a `backgroundMaterial: 'acrylic'` window. Two
+   things forced a rewrite of the colour half of that recipe:
+
+   1. These windows are `transparent: true`, so nothing blurs the desktop underneath.
+   2. A white translucent fill physically cannot mute bright content behind it — white over
+      white is white at any opacity. Over a dark IDE full of white text, the desktop's own
+      text punched straight through the rows and everything read as white-on-white.
+
+   So the fill is DARK glass instead. Dark over white resolves toward dark, which is what
+   actually mutes a busy backdrop: white desktop text behind the panel lands around mid-grey,
+   and our white text sits cleanly on top of it. It also means the surface no longer vanishes
+   on a light desktop — which is the same conclusion §6 reaches when it describes the v2
+   adaptive-contrast mode as swapping to `rgba(28,32,44,0.42)` dark glass above a luminance
+   threshold. Using dark glass unconditionally gets that benefit on every background without
+   sampling a single pixel, so v1 does not need adaptive contrast at all.
+
+   Still true to §6: low opacity, a specular sheen, the dual rim, and a bright hairline edge. */
 
 :root {
   --ease-glass: cubic-bezier(0.32, 0.72, 0, 1);
@@ -13,94 +25,70 @@
   --dot-slack: 16px;
   --pill-visual: 212px;
 
-  --glass-fill-dot: rgba(255, 255, 255, 0.18);
-  /* §6 puts the panel at 0.13 and the search bar at 0.15, but those numbers assume the
-     window's acrylic is blurring the desktop underneath. These windows are transparent, so
-     nothing mutes what is behind them and at 0.13 the desktop's own text reads straight
-     through the rows. Raised until the backdrop is a wash rather than content — still
-     clearly see-through, which is the point. */
-  --glass-fill-panel: rgba(255, 255, 255, 0.3);
-  /* The rim is what separates glass from background; without it everything mushes together. */
-  --glass-rim: rgba(255, 255, 255, 0.42);
-  --glass-rim-bright: rgba(255, 255, 255, 0.62);
-  --glass-highlight: rgba(255, 255, 255, 0.7);
-  --chip-rim: rgba(255, 255, 255, 0.32);
+  /* Dark glass. Low enough to read as translucent — the desktop is clearly visible through
+     it — but dark enough to pull bright backdrop content down into a wash. */
+  --glass-fill-panel: rgba(16, 19, 28, 0.66);
+  --glass-fill-search: rgba(16, 19, 28, 0.62);
+  --glass-fill-dot: rgba(22, 26, 38, 0.55);
 
-  /* The dual rim (§6). A dark ring OUTSIDE the light one, so the edge keeps its contrast
-     over a Word document or a bright website — white glass on a white background is
-     otherwise invisible. Deliberately not overridden in light mode: this IS the light-mode
-     fix, and it costs nothing on a dark desktop. */
-  --rim-contrast-dot: rgba(10, 14, 26, 0.45);
-  --rim-contrast-panel: rgba(10, 14, 26, 0.32);
+  /* The bright hairline that reads as the cut edge of a pane of glass. On dark glass this is
+     the primary shape cue, so it runs brighter than §6's value. */
+  --glass-rim: rgba(255, 255, 255, 0.3);
+  --glass-rim-search: rgba(255, 255, 255, 0.32);
+  --glass-rim-bright: rgba(255, 255, 255, 0.5);
+  /* Top-edge specular. Light lands on the top lip of a pane, so it is brighter than the rim. */
+  --glass-highlight: rgba(255, 255, 255, 0.34);
+  --glass-highlight-search: rgba(255, 255, 255, 0.36);
+  --chip-rim: rgba(255, 255, 255, 0.26);
+
+  /* The dual rim (§6). A dark ring OUTSIDE the light one so the edge keeps contrast against
+     a bright desktop. Deliberately not overridden by theme: it costs nothing on a dark one. */
+  --rim-contrast-dot: rgba(4, 6, 12, 0.6);
+  --rim-contrast-panel: rgba(4, 6, 12, 0.5);
 
   /* The diagonal light band that makes glass read as thick rather than as a film. */
   --glass-sheen: linear-gradient(
     122deg,
-    rgba(255, 255, 255, 0.26) 0%,
-    rgba(255, 255, 255, 0.03) 26%,
+    rgba(255, 255, 255, 0.16) 0%,
+    rgba(255, 255, 255, 0.02) 26%,
     rgba(255, 255, 255, 0) 52%,
-    rgba(255, 255, 255, 0.05) 76%,
-    rgba(255, 255, 255, 0.2) 100%
+    rgba(255, 255, 255, 0.03) 76%,
+    rgba(255, 255, 255, 0.12) 100%
   );
 
-  /* Reading over arbitrary desktop content, so this is not optional — and with transparent
-     windows it has to work harder than §6's value assumed. A white translucent fill cannot
-     mute bright text behind it (white over white is still white, at any opacity), so the
-     separation has to come from a dark halo around our own text rather than from the
-     surface. Two shadows: a tight one for edge definition, a wide soft one that darkens
-     whatever the desktop put directly behind the glyphs. */
-  --text-shadow:
-    0 1px 3px rgba(6, 8, 16, 0.85), 0 0 10px rgba(6, 8, 16, 0.55);
-  --text-strong: rgba(255, 255, 255, 0.96);
-  --text-dim: rgba(255, 255, 255, 0.78);
-  --text-faint: rgba(255, 255, 255, 0.58);
+  /* Much lighter than the white-glass version needed: the dark fill is now doing the work of
+     separating our text from the desktop, so the shadow only has to define edges. */
+  --text-shadow: 0 1px 2px rgba(0, 0, 0, 0.55);
+  --text-strong: rgba(255, 255, 255, 0.98);
+  --text-dim: rgba(255, 255, 255, 0.82);
+  --text-faint: rgba(255, 255, 255, 0.55);
+  --text-placeholder: rgba(255, 255, 255, 0.5);
   --mark: rgba(255, 255, 255, 0.94);
 
-  --icon: rgba(255, 255, 255, 0.86);
+  --icon: rgba(255, 255, 255, 0.7);
   --icon-selected: rgba(255, 255, 255, 1);
-  --row-selected: rgba(255, 255, 255, 0.2);
-  --row-selected-rim: rgba(255, 255, 255, 0.34);
+  --glyph-search: rgba(255, 255, 255, 0.6);
+  --glyph-mic: rgba(255, 255, 255, 0.82);
 
-  /* The search bar sits a touch brighter than the panel, as §6 has it. */
-  --glass-fill-search: rgba(255, 255, 255, 0.32);
-  --glass-rim-search: rgba(255, 255, 255, 0.42);
-  --glass-highlight-search: rgba(255, 255, 255, 0.65);
-  --glyph-search: rgba(255, 255, 255, 0.72);
-  --glyph-mic: rgba(255, 255, 255, 0.92);
-  --text-placeholder: rgba(255, 255, 255, 0.66);
-  --divider: rgba(255, 255, 255, 0.2);
+  /* On dark glass the selected row reads by getting LIGHTER, with its own hairline — the
+     reference cards do exactly this for their inner tiles. §6's "more opaque, not darker"
+     rule was about light glass; inverted here for the same reason. */
+  --row-selected: rgba(255, 255, 255, 0.12);
+  --row-selected-rim: rgba(255, 255, 255, 0.22);
+
+  --divider: rgba(255, 255, 255, 0.12);
 }
 
-/* White on a white desktop disappears. This follows the OS theme, so the mark and the
-   labels invert with it and no IPC is involved. */
-@media (prefers-color-scheme: light) {
-  :root {
-    --glass-rim: rgba(255, 255, 255, 0.5);
-    --glass-rim-bright: rgba(255, 255, 255, 0.72);
-    --chip-rim: rgba(60, 66, 84, 0.3);
-    --text-shadow: 0 1px 3px rgba(255, 255, 255, 0.45);
-    --text-strong: rgba(38, 42, 56, 0.95);
-    --text-dim: rgba(60, 66, 84, 0.78);
-    --text-faint: rgba(60, 66, 84, 0.58);
-    --mark: rgba(60, 66, 84, 0.88);
-
-    --glass-fill-panel: rgba(255, 255, 255, 0.62);
-    --icon: rgba(30, 34, 44, 0.75);
-    --icon-selected: rgba(22, 25, 33, 0.94);
-    /* §6: on light glass the selected row gets more OPAQUE, not darker. Reaching for a
-       darker fill here is the mistake the table exists to prevent. */
-    --row-selected: rgba(255, 255, 255, 0.72);
-    --row-selected-rim: rgba(255, 255, 255, 0.9);
-
-    --glass-fill-search: rgba(255, 255, 255, 0.66);
-    --glass-rim-search: rgba(255, 255, 255, 0.85);
-    --glass-highlight-search: rgba(255, 255, 255, 0.95);
-    --glyph-search: rgba(38, 42, 52, 0.6);
-    --glyph-mic: rgba(30, 34, 44, 0.8);
-    --text-placeholder: rgba(38, 42, 52, 0.55);
-    --divider: rgba(38, 42, 52, 0.12);
-  }
-}
+/* No light-mode inversion any more.
+ *
+ * §6's light-mode table exists because `backgroundMaterial: 'acrylic'` follows the Windows
+ * theme, so the surface itself turned light and the content had to invert with it. These
+ * windows are transparent and the fill is a fixed dark glass, so the surface no longer
+ * changes with the OS theme and inverting the text to dark would put dark text on dark
+ * glass. The dark fill plus the dual rim is what carries a light desktop instead.
+ *
+ * Only the tokens that describe the desktop rather than the surface still respond, and none
+ * currently do — this block is intentionally absent rather than forgotten. */
 
 html,
 body {

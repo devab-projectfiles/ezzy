@@ -29,10 +29,10 @@
   /* A shallower angle than the panel's — §6 gives the search bar its own sheen. */
   background: linear-gradient(
     114deg,
-    rgba(255, 255, 255, 0.3) 0%,
+    rgba(255, 255, 255, 0.18) 0%,
     rgba(255, 255, 255, 0.02) 34%,
     rgba(255, 255, 255, 0) 58%,
-    rgba(255, 255, 255, 0.16) 100%
+    rgba(255, 255, 255, 0.1) 100%
   );
 }
 
