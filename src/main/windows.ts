@@ -1,6 +1,7 @@
 import { BrowserWindow, Display, screen } from 'electron'
 import { join } from 'path'
 import { is } from '@electron-toolkit/utils'
+import { release } from 'os'
 import {
   DOT_VISUAL,
   DOT_WINDOW,
@@ -10,17 +11,20 @@ import {
   PANEL_GAP,
   PANEL_MAX_HEIGHT,
   PANEL_MIN_HEIGHT,
+  PANEL_RADIUS,
   PANEL_WIDTH,
   PILL_DELTA,
   PILL_VISUAL,
   PILL_WINDOW,
   PillDirection,
   SEARCH_HEIGHT,
-  SEARCH_PANEL_GAP
+  SEARCH_PANEL_GAP,
+  SEARCH_RADIUS
 } from '../shared/types'
 import { getConfig, updateConfig } from './config'
 import { log, since } from './verbose'
 import { panelData } from './panel-data'
+import { setRoundedRegion } from './win32'
 
 let dotWindow: BrowserWindow | null = null
 let panelWindow: BrowserWindow | null = null
@@ -82,6 +86,10 @@ const MAX_DRAG_MS = 20_000
 /** Cursor sampling rate for hover. One GetCursorPos per tick costs far less than the
  *  alternative: a pill-wide window that swallows every click aimed underneath it. */
 const HOVER_POLL_MS = 30
+
+/** Acrylic arrived with Windows 11. On 10 the flag is ignored, which would leave a
+ *  see-through unreadable panel, so §6 calls for a solid fallback there instead. */
+const SUPPORTS_ACRYLIC = Number(release().split('.')[2] ?? 0) >= 22000
 
 /** Set from the tray Quit item so the close handlers stop hiding and let the app exit. */
 export function setQuitting(value: boolean): void {
@@ -145,21 +153,24 @@ export function createWindows(): void {
 /** One of the two glass surfaces. Both are the same window underneath — only their height
  *  and contents differ.
  *
- *  `transparent: true` rather than §6's `backgroundMaterial: 'acrylic'`. Acrylic tints the
- *  surface with the Windows theme, which on a dark theme reads as a dark slab sitting over
- *  the desktop instead of glass over it. The trade §6 warned about stands: what is behind is
- *  now clear rather than blurred, because CSS cannot blur outside its own window. In exchange
- *  the corner radii are ordinary CSS again, and therefore anti-aliased. */
+ *  `backgroundMaterial: 'acrylic'`, as §6 specified. Acrylic is the only thing on Windows
+ *  that blurs the DESKTOP behind a window — CSS backdrop-filter cannot see outside its own
+ *  window at all. Blur is what lets a surface be legible over a white document and a black
+ *  one without changing its own colour, because it destroys the contrast of whatever is
+ *  behind rather than covering it. A flat tint cannot do that at any opacity.
+ *
+ *  Two costs, both paid below: it is mutually exclusive with `transparent: true`, so what is
+ *  behind is frosted rather than clear; and the corner radii have to come from a window
+ *  region instead of CSS, so they are not anti-aliased. */
 function createGlassWindow(height: number): BrowserWindow {
   const win = new BrowserWindow({
     width: PANEL_WIDTH,
     height,
     frame: false,
-    transparent: true,
-    backgroundColor: '#00000000',
-    // The OS drop shadow would be drawn around the window's square, not around the rounded
-    // surface inside it, so it reads as a grey box behind the glass. The CSS shadow replaces it.
-    hasShadow: false,
+    backgroundMaterial: SUPPORTS_ACRYLIC ? 'acrylic' : 'none',
+    // Acrylic only shows through where the window itself paints nothing, so the background
+    // colour has to be fully transparent even though the window is not `transparent: true`.
+    backgroundColor: SUPPORTS_ACRYLIC ? '#00000000' : '#16181C',
     resizable: false,
     maximizable: false,
     minimizable: false,
@@ -171,6 +182,24 @@ function createGlassWindow(height: number): BrowserWindow {
   })
   applyAlwaysPresent(win)
   return win
+}
+
+/** §6's radii, applied as a window region because acrylic is painted behind the page and a
+ *  CSS radius would leave it filling the square underneath. The region is in physical pixels,
+ *  so it has to be re-applied after any resize and after a move that changes the scale. */
+function applyCornerRadius(win: BrowserWindow, radius: number): void {
+  if (!SUPPORTS_ACRYLIC) return
+  const bounds = win.getBounds()
+  const scale = screen.getDisplayMatching(bounds).scaleFactor
+  const handle = win.getNativeWindowHandle()
+  if (handle.length < 8) return
+  const hwnd = Number(handle.readBigUInt64LE(0))
+  setRoundedRegion(
+    hwnd,
+    Math.round(bounds.width * scale),
+    Math.round(bounds.height * scale),
+    Math.round(radius * scale)
+  )
 }
 
 function webPreferences(): Electron.WebPreferences {
@@ -488,12 +517,15 @@ function layoutPair(): { search: Electron.Rectangle; panel: Electron.Rectangle }
   }
 }
 
-/** Move both surfaces together. */
+/** Move both surfaces together, then re-clip their corners — the region is in physical
+ *  pixels, so it does not survive a resize or a move to a display at another scale. */
 function applyPairBounds(): void {
   if (!searchWindow || !panelWindow) return
   const { search, panel } = layoutPair()
   searchWindow.setBounds(search)
   panelWindow.setBounds(panel)
+  applyCornerRadius(searchWindow, SEARCH_RADIUS)
+  applyCornerRadius(panelWindow, PANEL_RADIUS)
 }
 
 /** §6: the panel hugs its list rather than being a fixed slab, so the renderer measures its

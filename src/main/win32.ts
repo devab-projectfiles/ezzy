@@ -13,6 +13,7 @@ import koffi from 'koffi'
 const user32 = koffi.load('user32.dll')
 const kernel32 = koffi.load('kernel32.dll')
 const dwmapi = koffi.load('dwmapi.dll')
+const gdi32 = koffi.load('gdi32.dll')
 
 /** A window handle. Zero is the null handle, which every call below treats as "no window". */
 export type Hwnd = number
@@ -117,7 +118,14 @@ const fn = {
   ),
   DwmGetWindowAttribute: dwmapi.func(
     'int32_t __stdcall DwmGetWindowAttribute(uintptr_t hwnd, uint32_t attr, _Out_ int32_t *value, uint32_t size)'
-  )
+  ),
+  SetWindowRgn: user32.func(
+    'int __stdcall SetWindowRgn(uintptr_t hwnd, uintptr_t region, bool redraw)'
+  ),
+  CreateRoundRectRgn: gdi32.func(
+    'uintptr_t __stdcall CreateRoundRectRgn(int l, int t, int r, int b, int w, int h)'
+  ),
+  DeleteObject: gdi32.func('bool __stdcall DeleteObject(uintptr_t object)')
 }
 
 // --------------------------------------------------------------------- window
@@ -246,6 +254,26 @@ export function findHostedChildProcessId(hwnd: Hwnd, hostPid: number): number {
     koffi.unregister(callback)
   }
   return found
+}
+
+/** Clip a window to a rounded rectangle, in PHYSICAL pixels.
+ *
+ *  §6 asks for a 27px pill and 24px corners, and with `backgroundMaterial: 'acrylic'` neither
+ *  can come from CSS: DWM paints the material behind the page, so a CSS border-radius rounds
+ *  the content and leaves the material filling the square underneath. DWM's own rounding is a
+ *  fixed ~8px and is not adjustable. The window region is the only thing that clips the
+ *  material itself.
+ *
+ *  The cost is that a region is not anti-aliased — the curve is a hard pixel staircase. That
+ *  is the price of real acrylic over a transparent window, which is the trade §6 made. */
+export function setRoundedRegion(hwnd: Hwnd, width: number, height: number, radius: number): void {
+  // CreateRoundRectRgn takes the ellipse's full width and height, not its radius, and its
+  // right/bottom bounds are exclusive.
+  const region = fn.CreateRoundRectRgn(0, 0, width + 1, height + 1, radius * 2, radius * 2)
+  if (!region) return
+  // On success the system owns the region and it must not be deleted; on failure it would
+  // leak unless we delete it ourselves.
+  if (fn.SetWindowRgn(hwnd, region, true) === 0) fn.DeleteObject(region)
 }
 
 // ------------------------------------------------------------------ foreground
