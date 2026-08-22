@@ -11,6 +11,10 @@ files:
   - '!{tsconfig.json,tsconfig.node.json,tsconfig.web.json}'
 asarUnpack:
   - resources/**
+  # PLAN.md §5: native binaries cannot be loaded from inside the asar. koffi resolves its
+  # own .node at runtime, so leaving it packed is the classic "works in dev, broken in the
+  # installer" failure — the window list would simply be empty in a packaged build.
+  - node_modules/koffi/**
 win:
   executableName: Ezzy
 nsis:

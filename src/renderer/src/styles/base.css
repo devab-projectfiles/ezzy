@@ -18,6 +18,13 @@
   --glass-highlight: rgba(255, 255, 255, 0.7);
   --chip-rim: rgba(255, 255, 255, 0.32);
 
+  /* The dual rim (§6). A dark ring OUTSIDE the light one, so the edge keeps its contrast
+     over a Word document or a bright website — white glass on a white background is
+     otherwise invisible. Deliberately not overridden in light mode: this IS the light-mode
+     fix, and it costs nothing on a dark desktop. */
+  --rim-contrast-dot: rgba(10, 14, 26, 0.45);
+  --rim-contrast-panel: rgba(10, 14, 26, 0.32);
+
   /* The diagonal light band that makes glass read as thick rather than as a film. */
   --glass-sheen: linear-gradient(
     122deg,
@@ -34,6 +41,11 @@
   --text-dim: rgba(255, 255, 255, 0.78);
   --text-faint: rgba(255, 255, 255, 0.58);
   --mark: rgba(255, 255, 255, 0.94);
+
+  --icon: rgba(255, 255, 255, 0.86);
+  --icon-selected: rgba(255, 255, 255, 1);
+  --row-selected: rgba(255, 255, 255, 0.2);
+  --row-selected-rim: rgba(255, 255, 255, 0.34);
 }
 
 /* White on a white desktop disappears. This follows the same OS theme signal acrylic does,
@@ -48,6 +60,13 @@
     --text-dim: rgba(60, 66, 84, 0.78);
     --text-faint: rgba(60, 66, 84, 0.58);
     --mark: rgba(60, 66, 84, 0.88);
+
+    --icon: rgba(30, 34, 44, 0.75);
+    --icon-selected: rgba(22, 25, 33, 0.94);
+    /* §6: on light glass the selected row gets more OPAQUE, not darker. Reaching for a
+       darker fill here is the mistake the table exists to prevent. */
+    --row-selected: rgba(255, 255, 255, 0.72);
+    --row-selected-rim: rgba(255, 255, 255, 0.9);
   }
 }
 

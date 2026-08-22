@@ -6,6 +6,7 @@ import {
   DOT_VISUAL,
   DOT_WINDOW,
   DotPosition,
+  EzzyWindow,
   IPC,
   PANEL_GAP,
   PANEL_HEIGHT,
@@ -17,6 +18,7 @@ import {
 } from '../shared/types'
 import { getConfig, updateConfig } from './config'
 import { log, since } from './verbose'
+import { listWindows } from './window-tracker'
 
 let dotWindow: BrowserWindow | null = null
 let panelWindow: BrowserWindow | null = null
@@ -460,8 +462,18 @@ export function togglePanel(): void {
   }
   const { x, y } = panelPosition()
   panelWindow.setBounds({ x, y, ...panelFrame })
+  // The list rides along with the show event rather than being fetched back by the renderer.
+  // It is already in memory, so this costs one IPC hop instead of a round trip (§7).
+  panelWindow.webContents.send(IPC.panelShown, listWindows())
   panelWindow.show()
   since('hotkey -> panel visible', startedAt)
+}
+
+/** Live updates while the panel is open — a window opening, closing or being renamed behind
+ *  it. Skipped when hidden: the next show sends a fresh list anyway. */
+export function publishWindowList(windows: EzzyWindow[]): void {
+  if (!panelWindow || !panelWindow.isVisible()) return
+  panelWindow.webContents.send(IPC.windowsChanged, windows)
 }
 
 export function hidePanel(): void {

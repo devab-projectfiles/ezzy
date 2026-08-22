@@ -6,6 +6,7 @@ import { registerIpc } from './ipc'
 import { createTray, refreshTray } from './tray'
 import {
   createWindows,
+  publishWindowList,
   setQuitting,
   showDot,
   stopWatchingCursor,
@@ -13,6 +14,7 @@ import {
   watchCursor,
   watchDisplays
 } from './windows'
+import { onWindowsChanged, restartTracking, startTracking, stopTracking } from './window-tracker'
 import { log, since } from './verbose'
 
 const startedAt = performance.now()
@@ -39,8 +41,17 @@ function start(): void {
     createWindows()
     watchDisplays()
     watchCursor()
+    // Hooks are registered after app.whenReady because SetWinEventHook delivers through the
+    // thread's message loop, and Electron only has one running from here onward (§5).
+    startTracking()
+    onWindowsChanged(publishWindowList)
     const hotkey = registerHotkey(togglePanel)
-    watchForResume(() => refreshTray())
+    watchForResume(() => {
+      refreshTray()
+      // §5: the process survives sleep but the hook subscription does not, which leaves the
+      // list frozen at its pre-sleep state with no visible symptom until you look for it.
+      restartTracking()
+    })
     createTray(quit, hotkey)
 
     since('cold start -> tray ready', startedAt)
@@ -53,6 +64,9 @@ function start(): void {
   app.on('will-quit', () => {
     unregisterHotkey()
     stopWatchingCursor()
+    // Leaving a WinEvent hook behind makes Windows keep calling into a process that is on
+    // its way out.
+    stopTracking()
   })
 }
 

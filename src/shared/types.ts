@@ -48,6 +48,17 @@ export const PANEL_GAP = 12
  *  and opens rightward instead (§6). */
 export type PillDirection = 'left' | 'right'
 
+/** One switchable window, as the panel renders it (PLAN.md §6, row spec).
+ *  `id` is the HWND. Window handles carry only 32 significant bits, so they survive the trip
+ *  through IPC as ordinary numbers. */
+export interface EzzyWindow {
+  id: number
+  /** The window title — what the row shows as its title line. */
+  title: string
+  /** The owning application, shown as the row's subtitle. Empty when it cannot be read. */
+  app: string
+}
+
 export const IPC = {
   dotDragStart: 'dot:drag-start',
   dotDragMove: 'dot:drag-move',
@@ -57,7 +68,11 @@ export const IPC = {
   getPillSide: 'dot:get-pill-side',
   pillSide: 'dot:pill-side',
   panelClose: 'panel:close',
-  getHotkey: 'app:get-hotkey'
+  getHotkey: 'app:get-hotkey',
+  listWindows: 'windows:list',
+  windowsChanged: 'windows:changed',
+  focusWindow: 'windows:focus',
+  panelShown: 'panel:shown'
 } as const
 
 /** The surface the preload exposes on `window.ezzy`. Named functions only.
@@ -78,4 +93,17 @@ export interface EzzyApi {
   onPillSide(callback: (side: PillDirection) => void): () => void
   closePanel(): void
   getHotkey(): Promise<string>
+  /** The cached, MRU-ordered window list. Reads a variable in the main process — no OS
+   *  enumeration happens here, which is what keeps the panel inside §7's 50ms budget. */
+  listWindows(): Promise<EzzyWindow[]>
+  /** Fires while the panel is open, so a window that opens or is renamed behind it shows up
+   *  without the user closing and reopening. Returns an unsubscribe function. */
+  onWindowsChanged(callback: (windows: EzzyWindow[]) => void): () => void
+  /** Brings a window to the front. Resolves false when Windows refused, so the panel can
+   *  stay open rather than dismissing over a switch that never happened. */
+  focusWindow(id: number): Promise<boolean>
+  /** Fires each time the panel is shown, carrying the list as of that moment. The renderer
+   *  never re-requests on open — the list rides along with the event, which removes a round
+   *  trip from the hotkey path. Returns an unsubscribe function. */
+  onPanelShown(callback: (windows: EzzyWindow[]) => void): () => void
 }

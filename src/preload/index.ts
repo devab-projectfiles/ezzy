@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron'
-import { EzzyApi, IPC, PillDirection } from '../shared/types'
+import { EzzyApi, EzzyWindow, IPC, PillDirection } from '../shared/types'
 
 // Only named functions cross the bridge — `ipcRenderer` itself is never exposed.
 const ezzy: EzzyApi = {
@@ -20,7 +20,19 @@ const ezzy: EzzyApi = {
     return () => void ipcRenderer.removeListener(IPC.dotHover, handler)
   },
   closePanel: () => ipcRenderer.send(IPC.panelClose),
-  getHotkey: () => ipcRenderer.invoke(IPC.getHotkey)
+  getHotkey: () => ipcRenderer.invoke(IPC.getHotkey),
+  listWindows: () => ipcRenderer.invoke(IPC.listWindows),
+  onWindowsChanged: (callback) => {
+    const handler = (_event: unknown, windows: EzzyWindow[]): void => callback(windows)
+    ipcRenderer.on(IPC.windowsChanged, handler)
+    return () => void ipcRenderer.removeListener(IPC.windowsChanged, handler)
+  },
+  focusWindow: (id) => ipcRenderer.invoke(IPC.focusWindow, id),
+  onPanelShown: (callback) => {
+    const handler = (_event: unknown, windows: EzzyWindow[]): void => callback(windows)
+    ipcRenderer.on(IPC.panelShown, handler)
+    return () => void ipcRenderer.removeListener(IPC.panelShown, handler)
+  }
 }
 
 contextBridge.exposeInMainWorld('ezzy', ezzy)
