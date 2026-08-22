@@ -13,6 +13,16 @@ const EMPTY: PanelData = { windows: [], apps: [] }
  *  the index, showing every installed app would turn the scroll into a phone book. */
 const APPS_SHOWN = 8
 
+/** The first row, which is the window the user is looking at: the panel takes the foreground
+ *  when it opens, so the window they came from sits at the top of the MRU.
+ *
+ *  This used to open on the second row instead, on the reasoning that Enter would then mean
+ *  "go back to the other thing" the way Alt-Tab does. That is a real convention, but it is
+ *  not what this panel is — it opens under the cursor showing a list, and starting the
+ *  selection somewhere other than the top reads as the wrong row being picked rather than as
+ *  a shortcut. PLAN.md does not specify either behaviour. */
+const DEFAULT_SELECTION = 0
+
 function Panel(): React.JSX.Element {
   const [data, setData] = useState<PanelData>(EMPTY)
   /** `null` means nothing is selected — the state the list is left in after a scroll moves
@@ -40,7 +50,7 @@ function Panel(): React.JSX.Element {
     // every subsequent open arrives through onPanelShown below.
     window.ezzy.getPanelData().then((next) => {
       setData(next)
-      setSelected(defaultSelection(next))
+      setSelected(DEFAULT_SELECTION)
     })
   }, [])
 
@@ -48,7 +58,7 @@ function Panel(): React.JSX.Element {
     return window.ezzy.onPanelShown((next) => {
       setData(next)
       selectionSource.current = 'keyboard'
-      setSelected(defaultSelection(next))
+      setSelected(DEFAULT_SELECTION)
       setOpenCount((count) => count + 1)
     })
   }, [])
@@ -266,13 +276,6 @@ function toRows(data: PanelData): Row[] {
     ...data.windows.map((window): Row => ({ kind: 'window', key: `w${window.id}`, window })),
     ...data.apps.slice(0, APPS_SHOWN).map((app): Row => ({ kind: 'app', key: `a${app.id}`, app }))
   ]
-}
-
-/** §7: the panel steals the foreground when it opens, so the window the user just left is
- *  always at the top of the MRU. Selecting the second row makes Enter mean "go back to the
- *  other thing", which is the Alt-Tab behaviour everyone already has in their fingers. */
-function defaultSelection(data: PanelData): number {
-  return data.windows.length > 1 ? 1 : 0
 }
 
 /** Stand-ins until chunk C extracts real icons from the Start Menu index. */
