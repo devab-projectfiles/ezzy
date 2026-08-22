@@ -16,7 +16,13 @@
    threshold. Using dark glass unconditionally gets that benefit on every background without
    sampling a single pixel, so v1 does not need adaptive contrast at all.
 
-   Still true to §6: low opacity, a specular sheen, the dual rim, and a bright hairline edge. */
+   And the fill is not low-opacity. §6's 0.13-0.18 assumes acrylic is blurring the desktop
+   underneath; without that blur the same number just leaves the desktop legible through the
+   panel, which is the one thing the material must not do. Opacity is the only blur substitute
+   a transparent window has, so it carries the full load here.
+
+   Still true to §6: a specular sheen, the dual rim on the large surfaces, and a bright
+   hairline edge. */
 
 :root {
   --ease-glass: cubic-bezier(0.32, 0.72, 0, 1);
@@ -25,18 +31,46 @@
   --dot-slack: 16px;
   --pill-visual: 212px;
 
-  /* Clear glass: a thin LIGHT film over whatever is behind, exactly §6's white-glass fills.
-     Not acrylic — acrylic blurs, which nothing else on Windows can, but it frosts the surface
-     into a milky slab, and the target look is the desktop showing through sharp with only a
-     wash of light over it.
+  /* Frosted glass, not clear glass.
 
-     These are low on purpose. The whole read comes from the film plus the luminous inner edge
-     plus the rim, not from opacity. The known consequence, accepted by decision: nothing here
-     mutes a bright backdrop, so this does not hold up over a white window. That case is a v2
-     problem (§6's adaptive contrast), not something to pay for here. */
-  --glass-fill-panel: rgba(255, 255, 255, 0.12);
-  --glass-fill-search: rgba(255, 255, 255, 0.14);
-  --glass-fill-dot: rgba(255, 255, 255, 0.16);
+     The previous fills were a thin white film at 0.12-0.16. That looked right on the one
+     backdrop it was tuned against and fell apart everywhere else: the desktop read straight
+     through it at full clarity, so the panel had no surface of its own, and its colour was
+     whatever happened to be behind it — teal over a teal wallpaper, blue over a blue one.
+
+     These windows are `transparent: true`, so `backdrop-filter` has nothing to blur: the
+     compositor hands us no backdrop, only the desktop showing through where we do not paint.
+     The only lever that actually mutes what is behind is opacity. So the fill is now a dark
+     neutral slab at ~0.95 with a diagonal ramp — dark enough that the backdrop survives as a
+     faint suggestion of movement rather than legible content, neutral enough that it reads
+     the same over black, over blue, and over a bright window. The remaining few percent is
+     what keeps it glass and not a solid card.
+
+     0.95 rather than the 0.85 this was first tuned to, because the case that decides the
+     number is not a busy wallpaper, it is bright text on a dark window. Dark glass mutes
+     light content by however much of it is left showing, so at 0.85 an editor's white text
+     behind the panel was still comfortably readable through the rows. It takes the low
+     nineties before it drops to a ghost.
+
+     Ramped rather than flat because a single flat alpha reads as a plastic sheet; the
+     lighter top-left corner is what sells a pane catching light. */
+  --glass-fill-panel: linear-gradient(
+    148deg,
+    rgba(44, 49, 62, 0.93) 0%,
+    rgba(28, 31, 41, 0.95) 44%,
+    rgba(18, 20, 28, 0.96) 100%
+  );
+  --glass-fill-search: linear-gradient(
+    148deg,
+    rgba(47, 52, 66, 0.94) 0%,
+    rgba(29, 32, 42, 0.95) 52%,
+    rgba(20, 22, 30, 0.96) 100%
+  );
+  /* The dot carries the most opacity of the three. It is 56px of surface sitting on top of
+     whatever the user parked it over, usually body text, and dark glass cannot mute dark
+     content — at the panel's alpha, black text behind the dot stayed legible straight
+     through the mark. */
+  --glass-fill-dot: linear-gradient(148deg, rgba(48, 53, 68, 0.96) 0%, rgba(23, 26, 35, 0.97) 100%);
 
   /* Step 02 of the tutorial, scaled down rather than copied.
      Verbatim it is three white inner shadows at 20% with 12-15px blur and 1-2px spread. That
@@ -59,8 +93,9 @@
   --chip-rim: rgba(255, 255, 255, 0.26);
 
   /* The dual rim (§6). A dark ring OUTSIDE the light one so the edge keeps contrast against
-     a bright desktop. Deliberately not overridden by theme: it costs nothing on a dark one. */
-  --rim-contrast-dot: rgba(4, 6, 12, 0.6);
+     a bright desktop. Deliberately not overridden by theme: it costs nothing on a dark one.
+     The dot no longer uses one — on a 56px circle the ring reads as a grey halo rather than
+     as an edge, which is why only the two large surfaces keep it. */
   --rim-contrast-panel: rgba(4, 6, 12, 0.5);
 
   /* The diagonal light band that makes glass read as thick rather than as a film. Kept faint

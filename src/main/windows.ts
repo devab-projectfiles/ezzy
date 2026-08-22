@@ -100,6 +100,12 @@ export function createWindows(): void {
     transparent: true,
     backgroundColor: '#00000000',
     hasShadow: false,
+    // DWM rounds a frameless window's own rectangle at the system radius, and on a
+    // transparent window that rounded rectangle composites as an opaque dark plate behind
+    // the page. Our radius is 24-28px and the system's is ~8px, so it showed up as a black
+    // near-rectangle sticking out behind the glass. We draw every corner in CSS, so DWM has
+    // nothing useful to add here.
+    roundedCorners: false,
     resizable: false,
     maximizable: false,
     minimizable: false,
@@ -163,6 +169,9 @@ function createGlassWindow(height: number): BrowserWindow {
     // The OS shadow is drawn around the window's square, not around the rounded surface
     // inside it, so it reads as a grey box behind the glass.
     hasShadow: false,
+    // Same reason as the dot: DWM's own rounded rectangle composites as an opaque dark
+    // plate behind a transparent window, at the system radius rather than ours.
+    roundedCorners: false,
     resizable: false,
     maximizable: false,
     minimizable: false,

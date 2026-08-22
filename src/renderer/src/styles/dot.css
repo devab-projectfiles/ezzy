@@ -32,10 +32,11 @@
   border-radius: 28px;
   border: 0.5px solid var(--glass-rim);
   background: var(--glass-fill-dot);
-  box-shadow:
-    inset 0 1px 0 var(--glass-highlight),
-    0 0 0 1px var(--rim-contrast-dot),
-    0 8px 22px rgba(10, 12, 22, 0.44);
+  /* No dark contrast ring and no drop shadow. Both were there to hold the dot's edge
+     against a bright desktop, and both read as a grey halo bolted onto the circle — the
+     frosted fill is dark enough now to define its own edge, so the bright hairline is the
+     only ring left. */
+  box-shadow: inset 0 1px 0 var(--glass-highlight);
   color: var(--mark);
   cursor: pointer;
   transition:
@@ -46,10 +47,7 @@
 
 .pill--expanded {
   border-color: var(--glass-rim-bright);
-  box-shadow:
-    inset 0 1px 0 var(--glass-highlight),
-    0 0 0 1px var(--rim-contrast-dot),
-    0 12px 30px rgba(10, 12, 22, 0.5);
+  box-shadow: inset 0 1px 0 var(--glass-highlight);
 }
 
 .pill--instant,
