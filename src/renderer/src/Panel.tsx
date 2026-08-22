@@ -33,6 +33,12 @@ function Panel(): React.JSX.Element {
   const [openCount, setOpenCount] = useState(0)
   const [highlight, setHighlight] = useState<Highlight | null>(null)
 
+  /** Where the live selection came from. Pointer selection is only true while the pointer is
+   *  actually on the row, so anything that breaks that — scrolling the rows out from under it,
+   *  or the pointer leaving — has to drop it. Keyboard selection is deliberate and persists
+   *  until the keys move it, so none of that may touch it. */
+  const selectionSource = useRef<'pointer' | 'keyboard'>('keyboard')
+
   const surfaceRef = useRef<HTMLDivElement>(null)
   const rowRefs = useRef<Array<HTMLButtonElement | null>>([])
 
@@ -50,6 +56,7 @@ function Panel(): React.JSX.Element {
   useEffect(() => {
     return window.ezzy.onPanelShown((next) => {
       setData(next)
+      selectionSource.current = 'keyboard'
       setSelected(defaultSelection(next))
       setOpenCount((count) => count + 1)
     })
@@ -92,6 +99,7 @@ function Panel(): React.JSX.Element {
           return
         case 'ArrowDown':
           event.preventDefault()
+          selectionSource.current = 'keyboard'
           // From nothing, the first Down lands on the first row rather than the second.
           setSelected((index) =>
             rows.length === 0 ? null : index === null ? 0 : (index + 1) % rows.length
@@ -99,6 +107,7 @@ function Panel(): React.JSX.Element {
           return
         case 'ArrowUp':
           event.preventDefault()
+          selectionSource.current = 'keyboard'
           setSelected((index) =>
             rows.length === 0
               ? null
@@ -151,14 +160,22 @@ function Panel(): React.JSX.Element {
   const appRows = rows.slice(windowCount)
 
   return (
-    <div className="panel" key={openCount}>
+    // The pointer leaving the panel entirely is the other way a hover goes stale, and it is
+    // not covered by the sections below — a fast exit can skip straight out of the window.
+    <div className="panel" key={openCount} onMouseLeave={dropPointerSelection}>
       <div className="panel__surface" ref={surfaceRef}>
         <p className="panel__section">OPEN WINDOWS</p>
         {/* Its own scroller, sized to WINDOWS_VISIBLE rows. `overflow-y: auto` means it only
             scrolls when there are more windows than fit — with four or fewer the wheel does
             nothing here, which is what was asked for. Still native scrolling, so §1's
             two-finger scroll keeps working and there is no custom scroll handling. */}
-        <div className="panel__scroll panel__scroll--windows" onWheel={dropStaleHover}>
+        {/* Leaving a section for the divider or a header is still leaving every row, so the
+            highlight has to go there too, not only at the edge of the panel. */}
+        <div
+          className="panel__scroll panel__scroll--windows"
+          onWheel={dropStaleHover}
+          onMouseLeave={dropPointerSelection}
+        >
           {windowRows.length === 0 ? (
             <p className="panel__empty">No open windows</p>
           ) : (
@@ -167,7 +184,11 @@ function Panel(): React.JSX.Element {
         </div>
         <span className="panel__divider" aria-hidden="true" />
         <p className="panel__section">APPS</p>
-        <div className="panel__scroll panel__scroll--apps" onWheel={dropStaleHover}>
+        <div
+          className="panel__scroll panel__scroll--apps"
+          onWheel={dropStaleHover}
+          onMouseLeave={dropPointerSelection}
+        >
           {appRows.length === 0 ? (
             <p className="panel__empty">No apps indexed</p>
           ) : (
@@ -179,18 +200,24 @@ function Panel(): React.JSX.Element {
     </div>
   )
 
-  /** Hover selection is only true while the pointer is over the row. Scrolling slides the
-   *  rows out from under a pointer that has not moved, so without this the highlight stays on
-   *  a row the pointer has left, reads as a click-focus, and then slides across the list from
-   *  that stale position the next time the mouse moves.
+  /** Give up a selection the pointer is no longer entitled to. A keyboard selection is left
+   *  alone — arrowing to a row and then moving the mouse away must not throw that away, or
+   *  Enter would do nothing. */
+  function dropPointerSelection(): void {
+    if (selectionSource.current === 'pointer') setSelected(null)
+  }
+
+  /** Scrolling slides the rows out from under a pointer that has not moved. Without this the
+   *  highlight stays on a row the pointer has left, reads as a click-focus, and slides across
+   *  the list from that stale position the next time the mouse moves.
    *
-   *  On `wheel` rather than `scroll` deliberately: `scrollIntoView` below scrolls the section
-   *  when the arrow keys walk past its edge, and that fires `scroll` too — clearing on it
-   *  would wipe the selection the arrow keys had just set. A wheel only comes from the user.
+   *  On `wheel` rather than `scroll` deliberately: `scrollIntoView` scrolls the section when
+   *  the arrow keys walk past its edge, and that fires `scroll` too — clearing on it would
+   *  wipe the selection the arrow keys had just set. A wheel only comes from the user.
    *  Sections with nothing to scroll are left alone, since nothing moves under the pointer. */
   function dropStaleHover(event: React.WheelEvent<HTMLDivElement>): void {
     const section = event.currentTarget
-    if (section.scrollHeight > section.clientHeight) setSelected(null)
+    if (section.scrollHeight > section.clientHeight) dropPointerSelection()
   }
 
   /** Rows for one section. `offset` maps a position inside the section onto the flat index
@@ -224,7 +251,10 @@ function Panel(): React.JSX.Element {
               style={{ animationDelay: `${Math.min(index, 10) * 18}ms` }}
               // mousemove, not mouseenter: scrolling the list under a stationary cursor fires
               // enter events and would yank the selection away from the arrow keys.
-              onMouseMove={() => setSelected(index)}
+              onMouseMove={() => {
+                selectionSource.current = 'pointer'
+                setSelected(index)
+              }}
               onClick={() => activate(index)}
             >
               {row.kind === 'window' ? <WindowGlyph /> : <AppGlyph />}
