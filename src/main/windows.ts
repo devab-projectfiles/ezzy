@@ -589,6 +589,9 @@ export function watchBackdrop(): void {
       // wider than that and mostly transparent, so its bounds would put half the band inside
       // our own window.
       rect: () => (dotWindow?.isVisible() ? pillScreenRect() : null),
+      // The pair opens 12px away and the band reaches 10px out, which is three device pixels
+      // of clearance — not a margin worth trusting.
+      exclude: () => (panelWindow?.isVisible() ? [pairScreenRect()] : []),
       apply: (theme) => dotWindow?.webContents.send(IPC.backdropTheme, theme)
     },
     {
@@ -598,6 +601,10 @@ export function watchBackdrop(): void {
       // dark over a white window and flipping half a second later, and it is free: it only
       // widens the one capture the pass already takes.
       rect: pairScreenRect,
+      // The pill, at whatever width it is currently drawn. This is the half that matters: it
+      // expands to 212px on hover, which is exactly when the dot is being dragged, and that
+      // dark glass reaches straight into the panel's band.
+      exclude: () => (dotWindow?.isVisible() ? [pillScreenRect()] : []),
       apply: (theme) => {
         searchWindow?.webContents.send(IPC.backdropTheme, theme)
         panelWindow?.webContents.send(IPC.backdropTheme, theme)

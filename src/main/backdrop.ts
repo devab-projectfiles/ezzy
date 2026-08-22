@@ -44,9 +44,23 @@ const STRIDE = 2
  *  one. A backdrop has to be convincingly light to flip the glass over and convincingly dark
  *  to flip it back; anything in the band between them leaves the surface as it is. Without
  *  that gap a mid-grey backdrop — or a video, or a scrolling page — sits on the threshold and
- *  strobes the whole UI at the poll rate. */
-const TO_LIGHT = 0.66
-const TO_DARK = 0.52
+ *  strobes the whole UI at the poll rate.
+ *
+ *  Set from measured desktops rather than from the midpoint, because the midpoint is the wrong
+ *  question. The stock Windows 11 bloom wallpaper reads 0.79 on the pale sky, ~0.40 on the lit
+ *  blue and ~0.23 in the deep folds — so a bar at 0.66 lifts the glass on the sky and drops it
+ *  again the moment the dot is parked on the wallpaper's own subject, which is most of it.
+ *  A backdrop only has to be non-dark to want the lighter fill; the near-opaque one exists for
+ *  bright content on a DARK window, and that case reads 0.10-0.25, nowhere near 0.40.
+ *
+ *  Checked at the light end too: over a 0.40 backdrop the lighter fill composites to ~52, so
+ *  white text on it is unaffected. Nothing about this trade costs readability — it only decides
+ *  how early the surface stops being a slab. */
+const TO_LIGHT = 0.4
+const TO_DARK = 0.26
+
+/** How far a reading has to move before --verbose prints it again. */
+const LOG_STEP = 0.03
 
 /** One glass surface, from the point of view of the sampler. */
 export interface BackdropTarget {
@@ -59,6 +73,14 @@ export interface BackdropTarget {
    *  instead of correcting itself a poll later. Every target shares one capture, so a target
    *  that is only sometimes on screen costs nothing to keep current. */
   rect(): Electron.Rectangle | null
+  /** Our OTHER surfaces, in DIPs, so this one never reads them as backdrop.
+   *
+   *  The band is 10px and the panel opens 12px from the dot, so on paper they miss — by about
+   *  three device pixels, which is not a margin. And the pill expands to 212px on hover, which
+   *  is exactly when the dot is being dragged: that dark glass lands inside the panel's band
+   *  and the panel goes dark for as long as you hold it. Whatever the geometry, a surface
+   *  reading our own glass feeds the material its own colour and latches it. */
+  exclude?(): Electron.Rectangle[]
   /** Called only when the theme actually changes, never on every pass. */
   apply(theme: BackdropTheme): void
 }
@@ -66,6 +88,8 @@ export interface BackdropTarget {
 interface Watched {
   target: BackdropTarget
   theme: BackdropTheme
+  /** Last reading printed under --verbose, so a static desktop does not print every pass. */
+  logged: number
 }
 
 interface PhysicalRect {
@@ -84,7 +108,7 @@ let timer: ReturnType<typeof setInterval> | null = null
 const DEFAULT_THEME: BackdropTheme = 'dark'
 
 export function watchBackdrops(targets: BackdropTarget[]): void {
-  watched = targets.map((target) => ({ target, theme: DEFAULT_THEME }))
+  watched = targets.map((target) => ({ target, theme: DEFAULT_THEME, logged: -1 }))
   timer = setInterval(pass, POLL_MS)
   // Once immediately, so a window that starts up over a white desktop is right within a frame
   // or two rather than at the end of the first interval.
@@ -108,7 +132,7 @@ export function backdropTheme(name: string): BackdropTheme {
  *  blit costs the same as a small one. */
 function pass(): void {
   const startedAt = performance.now()
-  const active: { entry: Watched; outer: PhysicalRect; inner: PhysicalRect }[] = []
+  const active: { entry: Watched; outer: PhysicalRect; skip: PhysicalRect[] }[] = []
   for (const entry of watched) {
     const rect = entry.target.rect()
     if (!rect) continue
@@ -117,7 +141,9 @@ function pass(): void {
     // A surface hard against a display edge has its band clipped on that side; with no band
     // left at all there is nothing to read.
     if (outer.width <= inner.width && outer.height <= inner.height) continue
-    active.push({ entry, outer, inner })
+    // The surface itself first, then anything else of ours that may be sitting in its band.
+    const skip = [inner, ...(entry.target.exclude?.() ?? []).map(toPhysical)]
+    active.push({ entry, outer, skip })
   }
   if (active.length === 0) return
 
@@ -125,9 +151,16 @@ function pass(): void {
   const capture = captureScreenRegion(region.x, region.y, region.width, region.height)
   if (!capture) return
 
-  for (const { entry, outer, inner } of active) {
-    const luma = bandMedian(capture, region, outer, inner)
+  for (const { entry, outer, skip } of active) {
+    const luma = bandMedian(capture, region, outer, skip)
     if (luma === null) continue
+    // The thresholds are tuned against real desktops, so the reading itself has to be
+    // observable. Only when it has actually moved — a static desktop would otherwise print
+    // the same number every 700ms and bury everything else in the log.
+    if (Math.abs(luma - entry.logged) >= LOG_STEP) {
+      entry.logged = luma
+      log(`backdrop ${entry.target.name}: luma ${luma.toFixed(2)} (${entry.theme})`)
+    }
     const next: BackdropTheme = luma >= TO_LIGHT ? 'light' : luma <= TO_DARK ? 'dark' : entry.theme
     if (next === entry.theme) continue
     entry.theme = next
@@ -179,7 +212,8 @@ function union(rects: PhysicalRect[]): PhysicalRect {
 /** Lightness buckets. 64 is finer than the thresholds need and costs the same as 8. */
 const BUCKETS = 64
 
-/** The median lightness of `outer` minus `inner`, or null if the band came out empty.
+/** The median lightness of `outer`, ignoring every rectangle in `skip`, or null if that left
+ *  nothing to read.
  *
  *  Median rather than a mean. A mean is dragged around by whatever is most extreme in the
  *  band — a black taskbar along one edge pulls a white page down toward the threshold — where
@@ -187,13 +221,13 @@ const BUCKETS = 64
  *  is like. Taken off a histogram rather than a sort because the band can be a hundred
  *  thousand pixels and none of them need to be kept.
  *
- *  `inner` is skipped because on a visible surface it is our own glass, and feeding the
- *  material its own colour would latch it in whichever theme it happened to start in. */
+ *  `skip` is our own windows: the surface being measured, plus any other of ours standing in
+ *  its band. Reading those feeds the material its own colour and latches it. */
 function bandMedian(
   capture: { width: number; bits: Buffer },
   region: PhysicalRect,
   outer: PhysicalRect,
-  inner: PhysicalRect
+  skip: PhysicalRect[]
 ): number | null {
   const histogram = new Uint32Array(BUCKETS)
   let counted = 0
@@ -202,12 +236,12 @@ function bandMedian(
   const startX = outer.x - region.x
   for (let y = startY; y < startY + outer.height; y += STRIDE) {
     const screenY = y + region.y
-    const insideRows = screenY >= inner.y && screenY < inner.y + inner.height
+    // Which of the skipped rectangles this row crosses at all, so the inner loop tests as few
+    // of them per pixel as possible.
+    const crossing = skip.filter((rect) => screenY >= rect.y && screenY < rect.y + rect.height)
     for (let x = startX; x < startX + outer.width; x += STRIDE) {
-      if (insideRows) {
-        const screenX = x + region.x
-        if (screenX >= inner.x && screenX < inner.x + inner.width) continue
-      }
+      const screenX = x + region.x
+      if (crossing.some((rect) => screenX >= rect.x && screenX < rect.x + rect.width)) continue
       const offset = (y * capture.width + x) * 4
       // BGRA. Weighted as stored rather than linearised: linearising is correct for a contrast
       // ratio and wrong here, because it puts mid-grey at 0.22 and every threshold above would

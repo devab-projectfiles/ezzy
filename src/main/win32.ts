@@ -300,7 +300,15 @@ export interface ScreenCapture {
 
 /** The one piece of state in this file, and it is resource management rather than policy: a
  *  DC and a bitmap live longer than one call so that a poll running every second does not
- *  create and destroy two GDI objects each time. Grown, never shrunk. */
+ *  create and destroy two GDI objects each time.
+ *
+ *  Kept at EXACTLY the requested size, and rebuilt whenever either dimension changes rather
+ *  than only when it is too small. Reusing an oversized bitmap looks like an obvious saving
+ *  and is a silent corruption: BitBlt fills its top-left corner, but GetDIBits counts scan
+ *  lines from the BOTTOM of the bitmap whichever way up the destination buffer is, so asking
+ *  for `height` lines of a taller bitmap returns the rows *below* the capture — never written,
+ *  therefore black. It reads correctly exactly once, on the pass that allocates it, and goes
+ *  dark on every pass after the region shrinks. */
 let scratch: {
   dc: number
   bitmap: number
@@ -333,11 +341,11 @@ export function captureScreenRegion(
   try {
     if (!ensureScratch(screenDc, width, height) || scratch === null) return null
     if (!fn.BitBlt(scratch.dc, 0, 0, width, height, screenDc, x, y, SRCCOPY)) return null
-    // Negative biHeight asks for a top-down bitmap; the default is bottom-up, which would put
-    // row 0 of the buffer at the bottom of the region.
+    // Negative biHeight asks for a top-down buffer; the default is bottom-up, which would put
+    // row 0 at the bottom of the region.
     const info = {
       biSize: 40,
-      biWidth: scratch.width,
+      biWidth: width,
       biHeight: -height,
       biPlanes: 1,
       biBitCount: 32,
@@ -352,16 +360,14 @@ export function captureScreenRegion(
       fn.GetDIBits(scratch.dc, scratch.bitmap, 0, height, scratchBits, info, DIB_RGB_COLORS) === 0
     )
       return null
-    // Rows are the scratch bitmap's width, not the requested one — the bitmap is only ever
-    // grown, so a smaller request leaves the rest of each row holding the previous capture.
-    return { width: scratch.width, height, bits: scratchBits }
+    return { width, height, bits: scratchBits }
   } finally {
     fn.ReleaseDC(0, screenDc)
   }
 }
 
 function ensureScratch(screenDc: number, width: number, height: number): boolean {
-  if (scratch && scratch.width >= width && scratch.height >= height) return true
+  if (scratch && scratch.width === width && scratch.height === height) return true
   releaseScratch()
   const dc = fn.CreateCompatibleDC(screenDc)
   if (!dc) return false
