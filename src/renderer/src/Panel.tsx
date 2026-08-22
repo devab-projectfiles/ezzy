@@ -2,14 +2,6 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react
 import { PANEL_HEADROOM } from '../../shared/types'
 import type { EzzyApp, EzzyWindow, PanelData } from '../../shared/types'
 
-/** Geometry for the sliding selection highlight. §6: slide it between rows, never
- *  cross-fade — measured from the real rows rather than assumed, so a section header or a
- *  divider can never desynchronise it from what is drawn. */
-interface Highlight {
-  top: number
-  height: number
-}
-
 /** One selectable thing, flattened across both sections so the arrow keys walk a single
  *  list. The section headers are drawn from this, rather than the other way round. */
 type Row =
@@ -31,7 +23,6 @@ function Panel(): React.JSX.Element {
   /** Bumped on every open. Used as a key so the entrance animations replay — the panel is
    *  hidden and shown, never destroyed, so its DOM would otherwise persist between opens. */
   const [openCount, setOpenCount] = useState(0)
-  const [highlight, setHighlight] = useState<Highlight | null>(null)
 
   /** Where the live selection came from. Pointer selection is only true while the pointer is
    *  actually on the row, so anything that breaks that — scrolling the rows out from under it,
@@ -142,17 +133,11 @@ function Panel(): React.JSX.Element {
     if (surface) window.ezzy.setPanelHeight(surface.scrollHeight + PANEL_HEADROOM)
   }, [data])
 
-  // Measure after layout, not after paint, so the highlight never renders a frame behind.
+  // Keep the selected row in view. Nothing is measured any more: the selection is painted by
+  // the row itself, so there is no overlay whose geometry could drift from what is drawn.
   useLayoutEffect(() => {
     const row = selected === null ? null : rowRefs.current[selected]
-    if (!row) {
-      setHighlight(null)
-      return
-    }
-    // offsetTop is relative to the section scroller, which is the row's offsetParent, so the
-    // same number works for whichever of the two the selection is currently in.
-    setHighlight({ top: row.offsetTop, height: row.offsetHeight })
-    row.scrollIntoView({ block: 'nearest' })
+    row?.scrollIntoView({ block: 'nearest' })
   }, [selected, data, openCount])
 
   const windowCount = data.windows.length
@@ -223,20 +208,8 @@ function Panel(): React.JSX.Element {
   /** Rows for one section. `offset` maps a position inside the section onto the flat index
    *  the arrow keys and the selection use, so the two sections stay one navigable list. */
   function renderRows(sectionRows: Row[], offset: number): React.JSX.Element {
-    const selectedHere =
-      selected !== null && selected >= offset && selected < offset + sectionRows.length
     return (
       <>
-        {/* One highlight per section, mounted only while the selection is in it. Mounting is
-            instant, so crossing between sections never cross-fades (§6); inside a section the
-            same element survives and its transform transition slides it between rows. */}
-        {selectedHere && highlight && (
-          <span
-            className="panel__highlight"
-            aria-hidden="true"
-            style={{ top: highlight.top, height: highlight.height }}
-          />
-        )}
         {sectionRows.map((row, position) => {
           const index = offset + position
           return (
@@ -247,6 +220,12 @@ function Panel(): React.JSX.Element {
                 rowRefs.current[index] = node
               }}
               className={`panel__row${index === selected ? ' is-selected' : ''}`}
+              // Focus is not the selection model here — the arrow keys drive `selected`, and
+              // the row paints itself from that. A row that also took DOM focus would carry
+              // the platform's own focus ring, a second unfilled outline sitting on whatever
+              // was last clicked, independent of where the selection actually is.
+              tabIndex={-1}
+              onMouseDown={(event) => event.preventDefault()}
               // 18ms stagger (§6). Capped so a long list does not take a second to finish.
               style={{ animationDelay: `${Math.min(index, 10) * 18}ms` }}
               // mousemove, not mouseenter: scrolling the list under a stationary cursor fires

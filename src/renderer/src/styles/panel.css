@@ -157,31 +157,24 @@
    positioned from the measured row, so it tracks whatever the list actually laid out. */
 /* Inside a section scroller now, not the surface, so it scrolls with its rows and is clipped
    by the section instead of floating over a header. */
-/* Slid with `top`, not `transform`, and that is not a style preference.
+/* The selection is painted by the selected row itself. There is no overlay element.
 
-   A transform transition is composited: Chromium promotes the element to its own layer for
-   the duration and hands the animation to the compositor. On a `transparent: true` window
-   that promotion is where stale tiles come from — the layer is created and destroyed around
-   each transition, and an intermittent ghost of the highlight would be left behind at the
-   position it started from, so the list appeared to have two selected rows. The DOM only ever
-   held one of them; it was never a React bug, which is why counting the elements found
-   nothing.
+   §6 asks for one element that SLIDES between rows, and that is what this was. It produced a
+   second, unfilled outline on an unrelated row, intermittently, and three attempts to explain
+   it were wrong: it was not two React elements (instrumenting the DOM across a stress run and
+   a live reproduction never found more than one), it was not stale hot-reload state (it
+   survived a clean restart), and moving the animation off `transform` did not stop it.
 
-   `top` is a layout property, so it cannot be handed to the compositor: every frame is a real
-   repaint of the region and there is no separate layer to go stale. On one 44px rectangle
-   moving for 120ms that costs nothing measurable, and §6's slide is unchanged. */
-.panel__highlight {
-  position: absolute;
-  left: 0;
-  right: 0;
-  top: 0;
-  border-radius: 14px;
-  pointer-events: none;
+   Rather than keep guessing at a mechanism, the overlay is gone. A row either carries
+   `is-selected` or it does not, and exactly one index can match, so a second mark is no longer
+   something that can be drawn — no absolutely-positioned element, no measured geometry that
+   can drift from the rows, no animated layer.
+
+   The cost is §6's slide, and it is a real loss. Worth restoring only once this is confirmed
+   quiet, and only in a form that cannot reintroduce a free-floating element. */
+.panel__row.is-selected {
   background: var(--row-selected);
   box-shadow: inset 0 0 0 1px var(--row-selected-rim);
-  transition:
-    top 120ms var(--ease-glass),
-    height 120ms var(--ease-glass);
 }
 
 .panel__row {
@@ -199,6 +192,8 @@
   font: inherit;
   text-align: left;
   cursor: default;
+  /* Paired with tabIndex={-1} and the mousedown preventDefault in Panel.tsx. */
+  outline: none;
   animation: row-in 220ms var(--ease-glass) both;
 }
 
