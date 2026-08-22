@@ -2,6 +2,7 @@ import { ipcMain } from 'electron'
 import { IPC } from '../shared/types'
 import { getConfig } from './config'
 import {
+  backdropThemeFor,
   beginDotDrag,
   currentPillSide,
   endDotDrag,
@@ -28,6 +29,10 @@ export function registerIpc(): void {
   ipcMain.on(IPC.setPanelHeight, (_event, height: number) => setPanelHeight(height))
   // The panel shows the hotkey actually in force, which is not always the configured one.
   ipcMain.handle(IPC.getHotkey, () => activeHotkey() ?? getConfig().hotkey)
+
+  // §6 adaptive contrast: the push only fires on a change, so a window that loaded over a
+  // white desktop needs to be told once what it is already sitting on.
+  ipcMain.handle(IPC.getBackdropTheme, (event) => backdropThemeFor(event.sender))
 
   ipcMain.handle(IPC.panelData, () => panelData())
   ipcMain.handle(IPC.focusWindow, (_event, id: number) => {

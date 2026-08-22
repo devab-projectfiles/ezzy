@@ -79,6 +79,15 @@ export const PANEL_HEADROOM = 2
  *  and opens rightward instead (§6). */
 export type PillDirection = 'left' | 'right'
 
+/** Which way the glass is painted, decided from the desktop each surface is sitting on
+ *  rather than from the OS theme (PLAN.md §6, "Adaptive contrast").
+ *
+ *  `dark` is the near-opaque dark slab every surface used unconditionally before this, and
+ *  it is still what runs over a dark or mid backdrop. `light` is its inverse — a bright
+ *  neutral fill, a dark rim and dark text — for the case that made the dark slab look like a
+ *  hole punched in the screen: a white window or a white desktop underneath. */
+export type BackdropTheme = 'light' | 'dark'
+
 /** One switchable window, as the panel renders it (PLAN.md §6, row spec).
  *  `id` is the HWND. Window handles carry only 32 significant bits, so they survive the trip
  *  through IPC as ordinary numbers. */
@@ -119,7 +128,9 @@ export const IPC = {
   focusWindow: 'windows:focus',
   panelShown: 'panel:shown',
   launchApp: 'apps:launch',
-  setPanelHeight: 'panel:set-height'
+  setPanelHeight: 'panel:set-height',
+  backdropTheme: 'backdrop:theme',
+  getBackdropTheme: 'backdrop:get-theme'
 } as const
 
 /** The surface the preload exposes on `window.ezzy`. Named functions only.
@@ -158,4 +169,11 @@ export interface EzzyApi {
   /** The panel hugs its content (§6 shows it sized to the list, not a fixed slab), so the
    *  renderer measures the rendered rows and the main process resizes the window to match. */
   setPanelHeight(height: number): void
+  /** The theme this window's surface should paint itself in, as of right now. Invoked once
+   *  at startup: the push below only fires on a change, so a window that loads over a white
+   *  desktop would otherwise sit dark until the backdrop happened to move. */
+  getBackdropTheme(): Promise<BackdropTheme>
+  /** Fires when the desktop under this window crosses the luminance threshold. Returns an
+   *  unsubscribe function. */
+  onBackdropTheme(callback: (theme: BackdropTheme) => void): () => void
 }

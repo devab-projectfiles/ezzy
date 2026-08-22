@@ -275,3 +275,9 @@
   color: var(--text-dim);
   text-shadow: var(--text-shadow);
 }
+
+/* The 220ms cross-fade §6 asks for on a backdrop swap. Only the fill changes — every other
+   token is the same on both backdrops — so this is the whole of it. */
+.panel {
+  transition: background var(--backdrop-fade) var(--ease-glass);
+}

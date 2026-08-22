@@ -10,11 +10,13 @@
 
    So the fill is DARK glass instead. Dark over white resolves toward dark, which is what
    actually mutes a busy backdrop: white desktop text behind the panel lands around mid-grey,
-   and our white text sits cleanly on top of it. It also means the surface no longer vanishes
-   on a light desktop — which is the same conclusion §6 reaches when it describes the v2
-   adaptive-contrast mode as swapping to `rgba(28,32,44,0.42)` dark glass above a luminance
-   threshold. Using dark glass unconditionally gets that benefit on every background without
-   sampling a single pixel, so v1 does not need adaptive contrast at all.
+   and our white text sits cleanly on top of it.
+
+   That is the recipe on every backdrop — white text on dark glass, everywhere. The one thing
+   it gets wrong is over a WHITE window, where an alpha chosen to mute bright content has
+   nothing bright left to mute and just reads as a hole punched in the screen. The block at the
+   bottom of this file gives those few points of alpha back for that case; main/backdrop.ts
+   decides when it applies by sampling the desktop each surface is sitting on.
 
    And the fill is not low-opacity. §6's 0.13-0.18 assumes acrylic is blurring the desktop
    underneath; without that blur the same number just leaves the desktop legible through the
@@ -117,6 +119,10 @@
   /* The diagonal light band that makes glass read as thick rather than as a film. Kept faint
      on purpose — it lands in the same corners as the inner ring, so anything stronger adds
      straight on top of it. */
+  /* How long a backdrop swap takes to cross-fade (§6). Long enough not to snap, short enough
+     that walking the dot across a window edge does not trail behind the cursor. */
+  --backdrop-fade: 220ms;
+
   --glass-sheen: linear-gradient(
     122deg,
     rgba(255, 255, 255, 0.09) 0%,
@@ -149,13 +155,40 @@
   --divider: rgba(255, 255, 255, 0.12);
 }
 
-/* No light-mode inversion.
- *
- * §6's light-mode table exists because acrylic follows the Windows theme, so on a light theme
- * the surface turns light and white content on it becomes unreadable. main/index.ts pins
- * `nativeTheme.themeSource = 'dark'` instead, which is what stops the material rendering as
- * the milky white slab, so the surface no longer changes with the OS theme and there is
- * nothing left to invert. This block is deliberately absent, not forgotten. */
+/* Over a light backdrop — §6 adaptive contrast, applied by main/backdrop.ts.
+
+   NOT a light theme, and not a second palette. Every colour here is the one directly above it,
+   to the digit. The only thing that changes is the alpha.
+
+   The alphas above are set by the worst case, which is bright text on a dark window: it takes
+   0.95 before an editor's white text stops reading straight through the panel. A white desktop
+   is the opposite problem — there is nothing bright behind the panel that needs muting, only a
+   page — so the fill can afford to let it through. Composited over white the mid stop moves
+   from 42 to 98, and the page reads as a ghost under the glass instead of stopping dead at its
+   edge. Still dark glass with white text on it — the floor is readability, and at this alpha
+   the 12px subtitle still clears 5.9:1 against white text — but it now sits on a white screen
+   instead of punching a hole in one.
+
+   Same colours, same stops, same positions. That is also what lets the swap cross-fade instead
+   of cutting — Chromium interpolates two gradients only when their stop lists line up. */
+:root[data-backdrop='light'] {
+  --glass-fill-panel: linear-gradient(
+    148deg,
+    rgba(44, 49, 62, 0.68) 0%,
+    rgba(28, 31, 41, 0.7) 44%,
+    rgba(18, 20, 28, 0.72) 100%
+  );
+  --glass-fill-search: linear-gradient(
+    148deg,
+    rgba(47, 52, 66, 0.69) 0%,
+    rgba(29, 32, 42, 0.71) 52%,
+    rgba(20, 22, 30, 0.73) 100%
+  );
+  /* The dot gives up the least of the three, for the reason it holds the most above: it is
+     56px parked on top of whatever the user left it over, and unlike the panel it cannot
+     assume that what is behind it is bright. */
+  --glass-fill-dot: linear-gradient(148deg, rgba(48, 53, 68, 0.76) 0%, rgba(23, 26, 35, 0.78) 100%);
+}
 
 html,
 body {
