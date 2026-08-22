@@ -55,13 +55,18 @@ export const SEARCH_PANEL_GAP = 11
 /** Gap between the dot and the search-bar/panel pair. */
 export const PANEL_GAP = 12
 
-/** The panel hugs its content, so its height is measured in the renderer. These bound it:
- *  never shorter than one row, never taller than the ~8 rows §6 asks for before scrolling. */
+/** The panel is a fixed size: four window rows and two app rows, each section scrolling on
+ *  its own. The renderer still measures it rather than computing it here, so panel.css stays
+ *  the single source of the arithmetic — these two only bound what the renderer may ask for.
+ *
+ *  This is a deliberate departure from §6, which has the panel hug its content behind a
+ *  single scroller. Fixed sections are what keep the APPS header from sliding up the moment a
+ *  window closes, and what lets an empty OPEN WINDOWS say so in place instead of vanishing. */
 export const PANEL_MIN_HEIGHT = 64
-/** Four window rows plus a peek at the fifth, so the list reads as scrollable rather than
- *  as a slab. Everything past that — the rest of the windows, then the APPS section — is
- *  reached by scrolling. */
-export const PANEL_MAX_HEIGHT = 248
+/** A ceiling, not the design height. The laid-out panel is ~357: 20 of surface padding, two
+ *  28px headers, 176 of window rows, 88 of app rows and the 17px divider block. Rounded up so
+ *  a tweak to the type scale or the row count does not silently get clamped. */
+export const PANEL_MAX_HEIGHT = 420
 
 /** The gap panel.css holds between the glass surface and the bottom of its window, and so
  *  the amount the renderer adds to the height it asks for. Chromium snaps a box up to whole

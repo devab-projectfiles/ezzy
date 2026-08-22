@@ -20,6 +20,12 @@
      spare. Panel.tsx adds the same two pixels to the height it asks for, so the content area
      is unchanged and no row gets clipped. */
   height: calc(100% - var(--panel-headroom));
+
+  /* The layout arithmetic, in one place. The window height is measured from the surface, so
+     changing a number here resizes the panel to match with nothing else to update. */
+  --panel-row: 44px;
+  --panel-rows-windows: 4;
+  --panel-rows-apps: 2;
   border-radius: 24px;
   background: var(--glass-fill-panel);
   /* No outer drop shadow. The window is exactly this element's size, so a blurred outer
@@ -63,21 +69,41 @@
   }
 }
 
-/* The scrolling surface. Its scrollHeight is what the window is sized to, so the padding
-   lives here rather than on .panel — otherwise the measurement would miss it. */
+/* The surface itself no longer scrolls — each section does, separately. Its scrollHeight is
+   still what the window is sized to, so the padding lives here rather than on .panel. */
 .panel__surface {
   position: relative;
   height: 100%;
   padding: 10px 8px;
-  overflow-y: auto;
-  overflow-x: hidden;
-  /* §6: two-finger scroll works for free as ordinary scroll events. Don't add custom
-     scroll handling. */
-  scrollbar-width: none;
+  overflow: hidden;
 }
 
-.panel__surface::-webkit-scrollbar {
+/* One section's viewport, a whole number of rows tall so a partial row never peeks over the
+   edge and reads as a rendering fault.
+
+   `auto`, not `scroll`: a section with no overflow does not scroll at all, so spinning the
+   wheel over four windows when four are open does nothing — which is the behaviour asked
+   for, and it comes free from the browser. §1 and §6 rule out CUSTOM scroll handling; two
+   native scrollers are still ordinary scroll events, and two-finger scroll works in each. */
+.panel__scroll {
+  position: relative;
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-width: none;
+  /* Keeps a flick inside its own section instead of handing the leftover to the panel. */
+  overscroll-behavior: contain;
+}
+
+.panel__scroll::-webkit-scrollbar {
   display: none;
+}
+
+.panel__scroll--windows {
+  height: calc(var(--panel-rows-windows) * var(--panel-row));
+}
+
+.panel__scroll--apps {
+  height: calc(var(--panel-rows-apps) * var(--panel-row));
 }
 
 .panel__sheen {
@@ -96,19 +122,31 @@
   background: var(--divider);
 }
 
+/* §6's header, but on a fixed height rather than padding, so the panel's total height is a
+   clean multiple of known parts. 600 rather than the inherited 400: at 11px with 0.08em of
+   tracking a regular weight reads as washed out next to the 14px titles below it. */
 .panel__section {
+  display: flex;
+  align-items: center;
+  height: 28px;
   margin: 0;
-  padding: 6px 14px 8px;
+  padding: 0 14px;
   font-size: 11px;
+  font-weight: 600;
   letter-spacing: 0.08em;
   color: var(--text-faint);
   text-shadow: var(--text-shadow);
 }
 
+/* Fills its section rather than collapsing it, so an empty OPEN WINDOWS keeps its four rows
+   of space and APPS stays exactly where it always is. */
 .panel__empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
   margin: 0;
-  padding: 14px;
-  text-align: center;
+  padding: 0 14px;
   font-size: 13px;
   color: var(--text-faint);
   text-shadow: var(--text-shadow);
@@ -117,10 +155,12 @@
 /* The single detail that separates "native app" from "web page": one element that SLIDES
    between rows, rather than a background that cross-fades on and off each of them. It is
    positioned from the measured row, so it tracks whatever the list actually laid out. */
+/* Inside a section scroller now, not the surface, so it scrolls with its rows and is clipped
+   by the section instead of floating over a header. */
 .panel__highlight {
   position: absolute;
-  left: 8px;
-  right: 8px;
+  left: 0;
+  right: 0;
   top: 0;
   border-radius: 14px;
   pointer-events: none;
@@ -137,7 +177,7 @@
   align-items: center;
   gap: 12px;
   width: 100%;
-  height: 44px;
+  height: var(--panel-row);
   padding: 0 12px;
   border: 0;
   border-radius: 14px;
@@ -185,8 +225,15 @@
   text-shadow: var(--text-shadow);
 }
 
+/* 600 and a hair of negative tracking. At 14px Segoe UI Variable Text sets a little loose for
+   a dense list, and the weight is what separates a title from the subtitle under it without
+   having to make either of them bigger. Semibold rather than medium by preference — it is the
+   name of the thing you are about to switch to, so it should carry the row. */
 .panel__row-title {
   font-size: 14px;
+  font-weight: 600;
+  line-height: 1.3;
+  letter-spacing: -0.006em;
   color: var(--text-dim);
 }
 
@@ -196,6 +243,8 @@
 
 .panel__row-subtitle {
   font-size: 12px;
+  font-weight: 400;
+  line-height: 1.3;
   color: var(--text-faint);
 }
 
@@ -213,6 +262,7 @@
   border-radius: 6px;
   box-shadow: inset 0 0 0 1px var(--chip-rim);
   font-size: 11px;
+  font-weight: 500;
   line-height: 1.35;
   color: var(--text-dim);
   text-shadow: var(--text-shadow);

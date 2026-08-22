@@ -1,4 +1,4 @@
-import { Fragment, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { PANEL_HEADROOM } from '../../shared/types'
 import type { EzzyApp, EzzyWindow, PanelData } from '../../shared/types'
 
@@ -23,7 +23,11 @@ const APPS_SHOWN = 8
 
 function Panel(): React.JSX.Element {
   const [data, setData] = useState<PanelData>(EMPTY)
-  const [selected, setSelected] = useState(0)
+  /** `null` means nothing is selected — the state the list is left in after a scroll moves
+   *  the rows out from under a stationary cursor. Hover selection has to be able to say "not
+   *  on anything" or it goes stale, points at a row the pointer has left, and slides away
+   *  from there on the next mouse move as though the row had been clicked. */
+  const [selected, setSelected] = useState<number | null>(0)
   /** Bumped on every open. Used as a key so the entrance animations replay — the panel is
    *  hidden and shown, never destroyed, so its DOM would otherwise persist between opens. */
   const [openCount, setOpenCount] = useState(0)
@@ -57,6 +61,7 @@ function Panel(): React.JSX.Element {
         // Keep the selection on the row the user was pointing at. A title change or an
         // unrelated app launching must not move it out from under them mid-keystroke.
         setSelected((index) => {
+          if (index === null) return null
           const anchor = toRows(previous)[index]
           const moved = anchor ? toRows(next).findIndex((row) => row.key === anchor.key) : -1
           if (moved !== -1) return moved
@@ -87,15 +92,26 @@ function Panel(): React.JSX.Element {
           return
         case 'ArrowDown':
           event.preventDefault()
-          setSelected((index) => (rows.length === 0 ? 0 : (index + 1) % rows.length))
+          // From nothing, the first Down lands on the first row rather than the second.
+          setSelected((index) =>
+            rows.length === 0 ? null : index === null ? 0 : (index + 1) % rows.length
+          )
           return
         case 'ArrowUp':
           event.preventDefault()
-          setSelected((index) => (rows.length === 0 ? 0 : (index - 1 + rows.length) % rows.length))
+          setSelected((index) =>
+            rows.length === 0
+              ? null
+              : index === null
+                ? rows.length - 1
+                : (index - 1 + rows.length) % rows.length
+          )
           return
         case 'Enter':
           event.preventDefault()
-          activate(selected)
+          // Nothing selected means nothing to activate. Firing the last hovered row here
+          // would switch to something the user can no longer see highlighted.
+          if (selected !== null) activate(selected)
           return
         default:
       }
@@ -104,8 +120,11 @@ function Panel(): React.JSX.Element {
     return () => window.removeEventListener('keydown', onKeyDown)
   }, [rows, selected, activate])
 
-  // §6: the panel hugs its content. Measured after layout so the window resizes in the same
-  // frame the rows appear, rather than snapping a beat later.
+  // The panel is a fixed size now: both sections have a fixed row count, so this measures the
+  // same number every time and the window stops changing height as the list changes. That is
+  // a deliberate move away from §6's "hugs its content" — it is what keeps the APPS section
+  // pinned in place instead of sliding up whenever a window closes. Still measured rather than
+  // hardcoded so the arithmetic stays in the stylesheet and cannot drift from it.
   useLayoutEffect(() => {
     const surface = surfaceRef.current
     // The window is asked for PANEL_HEADROOM more than the content needs, because panel.css
@@ -116,78 +135,120 @@ function Panel(): React.JSX.Element {
 
   // Measure after layout, not after paint, so the highlight never renders a frame behind.
   useLayoutEffect(() => {
-    const row = rowRefs.current[selected]
+    const row = selected === null ? null : rowRefs.current[selected]
     if (!row) {
       setHighlight(null)
       return
     }
+    // offsetTop is relative to the section scroller, which is the row's offsetParent, so the
+    // same number works for whichever of the two the selection is currently in.
     setHighlight({ top: row.offsetTop, height: row.offsetHeight })
     row.scrollIntoView({ block: 'nearest' })
   }, [selected, data, openCount])
 
   const windowCount = data.windows.length
+  const windowRows = rows.slice(0, windowCount)
+  const appRows = rows.slice(windowCount)
 
   return (
     <div className="panel" key={openCount}>
       <div className="panel__surface" ref={surfaceRef}>
-        {rows.length === 0 ? (
-          <p className="panel__empty">No open windows</p>
-        ) : (
-          <>
-            {highlight && (
-              <span
-                className="panel__highlight"
-                aria-hidden="true"
-                style={{ transform: `translateY(${highlight.top}px)`, height: highlight.height }}
-              />
-            )}
-            {windowCount > 0 && <p className="panel__section">OPEN WINDOWS</p>}
-            {rows.map((row, index) => (
-              <Fragment key={row.key}>
-                {/* §6's divider, drawn where the sections meet rather than inside either. */}
-                {index === windowCount && windowCount > 0 && (
-                  <span className="panel__divider" aria-hidden="true" />
-                )}
-                {index === windowCount && <p className="panel__section">APPS</p>}
-                <button
-                  type="button"
-                  ref={(node) => {
-                    rowRefs.current[index] = node
-                  }}
-                  className={`panel__row${index === selected ? ' is-selected' : ''}`}
-                  // 18ms stagger (§6). Capped so a long list does not take a second to
-                  // finish arriving.
-                  style={{ animationDelay: `${Math.min(index, 10) * 18}ms` }}
-                  // mousemove, not mouseenter: scrolling the list under a stationary cursor
-                  // fires enter events and would yank the selection away from the arrow keys.
-                  onMouseMove={() => setSelected(index)}
-                  onClick={() => activate(index)}
-                >
-                  {row.kind === 'window' ? <WindowGlyph /> : <AppGlyph />}
-                  <span className="panel__text">
-                    <span className="panel__row-title">
-                      {row.kind === 'window' ? row.window.title : row.app.name}
-                    </span>
-                    <span className="panel__row-subtitle">
-                      {row.kind === 'window' ? row.window.app : 'Not running'}
-                    </span>
-                  </span>
-                  <span className="panel__hint">
-                    {index === selected ? (
-                      <span className="panel__hint-chip">↵</span>
-                    ) : (
-                      row.kind === 'app' && <span className="panel__hint-chip">launch</span>
-                    )}
-                  </span>
-                </button>
-              </Fragment>
-            ))}
-          </>
-        )}
+        <p className="panel__section">OPEN WINDOWS</p>
+        {/* Its own scroller, sized to WINDOWS_VISIBLE rows. `overflow-y: auto` means it only
+            scrolls when there are more windows than fit — with four or fewer the wheel does
+            nothing here, which is what was asked for. Still native scrolling, so §1's
+            two-finger scroll keeps working and there is no custom scroll handling. */}
+        <div className="panel__scroll panel__scroll--windows" onWheel={dropStaleHover}>
+          {windowRows.length === 0 ? (
+            <p className="panel__empty">No open windows</p>
+          ) : (
+            renderRows(windowRows, 0)
+          )}
+        </div>
+        <span className="panel__divider" aria-hidden="true" />
+        <p className="panel__section">APPS</p>
+        <div className="panel__scroll panel__scroll--apps" onWheel={dropStaleHover}>
+          {appRows.length === 0 ? (
+            <p className="panel__empty">No apps indexed</p>
+          ) : (
+            renderRows(appRows, windowCount)
+          )}
+        </div>
       </div>
       <span className="panel__sheen" aria-hidden="true" />
     </div>
   )
+
+  /** Hover selection is only true while the pointer is over the row. Scrolling slides the
+   *  rows out from under a pointer that has not moved, so without this the highlight stays on
+   *  a row the pointer has left, reads as a click-focus, and then slides across the list from
+   *  that stale position the next time the mouse moves.
+   *
+   *  On `wheel` rather than `scroll` deliberately: `scrollIntoView` below scrolls the section
+   *  when the arrow keys walk past its edge, and that fires `scroll` too — clearing on it
+   *  would wipe the selection the arrow keys had just set. A wheel only comes from the user.
+   *  Sections with nothing to scroll are left alone, since nothing moves under the pointer. */
+  function dropStaleHover(event: React.WheelEvent<HTMLDivElement>): void {
+    const section = event.currentTarget
+    if (section.scrollHeight > section.clientHeight) setSelected(null)
+  }
+
+  /** Rows for one section. `offset` maps a position inside the section onto the flat index
+   *  the arrow keys and the selection use, so the two sections stay one navigable list. */
+  function renderRows(sectionRows: Row[], offset: number): React.JSX.Element {
+    const selectedHere =
+      selected !== null && selected >= offset && selected < offset + sectionRows.length
+    return (
+      <>
+        {/* One highlight per section, mounted only while the selection is in it. Mounting is
+            instant, so crossing between sections never cross-fades (§6); inside a section the
+            same element survives and its transform transition slides it between rows. */}
+        {selectedHere && highlight && (
+          <span
+            className="panel__highlight"
+            aria-hidden="true"
+            style={{ transform: `translateY(${highlight.top}px)`, height: highlight.height }}
+          />
+        )}
+        {sectionRows.map((row, position) => {
+          const index = offset + position
+          return (
+            <button
+              type="button"
+              key={row.key}
+              ref={(node) => {
+                rowRefs.current[index] = node
+              }}
+              className={`panel__row${index === selected ? ' is-selected' : ''}`}
+              // 18ms stagger (§6). Capped so a long list does not take a second to finish.
+              style={{ animationDelay: `${Math.min(index, 10) * 18}ms` }}
+              // mousemove, not mouseenter: scrolling the list under a stationary cursor fires
+              // enter events and would yank the selection away from the arrow keys.
+              onMouseMove={() => setSelected(index)}
+              onClick={() => activate(index)}
+            >
+              {row.kind === 'window' ? <WindowGlyph /> : <AppGlyph />}
+              <span className="panel__text">
+                <span className="panel__row-title">
+                  {row.kind === 'window' ? row.window.title : row.app.name}
+                </span>
+                <span className="panel__row-subtitle">
+                  {row.kind === 'window' ? row.window.app : 'Not running'}
+                </span>
+              </span>
+              <span className="panel__hint">
+                {index === selected ? (
+                  <span className="panel__hint-chip">↵</span>
+                ) : (
+                  row.kind === 'app' && <span className="panel__hint-chip">launch</span>
+                )}
+              </span>
+            </button>
+          )
+        })}
+      </>
+    )
+  }
 }
 
 /** Windows first in MRU order, then the apps that are not running (§6). */
