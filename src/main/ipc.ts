@@ -7,12 +7,14 @@ import {
   endDotDrag,
   hidePanel,
   moveDotDrag,
+  publishPanelData,
   sendToPanel,
   setPanelHeight,
   setPillWidth
 } from './windows'
 import { activeHotkey } from './hotkey'
 import { focusWindow } from './focus'
+import { dropIfGone } from './window-tracker'
 import { panelData, setQuery } from './panel-data'
 import { launchApp, openDirect } from './launcher'
 
@@ -38,6 +40,10 @@ export function registerIpc(): void {
     // reason.
     const focused = focusWindow(id)
     if (focused) hidePanel()
+    // A row whose window died since the panel opened would otherwise stay on screen doing
+    // nothing every time it is clicked. Dropping it re-publishes the list, and the app it
+    // belonged to reappears under APPS where it can actually be launched.
+    else if (dropIfGone(id)) publishPanelData(panelData())
     return focused
   })
   ipcMain.handle(IPC.launchApp, async (_event, id: string) => {

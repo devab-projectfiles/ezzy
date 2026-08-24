@@ -25,6 +25,7 @@ import {
   OBJID_WINDOW,
   WS_EX_NOACTIVATE,
   WS_EX_TOOLWINDOW,
+  WS_EX_TRANSPARENT,
   WinEventHook,
   enumerateTopLevelWindows,
   findHostedChildProcessId,
@@ -216,6 +217,15 @@ function isSwitchable(hwnd: Hwnd): boolean {
   const style = getExStyle(hwnd)
   if (style & WS_EX_TOOLWINDOW) return false
   if (style & WS_EX_NOACTIVATE) return false
+  // Click-through. A window that is skipped in hit-testing is not something anyone switches
+  // to — it is furniture drawn over the desktop, and Ezzy's own dot is built exactly this
+  // way. Cluely's assistant overlay is the case that made this necessary: a visible, titled,
+  // full-screen WS_EX_TRANSPARENT window that lives as long as its process does. It passed
+  // every other test here, so "Cluely" sat in the list whenever the app was running — even
+  // after it had been closed to tray — SetForegroundWindow had nothing to focus when the row
+  // was clicked, and the app was excluded from the APPS section for looking like it was
+  // already switchable.
+  if (style & WS_EX_TRANSPARENT) return false
 
   if (getWindowTitle(hwnd) === '') return false
 
@@ -322,6 +332,17 @@ export function listWindows(): EzzyWindow[] {
   return windows
 }
 
+/** Drop a window that has ceased to exist. Called when focusing one fails, so a handle that
+ *  died between the panel opening and the row being clicked cannot sit there refusing to do
+ *  anything. Deliberately only for handles that are truly gone: focus also fails for windows
+ *  that are merely elevated, and those belong in the list. */
+export function dropIfGone(hwnd: Hwnd): boolean {
+  if (isWindow(hwnd)) return false
+  forget(hwnd)
+  log(`dropped a window that no longer exists: ${hwnd}`)
+  return true
+}
+
 export function onWindowsChanged(listener: (windows: EzzyWindow[]) => void): () => void {
   listeners.push(listener)
   return () => {
@@ -334,7 +355,9 @@ function notify(): void {
   notifyTimer = setTimeout(() => {
     notifyTimer = null
     const windows = listWindows()
-    log(`window list: ${windows.length} windows`)
+    // Titles, not just a count: a row that should not be in the list is invisible in a
+    // count, and that is exactly the bug the WS_EX_TRANSPARENT filter above was chasing.
+    log(`window list: ${windows.length} windows [${windows.map((w) => w.title).join(' | ')}]`)
     for (const listener of listeners) listener(windows)
   }, NOTIFY_DEBOUNCE_MS)
 }

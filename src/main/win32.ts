@@ -22,6 +22,9 @@ export type Hwnd = number
 export const GWL_EXSTYLE = -20
 export const WS_EX_TOOLWINDOW = 0x0000_0080
 export const WS_EX_NOACTIVATE = 0x0800_0000
+/** Click-through: the window is skipped entirely in hit-testing, so no mouse event can ever
+ *  land on it. Full-screen assistant overlays are built this way. */
+export const WS_EX_TRANSPARENT = 0x0000_0020
 
 /** GetAncestor flags. */
 export const GA_ROOTOWNER = 3
