@@ -315,19 +315,48 @@ function seedFromSweep(): void {
   }
 }
 
-/** The cached list, MRU-ordered. Reading this is what the hotkey path does — no OS calls,
- *  and the icon lookup is a Map hit against what has already been read. */
+/** The cached list, MRU-ordered, verified.
+ *
+ *  Every entry is re-tested against `isSwitchable` on the way out, and that is deliberate
+ *  even though the events above already test it on the way in. A window can stop qualifying
+ *  with no event to announce it:
+ *
+ *   * Ex-styles change silently. Cluely creates its assistant overlay as an ordinary window
+ *     and only then calls setIgnoreMouseEvents, which adds WS_EX_TRANSPARENT afterwards.
+ *     Ezzy's CREATE handler had already cached it in the instant before that, no WinEvent
+ *     fires for a style change, and the overlay's title never changes — so `reconsider` was
+ *     never called again and a click-through window sat in the list for as long as Cluely
+ *     ran. Measured: focusing that row succeeded, in 15ms, and did nothing a user could see.
+ *   * A window belonging to a process that was terminated rather than closed may never
+ *     produce EVENT_OBJECT_DESTROY at all.
+ *
+ *  There is no set of subscriptions that closes both. Verifying at read time closes all of
+ *  them at once, and it is not the EnumWindows sweep §5 forbids — it walks the handles
+ *  already cached, a dozen or two, not the desktop. Measured cost is logged below. */
 export function listWindows(): EzzyWindow[] {
+  const startedAt = performance.now()
   const windows: EzzyWindow[] = []
-  for (const id of mru) {
+  let dropped = 0
+  for (const id of [...mru]) {
     const window = cache.get(id)
     if (!window) continue
+    if (!isSwitchable(id)) {
+      // Silently: the caller is about to render the corrected list, so announcing it here
+      // would only bounce another publish back through this same function.
+      cache.delete(id)
+      mru = mru.filter((entry) => entry !== id)
+      dropped++
+      continue
+    }
     const icon = cachedIcon(window.exePath)
     windows.push(
       icon === undefined
         ? { id: window.id, title: window.title, app: window.app }
         : { id: window.id, title: window.title, app: window.app, icon }
     )
+  }
+  if (dropped > 0) {
+    since(`window list: dropped ${dropped} that no longer qualify`, startedAt)
   }
   return windows
 }
