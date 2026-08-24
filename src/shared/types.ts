@@ -88,13 +88,32 @@ export interface EzzyWindow {
   title: string
   /** The owning application, shown as the row's subtitle. Empty when it cannot be read. */
   app: string
+  /** The owning executable's icon as a PNG data URL. Absent until it has been read off
+   *  disk, and absent for good if the shell had none to give — the row falls back to the
+   *  outline glyph either way, so this is never on the path to a usable panel. */
+  icon?: string
 }
 
 /** An installed application that is not currently running, from the Start Menu index. */
 export interface EzzyApp {
-  /** Stable identity for React keys and launch requests: the shortcut's full path. */
+  /** Stable identity for React keys and launch requests. Opaque on purpose: it is the only
+   *  thing the renderer sends back to ask for a launch, and the main process resolves it
+   *  against the index rather than treating it as a path to execute. */
   id: string
   name: string
+  /** PNG data URL, as EzzyWindow.icon. Start Apps entries have no file to read one from. */
+  icon?: string
+}
+
+/** Something the query names directly rather than something the index found: a URL or a
+ *  path that exists on disk. Offered as its own row above the two sections (§8 chunk C,
+ *  "shell.openPath / shell.openExternal fallback for paths and URLs"). */
+export interface DirectTarget {
+  kind: 'url' | 'path'
+  /** What the row shows as its title — the query as the user typed it. */
+  label: string
+  /** What the row shows as its subtitle: "Open link" / the resolved path. */
+  detail: string
 }
 
 /** Everything the panel renders. Windows and apps travel together so the two sections can
@@ -102,7 +121,25 @@ export interface EzzyApp {
 export interface PanelData {
   windows: EzzyWindow[]
   apps: EzzyApp[]
+  /** Non-null when the query is itself a URL or an existing path. */
+  direct: DirectTarget | null
+  /** The query these results answer; empty when the panel is just listing. Carried so the
+   *  panel can tell "nothing is open" from "nothing matched what you typed" without
+   *  keeping its own copy of the query in sync across two windows. */
+  query: string
 }
+
+/** The empty panel, so main and renderer agree on what "nothing yet" looks like. */
+export const EMPTY_PANEL_DATA: PanelData = { windows: [], apps: [], direct: null, query: '' }
+
+/** Keys the search bar forwards to the panel. The input has focus, so the panel — which is
+ *  a separate, deliberately unfocusable window — never sees a key event of its own. */
+export type NavKey = 'up' | 'down' | 'enter'
+
+/** How many app rows main will send. The APPS section scrolls, so this is not the number
+ *  visible — it is the point past which more results stop being worth the icons they carry
+ *  across IPC on every keystroke. */
+export const MAX_APP_ROWS = 12
 
 export const IPC = {
   dotDragStart: 'dot:drag-start',
@@ -119,7 +156,12 @@ export const IPC = {
   focusWindow: 'windows:focus',
   panelShown: 'panel:shown',
   launchApp: 'apps:launch',
-  setPanelHeight: 'panel:set-height'
+  setPanelHeight: 'panel:set-height',
+  searchQuery: 'search:query',
+  searchNav: 'search:nav',
+  searchReset: 'search:reset',
+  panelNav: 'panel:nav',
+  openDirect: 'panel:open-direct'
 } as const
 
 /** The surface the preload exposes on `window.ezzy`. Named functions only.
@@ -158,4 +200,18 @@ export interface EzzyApi {
   /** The panel hugs its content (§6 shows it sized to the list, not a fixed slab), so the
    *  renderer measures the rendered rows and the main process resizes the window to match. */
   setPanelHeight(height: number): void
+  /** Reports what has been typed. The matching itself runs in the main process, which is
+   *  where both lists already live — the results come back through onPanelChanged. */
+  setQuery(query: string): void
+  /** Forwards a navigation key from the search input to the panel window. */
+  navigate(key: NavKey): void
+  /** Panel side of `navigate`. Returns an unsubscribe function. */
+  onNavigate(callback: (key: NavKey) => void): () => void
+  /** Fires on the search bar when the panel opens, so the input clears and takes focus.
+   *  Returns an unsubscribe function. */
+  onSearchReset(callback: () => void): () => void
+  /** Opens the direct row — the URL or path the current query names. Takes no target: the
+   *  main process opens the one it computed, so nothing the renderer sends can widen this
+   *  into "open any path you like". */
+  openDirect(): Promise<boolean>
 }

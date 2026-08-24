@@ -1,5 +1,5 @@
 import { ipcMain } from 'electron'
-import { IPC } from '../shared/types'
+import { IPC, NavKey } from '../shared/types'
 import { getConfig } from './config'
 import {
   beginDotDrag,
@@ -7,13 +7,14 @@ import {
   endDotDrag,
   hidePanel,
   moveDotDrag,
+  sendToPanel,
   setPanelHeight,
   setPillWidth
 } from './windows'
 import { activeHotkey } from './hotkey'
 import { focusWindow } from './focus'
-import { panelData } from './panel-data'
-import { launchApp } from './app-index'
+import { panelData, setQuery } from './panel-data'
+import { launchApp, openDirect } from './launcher'
 
 export function registerIpc(): void {
   ipcMain.on(IPC.dotDragStart, (_event, x: number, y: number) => beginDotDrag({ x, y }))
@@ -31,9 +32,10 @@ export function registerIpc(): void {
 
   ipcMain.handle(IPC.panelData, () => panelData())
   ipcMain.handle(IPC.focusWindow, (_event, id: number) => {
-    // Focus first, dismiss second (§7). The panel is the foreground window at this point,
-    // which is what makes SetForegroundWindow legal for us — hiding it first would hand the
-    // foreground back to the OS and put focus.ts back on its fallback path for no reason.
+    // Focus first, dismiss second (§7). The search bar is the foreground window at this
+    // point, which is what makes SetForegroundWindow legal for us — hiding it first would
+    // hand the foreground back to the OS and put focus.ts back on its fallback path for no
+    // reason.
     const focused = focusWindow(id)
     if (focused) hidePanel()
     return focused
@@ -44,4 +46,19 @@ export function registerIpc(): void {
     hidePanel()
     return launchApp(id)
   })
+  ipcMain.handle(IPC.openDirect, async () => {
+    hidePanel()
+    // No target crosses the bridge — the main process opens the one it resolved from the
+    // query it was already holding.
+    return openDirect()
+  })
+
+  // Typing happens in the search-bar window and the results are drawn in the panel window,
+  // so the query has to pass through here whatever else it does. Matching runs in the main
+  // process for that reason; see search.ts.
+  ipcMain.on(IPC.searchQuery, (_event, query: string) => {
+    sendToPanel(IPC.panelChanged, setQuery(query))
+  })
+  // The panel is deliberately unfocusable, so it never sees a key event of its own.
+  ipcMain.on(IPC.searchNav, (_event, key: NavKey) => sendToPanel(IPC.panelNav, key))
 }

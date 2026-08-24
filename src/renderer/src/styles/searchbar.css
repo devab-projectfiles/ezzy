@@ -52,7 +52,7 @@
 }
 
 .searchbar > svg,
-.searchbar > span:not(.searchbar__sheen) {
+.searchbar > input {
   position: relative;
 }
 
@@ -63,14 +63,36 @@
   color: var(--glyph-search);
 }
 
-.searchbar__placeholder {
+/* §6: input text 15px white, placeholder at 66%. A bare field on the glass — no box, no
+   fill and no focus ring, because the pill around it already is the field. */
+.searchbar__input {
   flex: 1 1 auto;
+  min-width: 0;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  font: inherit;
   font-size: 15px;
-  color: var(--text-placeholder);
+  color: var(--text-strong);
   text-shadow: var(--text-shadow);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  /* The pill is the focus indicator, and it is the only focusable thing on screen while the
+     panel is open — a ring inside it would be a second outline saying the same thing. */
+  outline: none;
+  /* Windows' default caret is a hairline that vanishes against the glass at this weight. */
+  caret-color: var(--text-strong);
+}
+
+.searchbar__input::placeholder {
+  color: var(--text-placeholder);
+  /* Chromium fades a placeholder against the field's own background, which here is nothing,
+     so it needs the token's alpha rather than the browser's. */
+  opacity: 1;
+}
+
+/* No selection colour is defined anywhere else and the platform default is an opaque blue
+   slab, which reads as a hole in the glass. */
+.searchbar__input::selection {
+  background: rgba(255, 255, 255, 0.24);
 }
 
 .searchbar__mic {

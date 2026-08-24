@@ -1,20 +1,17 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
-import { PANEL_HEADROOM } from '../../shared/types'
-import type { EzzyApp, EzzyWindow, PanelData } from '../../shared/types'
+import { EMPTY_PANEL_DATA, PANEL_HEADROOM } from '../../shared/types'
+import type { DirectTarget, EzzyApp, EzzyWindow, PanelData } from '../../shared/types'
 
-/** One selectable thing, flattened across both sections so the arrow keys walk a single
+/** One selectable thing, flattened across the sections so the arrow keys walk a single
  *  list. The section headers are drawn from this, rather than the other way round. */
 type Row =
-  { kind: 'window'; key: string; window: EzzyWindow } | { kind: 'app'; key: string; app: EzzyApp }
+  | { kind: 'direct'; key: string; direct: DirectTarget }
+  | { kind: 'window'; key: string; window: EzzyWindow }
+  | { kind: 'app'; key: string; app: EzzyApp }
 
-const EMPTY: PanelData = { windows: [], apps: [] }
-
-/** §6 keeps the panel a switcher, not a directory. Until chunk C's fuzzy search can narrow
- *  the index, showing every installed app would turn the scroll into a phone book. */
-const APPS_SHOWN = 8
-
-/** The first row, which is the window the user is looking at: the panel takes the foreground
- *  when it opens, so the window they came from sits at the top of the MRU.
+/** The first row, which with no query is the window the user is looking at: the panel takes
+ *  the foreground when it opens, so the window they came from sits at the top of the MRU.
+ *  With a query it is the best match, which is the same rule.
  *
  *  This used to open on the second row instead, on the reasoning that Enter would then mean
  *  "go back to the other thing" the way Alt-Tab does. That is a real convention, but it is
@@ -24,7 +21,7 @@ const APPS_SHOWN = 8
 const DEFAULT_SELECTION = 0
 
 function Panel(): React.JSX.Element {
-  const [data, setData] = useState<PanelData>(EMPTY)
+  const [data, setData] = useState<PanelData>(EMPTY_PANEL_DATA)
   /** `null` means nothing is selected — the state the list is left in after a scroll moves
    *  the rows out from under a stationary cursor. Hover selection has to be able to say "not
    *  on anything" or it goes stale, points at a row the pointer has left, and slides away
@@ -66,9 +63,16 @@ function Panel(): React.JSX.Element {
   useEffect(() => {
     return window.ezzy.onPanelChanged((next) => {
       setData((previous) => {
-        // Keep the selection on the row the user was pointing at. A title change or an
-        // unrelated app launching must not move it out from under them mid-keystroke.
         setSelected((index) => {
+          // A new query is a new list, and the answer to it is its first row. Trying to keep
+          // the old selection across a keystroke would leave it pointing at whatever
+          // happened to land in that slot.
+          if (next.query !== previous.query)
+            return next.windows.length + next.apps.length === 0 && !next.direct
+              ? null
+              : DEFAULT_SELECTION
+          // Otherwise keep the selection on the row the user was pointing at. A title change
+          // or an unrelated app launching must not move it out from under them mid-keystroke.
           if (index === null) return null
           const anchor = toRows(previous)[index]
           const moved = anchor ? toRows(next).findIndex((row) => row.key === anchor.key) : -1
@@ -87,27 +91,25 @@ function Panel(): React.JSX.Element {
       // If Windows refuses the switch the panel stays open, so the miss is visible rather
       // than looking like a dismissal that worked.
       if (row.kind === 'window') window.ezzy.focusWindow(row.window.id)
-      else window.ezzy.launchApp(row.app.id)
+      else if (row.kind === 'app') window.ezzy.launchApp(row.app.id)
+      else window.ezzy.openDirect()
     },
     [rows]
   )
 
+  // The keyboard belongs to the search bar — this window is deliberately unfocusable, so it
+  // receives no key events at all and the navigation keys arrive forwarded over IPC instead.
   useEffect(() => {
-    const onKeyDown = (event: KeyboardEvent): void => {
-      switch (event.key) {
-        case 'Escape':
-          window.ezzy.closePanel()
-          return
-        case 'ArrowDown':
-          event.preventDefault()
+    return window.ezzy.onNavigate((key) => {
+      switch (key) {
+        case 'down':
           selectionSource.current = 'keyboard'
           // From nothing, the first Down lands on the first row rather than the second.
           setSelected((index) =>
             rows.length === 0 ? null : index === null ? 0 : (index + 1) % rows.length
           )
           return
-        case 'ArrowUp':
-          event.preventDefault()
+        case 'up':
           selectionSource.current = 'keyboard'
           setSelected((index) =>
             rows.length === 0
@@ -117,24 +119,22 @@ function Panel(): React.JSX.Element {
                 : (index - 1 + rows.length) % rows.length
           )
           return
-        case 'Enter':
-          event.preventDefault()
+        case 'enter':
           // Nothing selected means nothing to activate. Firing the last hovered row here
           // would switch to something the user can no longer see highlighted.
           if (selected !== null) activate(selected)
           return
         default:
       }
-    }
-    window.addEventListener('keydown', onKeyDown)
-    return () => window.removeEventListener('keydown', onKeyDown)
+    })
   }, [rows, selected, activate])
 
   // The panel is a fixed size now: both sections have a fixed row count, so this measures the
   // same number every time and the window stops changing height as the list changes. That is
   // a deliberate move away from §6's "hugs its content" — it is what keeps the APPS section
   // pinned in place instead of sliding up whenever a window closes. Still measured rather than
-  // hardcoded so the arithmetic stays in the stylesheet and cannot drift from it.
+  // hardcoded so the arithmetic stays in the stylesheet and cannot drift from it. The direct
+  // row is the one thing that does change the height, since it is only there some of the time.
   useLayoutEffect(() => {
     const surface = surfaceRef.current
     // The window is asked for PANEL_HEADROOM more than the content needs, because panel.css
@@ -150,15 +150,24 @@ function Panel(): React.JSX.Element {
     row?.scrollIntoView({ block: 'nearest' })
   }, [selected, data, openCount])
 
-  const windowCount = data.windows.length
-  const windowRows = rows.slice(0, windowCount)
-  const appRows = rows.slice(windowCount)
+  const searching = data.query.trim() !== ''
+  const directCount = data.direct ? 1 : 0
+  const directRows = rows.slice(0, directCount)
+  const windowRows = rows.slice(directCount, directCount + data.windows.length)
+  const appRows = rows.slice(directCount + data.windows.length)
 
   return (
     // The pointer leaving the panel entirely is the other way a hover goes stale, and it is
     // not covered by the sections below — a fast exit can skip straight out of the window.
     <div className="panel" key={openCount} onMouseLeave={dropPointerSelection}>
       <div className="panel__surface" ref={surfaceRef}>
+        {/* A URL or an existing path the query named outright. No header: it is one row and
+            it belongs to the query rather than to either list. */}
+        {directRows.length > 0 && (
+          <div className="panel__direct" onMouseLeave={dropPointerSelection}>
+            {renderRows(directRows, 0)}
+          </div>
+        )}
         <p className="panel__section">OPEN WINDOWS</p>
         {/* Its own scroller, sized to WINDOWS_VISIBLE rows. `overflow-y: auto` means it only
             scrolls when there are more windows than fit — with four or fewer the wheel does
@@ -172,9 +181,9 @@ function Panel(): React.JSX.Element {
           onMouseLeave={dropPointerSelection}
         >
           {windowRows.length === 0 ? (
-            <p className="panel__empty">No open windows</p>
+            <p className="panel__empty">{searching ? 'No matching window' : 'No open windows'}</p>
           ) : (
-            renderRows(windowRows, 0)
+            renderRows(windowRows, directCount)
           )}
         </div>
         <span className="panel__divider" aria-hidden="true" />
@@ -185,9 +194,9 @@ function Panel(): React.JSX.Element {
           onMouseLeave={dropPointerSelection}
         >
           {appRows.length === 0 ? (
-            <p className="panel__empty">No apps indexed</p>
+            <p className="panel__empty">{searching ? 'No matching app' : 'No apps indexed'}</p>
           ) : (
-            renderRows(appRows, windowCount)
+            renderRows(appRows, directCount + data.windows.length)
           )}
         </div>
       </div>
@@ -216,7 +225,7 @@ function Panel(): React.JSX.Element {
   }
 
   /** Rows for one section. `offset` maps a position inside the section onto the flat index
-   *  the arrow keys and the selection use, so the two sections stay one navigable list. */
+   *  the arrow keys and the selection use, so the sections stay one navigable list. */
   function renderRows(sectionRows: Row[], offset: number): React.JSX.Element {
     return (
       <>
@@ -233,7 +242,8 @@ function Panel(): React.JSX.Element {
               // Focus is not the selection model here — the arrow keys drive `selected`, and
               // the row paints itself from that. A row that also took DOM focus would carry
               // the platform's own focus ring, a second unfilled outline sitting on whatever
-              // was last clicked, independent of where the selection actually is.
+              // was last clicked. This window cannot take focus at all now, but the rule is
+              // what keeps a click from trying.
               tabIndex={-1}
               onMouseDown={(event) => event.preventDefault()}
               // 18ms stagger (§6). Capped so a long list does not take a second to finish.
@@ -246,20 +256,16 @@ function Panel(): React.JSX.Element {
               }}
               onClick={() => activate(index)}
             >
-              {row.kind === 'window' ? <WindowGlyph /> : <AppGlyph />}
+              <RowIcon row={row} />
               <span className="panel__text">
-                <span className="panel__row-title">
-                  {row.kind === 'window' ? row.window.title : row.app.name}
-                </span>
-                <span className="panel__row-subtitle">
-                  {row.kind === 'window' ? row.window.app : 'Not running'}
-                </span>
+                <span className="panel__row-title">{title(row)}</span>
+                <span className="panel__row-subtitle">{subtitle(row)}</span>
               </span>
               <span className="panel__hint">
                 {index === selected ? (
                   <span className="panel__hint-chip">↵</span>
                 ) : (
-                  row.kind === 'app' && <span className="panel__hint-chip">launch</span>
+                  row.kind !== 'window' && <span className="panel__hint-chip">{hint(row)}</span>
                 )}
               </span>
             </button>
@@ -270,15 +276,44 @@ function Panel(): React.JSX.Element {
   }
 }
 
-/** Windows first in MRU order, then the apps that are not running (§6). */
-function toRows(data: PanelData): Row[] {
-  return [
-    ...data.windows.map((window): Row => ({ kind: 'window', key: `w${window.id}`, window })),
-    ...data.apps.slice(0, APPS_SHOWN).map((app): Row => ({ kind: 'app', key: `a${app.id}`, app }))
-  ]
+function title(row: Row): string {
+  if (row.kind === 'window') return row.window.title
+  if (row.kind === 'app') return row.app.name
+  return row.direct.label
 }
 
-/** Stand-ins until chunk C extracts real icons from the Start Menu index. */
+function subtitle(row: Row): string {
+  if (row.kind === 'window') return row.window.app
+  if (row.kind === 'app') return 'Not running'
+  return row.direct.detail
+}
+
+function hint(row: Row): string {
+  return row.kind === 'app' ? 'launch' : 'open'
+}
+
+/** Windows first, then the apps that are not running (§6) — in MRU and alphabetical order
+ *  with no query, in match order with one. A direct hit on a URL or a path leads. */
+function toRows(data: PanelData): Row[] {
+  const rows: Row[] = []
+  if (data.direct) rows.push({ kind: 'direct', key: `d${data.direct.label}`, direct: data.direct })
+  for (const window of data.windows) rows.push({ kind: 'window', key: `w${window.id}`, window })
+  for (const app of data.apps) rows.push({ kind: 'app', key: `a${app.id}`, app })
+  return rows
+}
+
+/** The real icon where the shell had one to give, and the outline glyph where it did not —
+ *  a Store app with no file behind it, an elevated process we cannot open, or an icon that
+ *  simply has not been read yet. The glyph is the resting state, not the error state. */
+function RowIcon({ row }: { row: Row }): React.JSX.Element {
+  const icon =
+    row.kind === 'window' ? row.window.icon : row.kind === 'app' ? row.app.icon : undefined
+  if (icon) return <img className="panel__icon panel__icon--file" src={icon} alt="" />
+  if (row.kind === 'window') return <WindowGlyph />
+  if (row.kind === 'app') return <AppGlyph />
+  return row.direct.kind === 'url' ? <LinkGlyph /> : <FileGlyph />
+}
+
 function WindowGlyph(): React.JSX.Element {
   return (
     <svg className="panel__icon" viewBox="0 0 19 19" aria-hidden="true">
@@ -340,6 +375,36 @@ function AppGlyph(): React.JSX.Element {
         stroke="currentColor"
         strokeWidth="1.3"
       />
+    </svg>
+  )
+}
+
+function LinkGlyph(): React.JSX.Element {
+  return (
+    <svg className="panel__icon" viewBox="0 0 19 19" aria-hidden="true">
+      <circle cx="9.5" cy="9.5" r="7" fill="none" stroke="currentColor" strokeWidth="1.3" />
+      <path d="M2.5 9.5h14" stroke="currentColor" strokeWidth="1.3" />
+      <path
+        d="M9.5 2.5a11 11 0 0 1 0 14a11 11 0 0 1 0-14"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.3"
+      />
+    </svg>
+  )
+}
+
+function FileGlyph(): React.JSX.Element {
+  return (
+    <svg className="panel__icon" viewBox="0 0 19 19" aria-hidden="true">
+      <path
+        d="M4.5 2.75h6l4 4v9.5a1 1 0 0 1-1 1h-9a1 1 0 0 1-1-1v-12.5a1 1 0 0 1 1-1Z"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.3"
+        strokeLinejoin="round"
+      />
+      <path d="M10.25 2.75v4.25h4.25" fill="none" stroke="currentColor" strokeWidth="1.3" />
     </svg>
   )
 }

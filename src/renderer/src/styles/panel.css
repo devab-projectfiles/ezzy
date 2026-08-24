@@ -114,6 +114,16 @@
   height: calc(var(--panel-rows-apps) * var(--panel-row));
 }
 
+/* The URL-or-path row. Outside both scrollers and outside the fixed height they buy, because
+   it is there only when the query names something directly — the panel grows by exactly one
+   row when it appears, and the renderer reports the new height. Sitting above OPEN WINDOWS
+   with no header of its own: it belongs to what was typed, not to either list. */
+.panel__direct {
+  position: relative;
+  height: var(--panel-row);
+  margin-bottom: 8px;
+}
+
 .panel__sheen {
   position: absolute;
   inset: 0;
@@ -223,6 +233,17 @@
 
 .panel__row.is-selected .panel__icon {
   color: var(--icon-selected);
+}
+
+/* A real icon extracted from the shortcut or the executable (chunk C). It replaces the
+   outline glyph in the same 19px box, so nothing about the row's geometry changes.
+
+   The shell hands these back at 32px, which is more than this box needs at 1x and about
+   right at the fractional scale factors Windows actually runs at — so it is scaled down
+   rather than up, and `pixelated` would be wrong here. The drop shadow inherited from
+   .panel__icon is what keeps a pale icon legible over bright desktop content. */
+.panel__icon--file {
+  object-fit: contain;
 }
 
 .panel__text {

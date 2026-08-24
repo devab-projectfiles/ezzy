@@ -9,6 +9,7 @@
 
 import { basename } from 'path'
 import { EzzyWindow } from '../shared/types'
+import { cachedIcon, requestIcon } from './icons'
 import { log, since } from './verbose'
 import {
   EVENT_OBJECT_CLOAKED,
@@ -46,6 +47,10 @@ interface TrackedWindow {
   id: Hwnd
   title: string
   app: string
+  /** The owning executable, kept so the row can carry that program's icon. Null when the
+   *  process could not be opened — a window belonging to something running elevated, most
+   *  often — in which case the row keeps the outline glyph. */
+  exePath: string | null
 }
 
 /** Handle -> window, for O(1) updates from the event handlers. */
@@ -57,9 +62,14 @@ let listeners: Array<(windows: EzzyWindow[]) => void> = []
 let notifyTimer: ReturnType<typeof setTimeout> | null = null
 let shellWindow: Hwnd = 0
 
-/** Executable path per pid. Processes are long-lived relative to window events and this is
- *  the only call in the hot path that opens a handle, so it is worth caching. */
-const processNames = new Map<number, string>()
+/** Executable per pid: the display name and the path it came from. Processes are long-lived
+ *  relative to window events and this is the only call in the hot path that opens a handle,
+ *  so it is worth caching. */
+interface ProcessInfo {
+  name: string
+  path: string | null
+}
+const processInfo = new Map<number, ProcessInfo>()
 
 /** A newly created window has no title and is not yet visible — the title arrives later, and
  *  for some apps so does the visibility. Rather than trusting EVENT_OBJECT_SHOW to follow,
@@ -104,7 +114,7 @@ export function restartTracking(): void {
   stopTracking()
   cache.clear()
   mru = []
-  processNames.clear()
+  processInfo.clear()
   startTracking()
   log('window tracking rebuilt after resume')
   notify()
@@ -160,7 +170,7 @@ function reconsider(hwnd: Hwnd): void {
   const existing = cache.get(hwnd)
   if (existing && existing.title === title) return
 
-  cache.set(hwnd, { id: hwnd, title, app: existing?.app ?? appNameFor(hwnd) })
+  cache.set(hwnd, existing ? { ...existing, title } : { id: hwnd, title, ...describeProcess(hwnd) })
   if (!existing) {
     // A brand new window belongs at the top: it is about to be focused, and if it is not,
     // the next foreground event will put the right window there anyway.
@@ -231,12 +241,23 @@ function isLastActivePopup(hwnd: Hwnd): boolean {
   }
 }
 
-/** The subtitle for a row (§6): the owning application, not the window title. */
-function appNameFor(hwnd: Hwnd): string {
-  let pid = getWindowProcessId(hwnd)
-  if (pid === 0) return ''
+/** The subtitle for a row (§6) and the file its icon comes from: the owning application,
+ *  not the window title.
+ *
+ *  Reading the icon is kicked off here and never waited for. The row is published with
+ *  whatever is already cached — nothing on this path may hold up a window appearing in the
+ *  list — and the icon landing re-publishes it a moment later. */
+function describeProcess(hwnd: Hwnd): { app: string; exePath: string | null } {
+  const info = processInfoFor(hwnd)
+  if (info.path) void requestIcon(info.path, notify)
+  return { app: info.name, exePath: info.path }
+}
 
-  const cached = processNames.get(pid)
+function processInfoFor(hwnd: Hwnd): ProcessInfo {
+  let pid = getWindowProcessId(hwnd)
+  if (pid === 0) return { name: '', path: null }
+
+  const cached = processInfo.get(pid)
   if (cached !== undefined) return cached
 
   let path = getProcessImagePath(pid)
@@ -245,15 +266,15 @@ function appNameFor(hwnd: Hwnd): string {
     const hosted = findHostedChildProcessId(hwnd, pid)
     if (hosted !== 0) {
       pid = hosted
-      const hostedCache = processNames.get(pid)
+      const hostedCache = processInfo.get(pid)
       if (hostedCache !== undefined) return hostedCache
       path = getProcessImagePath(pid)
     }
   }
 
-  const name = path ? prettifyExecutable(basename(path)) : ''
-  processNames.set(pid, name)
-  return name
+  const info: ProcessInfo = { name: path ? prettifyExecutable(basename(path)) : '', path }
+  processInfo.set(pid, info)
+  return info
 }
 
 /** `chrome.exe` -> `Chrome`, `WINWORD.EXE` -> `Winword`, `CalculatorApp.exe` unchanged.
@@ -275,7 +296,7 @@ function seedFromSweep(): void {
   // that exists before we have seen a single foreground event.
   for (const hwnd of enumerateTopLevelWindows()) {
     if (!isSwitchable(hwnd)) continue
-    cache.set(hwnd, { id: hwnd, title: getWindowTitle(hwnd), app: appNameFor(hwnd) })
+    cache.set(hwnd, { id: hwnd, title: getWindowTitle(hwnd), ...describeProcess(hwnd) })
     mru.push(hwnd)
   }
   const foreground = getForegroundWindow()
@@ -284,12 +305,19 @@ function seedFromSweep(): void {
   }
 }
 
-/** The cached list, MRU-ordered. Reading this is what the hotkey path does — no OS calls. */
+/** The cached list, MRU-ordered. Reading this is what the hotkey path does — no OS calls,
+ *  and the icon lookup is a Map hit against what has already been read. */
 export function listWindows(): EzzyWindow[] {
   const windows: EzzyWindow[] = []
   for (const id of mru) {
     const window = cache.get(id)
-    if (window) windows.push({ ...window })
+    if (!window) continue
+    const icon = cachedIcon(window.exePath)
+    windows.push(
+      icon === undefined
+        ? { id: window.id, title: window.title, app: window.app }
+        : { id: window.id, title: window.title, app: window.app, icon }
+    )
   }
   return windows
 }

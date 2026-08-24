@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron'
-import { EzzyApi, IPC, PanelData, PillDirection } from '../shared/types'
+import { EzzyApi, IPC, NavKey, PanelData, PillDirection } from '../shared/types'
 
 // Only named functions cross the bridge — `ipcRenderer` itself is never exposed.
 const ezzy: EzzyApi = {
@@ -34,7 +34,20 @@ const ezzy: EzzyApi = {
     return () => void ipcRenderer.removeListener(IPC.panelShown, handler)
   },
   launchApp: (id) => ipcRenderer.invoke(IPC.launchApp, id),
-  setPanelHeight: (height) => ipcRenderer.send(IPC.setPanelHeight, height)
+  setPanelHeight: (height) => ipcRenderer.send(IPC.setPanelHeight, height),
+  setQuery: (query) => ipcRenderer.send(IPC.searchQuery, query),
+  navigate: (key) => ipcRenderer.send(IPC.searchNav, key),
+  onNavigate: (callback) => {
+    const handler = (_event: unknown, key: NavKey): void => callback(key)
+    ipcRenderer.on(IPC.panelNav, handler)
+    return () => void ipcRenderer.removeListener(IPC.panelNav, handler)
+  },
+  onSearchReset: (callback) => {
+    const handler = (): void => callback()
+    ipcRenderer.on(IPC.searchReset, handler)
+    return () => void ipcRenderer.removeListener(IPC.searchReset, handler)
+  },
+  openDirect: () => ipcRenderer.invoke(IPC.openDirect)
 }
 
 contextBridge.exposeInMainWorld('ezzy', ezzy)

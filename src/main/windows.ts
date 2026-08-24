@@ -20,7 +20,7 @@ import {
 } from '../shared/types'
 import { getConfig, updateConfig } from './config'
 import { log, since } from './verbose'
-import { panelData } from './panel-data'
+import { clearQuery, panelData } from './panel-data'
 
 let dotWindow: BrowserWindow | null = null
 let panelWindow: BrowserWindow | null = null
@@ -135,11 +135,15 @@ export function createWindows(): void {
   searchWindow = createGlassWindow(SEARCH_HEIGHT)
   panelWindow = createGlassWindow(PANEL_MIN_HEIGHT)
 
-  // Only the panel takes focus; the search bar is furniture until chunk C gives it an input.
-  // Keeping it unfocusable means the arrow keys and Enter keep landing on the list.
-  searchWindow.setFocusable(false)
+  // The search bar holds the text input, so it is the one window of the three that takes
+  // focus. The panel is unfocusable instead: it still receives clicks — WS_EX_NOACTIVATE
+  // suppresses activation, not mouse input — so clicking a row cannot pull focus out of the
+  // input mid-word, and every key the user presses lands in the field they are looking at.
+  // The arrow keys and Enter reach the list by being forwarded (IPC.panelNav).
+  panelWindow.setFocusable(false)
 
-  panelWindow.on('blur', () => {
+  searchWindow.on('blur', () => {
+    if (searchWindow?.webContents.isDevToolsOpened()) return
     if (panelWindow?.webContents.isDevToolsOpened()) return
     hidePanel()
   })
@@ -524,14 +528,18 @@ export function togglePanel(): void {
     hidePanel()
     return
   }
+  // A previous session's query must not survive into this open — the input is about to be
+  // cleared, and the results have to be cleared with it or the panel flashes the old ones.
+  clearQuery()
   applyPairBounds()
   // The list rides along with the show event rather than being fetched back by the renderer.
   // It is already in memory, so this costs one IPC hop instead of a round trip (§7).
   panelWindow.webContents.send(IPC.panelShown, panelData())
-  // The search bar is unfocusable, so showInactive keeps the panel as the focused window and
-  // the keyboard keeps landing on the list.
-  searchWindow.showInactive()
-  panelWindow.show()
+  searchWindow.webContents.send(IPC.searchReset)
+  // The panel is unfocusable, so showInactive is what it gets; the search bar takes the
+  // foreground and with it every keystroke.
+  panelWindow.showInactive()
+  searchWindow.show()
   since('hotkey -> panel visible', startedAt)
 }
 
@@ -546,6 +554,15 @@ export function publishPanelData(data: PanelData): void {
 export function hidePanel(): void {
   panelWindow?.hide()
   searchWindow?.hide()
+  // So the next open starts on the full list rather than on whatever was last typed.
+  clearQuery()
+}
+
+/** Send one message to the panel window. The search bar is where the typing happens, so
+ *  everything the panel needs to hear about it arrives second-hand through here. */
+export function sendToPanel(channel: string, payload?: unknown): void {
+  if (!panelWindow?.isVisible()) return
+  panelWindow.webContents.send(channel, payload)
 }
 
 export function showDot(): void {

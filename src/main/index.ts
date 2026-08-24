@@ -17,6 +17,7 @@ import {
 import { restartTracking, startTracking, stopTracking } from './window-tracker'
 import { onPanelDataChanged } from './panel-data'
 import { refreshAppIndex, startAppIndex } from './app-index'
+import { loadIconCache } from './icons'
 import { log, since } from './verbose'
 
 const startedAt = performance.now()
@@ -54,8 +55,9 @@ function start(): void {
     onPanelDataChanged(publishPanelData)
     // Scanning the Start Menu touches a few hundred directories, so it is deliberately not
     // awaited — the window list is what the panel needs in the first 50ms, and the apps
-    // section fills in behind it.
-    void startAppIndex()
+    // section fills in behind it. The icon cache is read first so a warm start has icons on
+    // the very first panel rather than reading a few hundred of them again.
+    void loadIconCache().then(startAppIndex)
     const hotkey = registerHotkey(togglePanel)
     watchForResume(() => {
       refreshTray()
