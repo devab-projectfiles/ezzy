@@ -317,6 +317,13 @@ export function toEzzyApp(entry: IndexedApp): EzzyApp {
     : { id: entry.id, name: entry.name, icon }
 }
 
+/** Every app the index knows about, running or not. The panel wants `appsNotRunning`, which
+ *  is a different question — a voice command saying "open chrome" has to reach Chrome whether
+ *  or not a window of it is already up. */
+export function indexedApps(): IndexedApp[] {
+  return apps
+}
+
 /** Resolve an id that came back from the renderer. Returns undefined for anything the index
  *  did not produce — which is the only check standing between an IPC message and the shell. */
 export function findApp(id: string): IndexedApp | undefined {

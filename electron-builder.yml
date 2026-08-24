@@ -9,6 +9,14 @@ files:
   - '!{.eslintcache,eslint.config.mjs,.prettierignore,.prettierrc.yaml,dev-app-update.yml,CHANGELOG.md,README.md}'
   - '!{.env,.env.*,.npmrc,pnpm-lock.yaml}'
   - '!{tsconfig.json,tsconfig.node.json,tsconfig.web.json}'
+# PLAN.md §5: native binaries cannot live in the asar, so whisper ships beside it and is
+# resolved through process.resourcesPath at runtime. Fetched by scripts/fetch-whisper.mjs —
+# an installer built without running that has no voice in it.
+extraResources:
+  - from: resources/whisper
+    to: whisper
+    filter:
+      - '**/*'
 asarUnpack:
   - resources/**
   # PLAN.md §5: native binaries cannot be loaded from inside the asar. koffi resolves its

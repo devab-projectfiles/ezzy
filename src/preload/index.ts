@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron'
-import { EzzyApi, IPC, NavKey, PanelData, PillDirection } from '../shared/types'
+import { EzzyApi, IPC, NavKey, PanelData, PillDirection, VoiceState } from '../shared/types'
 
 // Only named functions cross the bridge — `ipcRenderer` itself is never exposed.
 const ezzy: EzzyApi = {
@@ -47,7 +47,21 @@ const ezzy: EzzyApi = {
     ipcRenderer.on(IPC.searchReset, handler)
     return () => void ipcRenderer.removeListener(IPC.searchReset, handler)
   },
-  openDirect: () => ipcRenderer.invoke(IPC.openDirect)
+  openDirect: () => ipcRenderer.invoke(IPC.openDirect),
+  onVoiceState: (callback) => {
+    const handler = (_event: unknown, state: VoiceState): void => callback(state)
+    ipcRenderer.on(IPC.voiceState, handler)
+    return () => void ipcRenderer.removeListener(IPC.voiceState, handler)
+  },
+  getVoiceState: () => ipcRenderer.invoke(IPC.getVoiceState),
+  onVoiceCapture: (callback) => {
+    const handler = (_event: unknown, recording: boolean): void => callback(recording)
+    ipcRenderer.on(IPC.voiceCapture, handler)
+    return () => void ipcRenderer.removeListener(IPC.voiceCapture, handler)
+  },
+  sendVoiceAudio: (wav) => ipcRenderer.send(IPC.voiceAudio, wav),
+  reportVoiceFailure: (kind) => ipcRenderer.send(IPC.voiceFailed, kind),
+  openMicSettings: () => ipcRenderer.send(IPC.openMicSettings)
 }
 
 contextBridge.exposeInMainWorld('ezzy', ezzy)

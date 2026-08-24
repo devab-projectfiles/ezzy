@@ -18,6 +18,8 @@ import { restartTracking, startTracking, stopTracking } from './window-tracker'
 import { onPanelDataChanged } from './panel-data'
 import { refreshAppIndex, startAppIndex } from './app-index'
 import { loadIconCache } from './icons'
+import { initVoice } from './voice'
+import { stopWhisperServer } from './stt'
 import { log, since } from './verbose'
 
 const startedAt = performance.now()
@@ -59,6 +61,10 @@ function start(): void {
     // the very first panel rather than reading a few hundred of them again.
     void loadIconCache().then(startAppIndex)
     const hotkey = registerHotkey(togglePanel)
+    // Push-to-talk hangs off the same hotkey: a tap toggles the panel, a hold listens. Nothing
+    // here loads a model or starts a process — that happens the first time the key is held, so
+    // a session that never uses voice never pays for it (§7).
+    initVoice()
     watchForResume(() => {
       refreshTray()
       // §5: the process survives sleep but the hook subscription does not, which leaves the
@@ -82,6 +88,10 @@ function start(): void {
     // Leaving a WinEvent hook behind makes Windows keep calling into a process that is on
     // its way out.
     stopTracking()
+    // §8 chunk D: "shut it down cleanly on quit". whisper-server is our child but not our
+    // responsibility to Windows — nothing kills it for us, and a stray one holds 300MB and
+    // a port for as long as the session lasts.
+    stopWhisperServer()
   })
 }
 

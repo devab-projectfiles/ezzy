@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import type { VoiceState } from '../../shared/types'
 
 /** §6's search bar: its own 420x54 glass window, fully rounded, 11px above the panel.
  *
@@ -7,9 +8,12 @@ import { useEffect, useRef, useState } from 'react'
  *  navigation keys are forwarded to the panel, which is unfocusable and so never sees a key
  *  event of its own. Nothing about the result list is known here.
  *
- *  The mic is still inert — push-to-talk and the listening pulse are chunk D. */
+ *  It is also where voice reports itself (§6 puts the mic glyph and the listening pulse here).
+ *  It does no recording — that is the dot window, which is always alive — and holds no state of
+ *  its own about it: the main process sends one `VoiceState` and this draws it. */
 function SearchBar(): React.JSX.Element {
   const [query, setQuery] = useState('')
+  const [voice, setVoice] = useState<VoiceState>({ kind: 'idle' })
   const inputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
@@ -27,15 +31,37 @@ function SearchBar(): React.JSX.Element {
   // Autofocus for the very first open, which happens before any reset event is sent.
   useEffect(() => inputRef.current?.focus(), [])
 
+  // This window is hidden for most of a model download, and a hidden window is not sent state
+  // changes — so it asks for the current one every time it comes back up.
+  useEffect(() => {
+    const refresh = (): void => void window.ezzy.getVoiceState().then(setVoice)
+    refresh()
+    const stopWatching = window.ezzy.onVoiceState(setVoice)
+    const stopResetting = window.ezzy.onSearchReset(refresh)
+    return () => {
+      stopWatching()
+      stopResetting()
+    }
+  }, [])
+
+  const status = statusText(voice)
+  const blocked = voice.kind === 'error' && voice.micBlocked
+
   return (
-    <div className="searchbar" onMouseDown={keepFocus}>
+    <div
+      className={`searchbar${voice.kind === 'listening' ? ' is-listening' : ''}`}
+      onMouseDown={keepFocus}
+    >
       <SearchGlyph />
       <input
         ref={inputRef}
-        className="searchbar__input"
+        className={`searchbar__input${status ? ' is-status' : ''}`}
         type="text"
         value={query}
-        placeholder="Search or say a command"
+        // The status replaces the placeholder rather than the field: the input keeps focus and
+        // keeps whatever was typed, so a voice command that misses leaves the user in a search
+        // bar they can just finish typing into.
+        placeholder={status ?? 'Search or say a command'}
         // The field is thrown away and rebuilt by the OS on every open; none of the
         // browser's text conveniences belong on a launcher input.
         autoComplete="off"
@@ -47,7 +73,13 @@ function SearchBar(): React.JSX.Element {
         }}
         onKeyDown={onKeyDown}
       />
-      <MicGlyph />
+      {/* §5: a microphone Windows has blocked must lead to the setting that unblocks it. */}
+      {blocked && (
+        <button type="button" className="searchbar__action" onClick={window.ezzy.openMicSettings}>
+          Settings
+        </button>
+      )}
+      <MicGlyph state={voice.kind} />
       <span className="searchbar__sheen" aria-hidden="true" />
     </div>
   )
@@ -99,11 +131,32 @@ function SearchGlyph(): React.JSX.Element {
   )
 }
 
-/** 19px, 92% white (§6). While listening it is the rim that pulses, not this glyph — but
- *  that is chunk D's job, so nothing animates yet. */
-function MicGlyph(): React.JSX.Element {
+/** What the voice path is doing, in the words it should be read in. Null when there is
+ *  nothing to say, which is most of the time. */
+function statusText(voice: VoiceState): string | null {
+  switch (voice.kind) {
+    case 'downloading':
+      return `Downloading the speech model… ${voice.percent}%`
+    case 'listening':
+      return 'Listening…'
+    case 'thinking':
+      return 'One moment…'
+    case 'error':
+      return voice.message
+    default:
+      return null
+  }
+}
+
+/** 19px, 92% white (§6). While listening it is the rim that pulses and not this glyph, so the
+ *  only thing that changes here is its weight. */
+function MicGlyph({ state }: { state: VoiceState['kind'] }): React.JSX.Element {
   return (
-    <svg className="searchbar__mic" viewBox="0 0 19 19" aria-hidden="true">
+    <svg
+      className={`searchbar__mic searchbar__mic--${state}`}
+      viewBox="0 0 19 19"
+      aria-hidden="true"
+    >
       <rect
         x="7"
         y="2.5"

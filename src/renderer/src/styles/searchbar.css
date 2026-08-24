@@ -101,3 +101,68 @@
   height: 19px;
   color: var(--glyph-mic);
 }
+
+/* §6: "while listening, pulse the RIM (1.6s), not the icon". The rim is the ::after ring
+   above, so the pulse is on that element and nothing else moves — a pulsing glyph reads as a
+   spinner, and this is not a wait, it is an open microphone. */
+.searchbar.is-listening::after {
+  animation: searchbar-listening 1.6s var(--ease-glass) infinite;
+}
+
+@keyframes searchbar-listening {
+  0%,
+  100% {
+    box-shadow: inset 0 0 0 1px var(--glass-rim-search);
+  }
+  50% {
+    box-shadow:
+      inset 0 0 0 1px rgba(255, 255, 255, 0.95),
+      inset 0 0 10px 0 rgba(255, 255, 255, 0.22);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .searchbar.is-listening::after {
+    animation: none;
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.95);
+  }
+}
+
+/* A status is a statement, not a prompt, so it is not left at the placeholder's weight. */
+.searchbar__input.is-status::placeholder {
+  color: var(--text-dim);
+}
+
+/* The one thing in the pill that can be clicked. Deliberately plain: it appears only when the
+   microphone is blocked, and it has to read as the way out of that rather than as furniture. */
+.searchbar__action {
+  flex: 0 0 auto;
+  position: relative;
+  border: 1px solid var(--chip-rim);
+  border-radius: 9px;
+  padding: 3px 9px;
+  background: rgba(255, 255, 255, 0.1);
+  font: inherit;
+  font-size: 12px;
+  color: var(--text-strong);
+  text-shadow: var(--text-shadow);
+  cursor: pointer;
+}
+
+.searchbar__action:hover {
+  background: rgba(255, 255, 255, 0.18);
+}
+
+/* The glyph carries the state as weight, since the rim carries the animation. */
+.searchbar__mic--listening {
+  color: var(--icon-selected);
+}
+
+.searchbar__mic--thinking,
+.searchbar__mic--downloading {
+  color: var(--text-faint);
+}
+
+.searchbar__mic--error {
+  color: rgba(255, 168, 160, 0.92);
+}

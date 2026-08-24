@@ -21,7 +21,9 @@ import { EzzyApp, EzzyWindow, MAX_APP_ROWS } from '../shared/types'
 import { IndexedApp, toEzzyApp } from './app-index'
 import { since } from './verbose'
 
-interface Candidate {
+/** Exported for `bestMatch`, which hands one of these back to the command registry — the
+ *  caller needs to know whether it found a window to focus or an app to launch. */
+export interface Candidate {
   kind: 'window' | 'app'
   /** What the row is called: a window's title, an app's name. */
   name: string
@@ -76,31 +78,7 @@ export function search(query: string, windows: EzzyWindow[], apps: IndexedApp[])
   }
 
   const startedAt = performance.now()
-  const candidates: Candidate[] = [
-    ...windows.map((window, order): Candidate => ({
-      kind: 'window',
-      name: window.title,
-      context: window.app,
-      order,
-      window
-    })),
-    ...apps.map((app, order): Candidate => ({
-      kind: 'app',
-      name: app.name,
-      context: '',
-      order,
-      app
-    }))
-  ]
-
-  const needle = text.toLowerCase()
-  // Rebuilt per query rather than kept warm. Both lists change constantly — every window
-  // title edit and every icon that lands re-publishes them — so a cached index would need
-  // invalidating on both, and building one over a few hundred short strings is sub-millisecond.
-  const ranked = new Fuse(candidates, OPTIONS)
-    .search(text)
-    .map((hit) => ({ candidate: hit.item, rank: rank(hit.item, hit.score ?? 1, needle) }))
-    .sort((a, b) => a.rank - b.rank || a.candidate.order - b.candidate.order)
+  const ranked = rankAll(text, toCandidates(windows, apps))
 
   const matchedWindows: EzzyWindow[] = []
   const matchedApps: EzzyApp[] = []
@@ -138,4 +116,60 @@ function startsAWord(haystack: string, needle: string): boolean {
     at = haystack.indexOf(needle, at + 1)
   }
   return false
+}
+
+function toCandidates(windows: EzzyWindow[], apps: IndexedApp[]): Candidate[] {
+  return [
+    ...windows.map((window, order): Candidate => ({
+      kind: 'window',
+      name: window.title,
+      context: window.app,
+      order,
+      window
+    })),
+    ...apps.map((app, order): Candidate => ({
+      kind: 'app',
+      name: app.name,
+      context: '',
+      order,
+      app
+    }))
+  ]
+}
+
+/** Rebuilt per query rather than kept warm. Both lists change constantly — every window title
+ *  edit and every icon that lands re-publishes them — so a cached index would need invalidating
+ *  on both, and building one over a few hundred short strings is sub-millisecond. */
+function rankAll(
+  text: string,
+  candidates: Candidate[]
+): Array<{ candidate: Candidate; rank: number }> {
+  const needle = text.toLowerCase()
+  return new Fuse(candidates, OPTIONS)
+    .search(text)
+    .map((hit) => ({ candidate: hit.item, rank: rank(hit.item, hit.score ?? 1, needle) }))
+    .sort((a, b) => a.rank - b.rank || a.candidate.order - b.candidate.order)
+}
+
+/** The single best thing a spoken target names, or null when nothing plausibly matches.
+ *
+ *  The panel shows a list and lets the user pick; a voice command has to pick for them, so
+ *  this is the same ranking with the list thrown away. Fuse's own threshold does the refusing:
+ *  it returns nothing at all for a query no candidate is close to, which is what turns "switch
+ *  to figma" with Figma closed into "I don't see Figma open" rather than into whatever window
+ *  happened to share three letters with it.
+ *
+ *  §5, "always fuzzy-match, never exact-match" — whisper will hand this "sigma" for Figma and
+ *  "vice code" for VS Code, and it still has to land. */
+export function bestMatch(
+  query: string,
+  windows: EzzyWindow[],
+  apps: IndexedApp[]
+): Candidate | null {
+  const text = query.trim()
+  if (text === '') return null
+  const startedAt = performance.now()
+  const ranked = rankAll(text, toCandidates(windows, apps))
+  since(`best match for "${text}": ${ranked[0]?.candidate.name ?? 'nothing'}`, startedAt)
+  return ranked[0]?.candidate ?? null
 }

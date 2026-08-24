@@ -141,6 +141,29 @@ export type NavKey = 'up' | 'down' | 'enter'
  *  across IPC on every keystroke. */
 export const MAX_APP_ROWS = 12
 
+/** What the voice path is doing, as the search bar draws it (§6 puts the mic glyph and the
+ *  listening pulse there). One value, not a set of flags: the states are mutually exclusive
+ *  and the renderer should never have to work out which of several booleans wins.
+ *
+ *  The transcript itself is not in here. Chunk E is what shows the user what was heard; chunk
+ *  D only has to say what is happening and, when a command misses, why. */
+export type VoiceState =
+  | { kind: 'idle' }
+  /** First run: the speech model is coming down (§3 — downloaded, not bundled). */
+  | { kind: 'downloading'; percent: number }
+  | { kind: 'listening' }
+  /** Between the key coming up and the command running: transcribing, and possibly still
+   *  waiting for whisper-server to finish loading the model. */
+  | { kind: 'thinking' }
+  /** A command that could not be carried out, and why. There is no matching success state:
+   *  a command that worked has already put the window the user asked for in front of them,
+   *  and the panel is gone. Only a miss needs saying. */
+  | { kind: 'error'; message: string; micBlocked: boolean }
+
+/** Why the renderer could not record. Mapped from the DOMException getUserMedia rejects
+ *  with, because the exception itself must not cross the bridge. */
+export type VoiceFailure = 'denied' | 'no-device' | 'failed'
+
 export const IPC = {
   dotDragStart: 'dot:drag-start',
   dotDragMove: 'dot:drag-move',
@@ -161,7 +184,13 @@ export const IPC = {
   searchNav: 'search:nav',
   searchReset: 'search:reset',
   panelNav: 'panel:nav',
-  openDirect: 'panel:open-direct'
+  openDirect: 'panel:open-direct',
+  voiceState: 'voice:state',
+  getVoiceState: 'voice:get-state',
+  voiceCapture: 'voice:capture',
+  voiceAudio: 'voice:audio',
+  voiceFailed: 'voice:failed',
+  openMicSettings: 'voice:mic-settings'
 } as const
 
 /** The surface the preload exposes on `window.ezzy`. Named functions only.
@@ -214,4 +243,22 @@ export interface EzzyApi {
    *  main process opens the one it computed, so nothing the renderer sends can widen this
    *  into "open any path you like". */
   openDirect(): Promise<boolean>
+  /** Voice progress, for the search bar. Returns an unsubscribe function. */
+  onVoiceState(callback: (state: VoiceState) => void): () => void
+  /** The state as of right now. The search bar is hidden for most of a download, so it asks
+   *  on the way back up rather than relying on having heard every change. */
+  getVoiceState(): Promise<VoiceState>
+  /** The dot window's half of push-to-talk: `true` starts recording, `false` stops it.
+   *  Recording lives in the dot's renderer because `getUserMedia` is a web API and the dot is
+   *  the one window that is always alive — the search bar only exists while the panel is open,
+   *  which is not long enough to hold a microphone open across a command. */
+  onVoiceCapture(callback: (recording: boolean) => void): () => void
+  /** The recorded utterance as a 16kHz mono WAV. The main process POSTs it to whisper-server;
+   *  the bytes never touch the network beyond localhost. */
+  sendVoiceAudio(wav: ArrayBuffer): void
+  /** Recording could not start. Sent instead of the audio, so main stops waiting for it. */
+  reportVoiceFailure(kind: VoiceFailure): void
+  /** Opens Windows' microphone privacy page — §5: a blocked mic must lead somewhere, not to
+   *  a dead button. */
+  openMicSettings(): void
 }

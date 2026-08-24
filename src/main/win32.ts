@@ -110,6 +110,7 @@ const fn = {
     'uintptr_t __stdcall SetWinEventHook(uint32_t min, uint32_t max, uintptr_t module, WinEventProc *cb, uint32_t pid, uint32_t thread, uint32_t flags)'
   ),
   UnhookWinEvent: user32.func('bool __stdcall UnhookWinEvent(uintptr_t hook)'),
+  GetAsyncKeyState: user32.func('int16_t __stdcall GetAsyncKeyState(int vk)'),
   GetCurrentThreadId: kernel32.func('uint32_t __stdcall GetCurrentThreadId()'),
   OpenProcess: kernel32.func(
     'uintptr_t __stdcall OpenProcess(uint32_t access, bool inherit, uint32_t pid)'
@@ -286,6 +287,19 @@ export function currentThreadId(): number {
 export function tapAltKey(): void {
   fn.keybd_event(VK_MENU, 0, 0, 0)
   fn.keybd_event(VK_MENU, 0, KEYEVENTF_KEYUP, 0)
+}
+
+/** Whether a key is physically down right now.
+ *
+ *  Push-to-talk needs a key *release*, and Electron's globalShortcut only ever reports a
+ *  press — RegisterHotKey delivers WM_HOTKEY and nothing else. The alternative to asking is a
+ *  WH_KEYBOARD_LL hook, which means every keystroke on the machine passing through our
+ *  process; this reads one key on a timer instead, and only while the hotkey is held.
+ *
+ *  Only the high bit is read. The low bit means "pressed since the last call" and is consumed
+ *  by reading it, which would make this function's result depend on who called it last. */
+export function isKeyDown(vk: number): boolean {
+  return (fn.GetAsyncKeyState(vk) & 0x8000) !== 0
 }
 
 // ----------------------------------------------------------------- win events

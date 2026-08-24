@@ -1,4 +1,4 @@
-import { BrowserWindow, Display, screen } from 'electron'
+import { BrowserWindow, Display, screen, session } from 'electron'
 import { join } from 'path'
 import { is } from '@electron-toolkit/utils'
 import {
@@ -16,7 +16,8 @@ import {
   PILL_WINDOW,
   PillDirection,
   SEARCH_HEIGHT,
-  SEARCH_PANEL_GAP
+  SEARCH_PANEL_GAP,
+  VoiceState
 } from '../shared/types'
 import { getConfig, updateConfig } from './config'
 import { log, since } from './verbose'
@@ -89,6 +90,7 @@ export function setQuitting(value: boolean): void {
 }
 
 export function createWindows(): void {
+  applyPermissionPolicy()
   dotAnchor = restoreDotPosition()
 
   dotWindow = new BrowserWindow({
@@ -186,6 +188,23 @@ function createGlassWindow(height: number): BrowserWindow {
   })
   applyAlwaysPresent(win)
   return win
+}
+
+/** The only web permission Ezzy has any use for is the microphone, and only because chunk D's
+ *  push-to-talk records in a renderer. Electron's default handler is more permissive than that,
+ *  so everything else is refused here rather than left to the default — these windows load our
+ *  own pages and nothing they contain should be asking.
+ *
+ *  The check handler is the synchronous half: `getUserMedia` consults it before it ever raises
+ *  a request, and a renderer on `file://` is not automatically trusted with it. */
+function applyPermissionPolicy(): void {
+  session.defaultSession.setPermissionRequestHandler((_contents, permission, callback) => {
+    if (permission !== 'media') log(`refused a "${permission}" permission request`)
+    callback(permission === 'media')
+  })
+  session.defaultSession.setPermissionCheckHandler(
+    (_contents, permission) => permission === 'media'
+  )
 }
 
 function webPreferences(): Electron.WebPreferences {
@@ -522,12 +541,25 @@ export function setPanelHeight(height: number): void {
 }
 
 export function togglePanel(): void {
-  const startedAt = performance.now()
   if (!panelWindow || !searchWindow) return
   if (panelWindow.isVisible()) {
     hidePanel()
     return
   }
+  showPanel()
+}
+
+/** Push-to-talk reports itself on the search bar, so a hold that began with the panel shut —
+ *  or that shut it, since the press toggles before the hold is recognised — has to bring it
+ *  back up. Already-open is the common case and costs nothing. */
+export function showPanelForVoice(): void {
+  if (panelWindow?.isVisible()) return
+  showPanel()
+}
+
+function showPanel(): void {
+  const startedAt = performance.now()
+  if (!panelWindow || !searchWindow) return
   // A previous session's query must not survive into this open — the input is about to be
   // cleared, and the results have to be cleared with it or the panel flashes the old ones.
   clearQuery()
@@ -563,6 +595,24 @@ export function hidePanel(): void {
 export function sendToPanel(channel: string, payload?: unknown): void {
   if (!panelWindow?.isVisible()) return
   panelWindow.webContents.send(channel, payload)
+}
+
+/** Voice state goes to the search bar, which is where §6 puts the mic glyph and the listening
+ *  pulse. Skipped while it is hidden — it asks for the current state when it comes back up,
+ *  so a download that finishes behind a closed panel is not lost. */
+export function sendVoiceState(state: VoiceState): void {
+  if (!searchWindow?.isVisible()) return
+  searchWindow.webContents.send(IPC.voiceState, state)
+}
+
+/** Recording runs in the dot's renderer: it is the only window that is always alive, and
+ *  `getUserMedia` is a web API with no main-process equivalent. */
+export function startCapture(): void {
+  dotWindow?.webContents.send(IPC.voiceCapture, true)
+}
+
+export function stopCapture(): void {
+  dotWindow?.webContents.send(IPC.voiceCapture, false)
 }
 
 export function showDot(): void {

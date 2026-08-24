@@ -14,6 +14,18 @@ An Electron application with React and TypeScript
 $ npm install
 ```
 
+### Speech
+
+Voice runs on whisper.cpp, whose Windows binaries are not in git. Fetch them once:
+
+```bash
+$ npm run fetch:whisper
+```
+
+The speech model itself (`ggml-base.en.bin`, ~141MB) is not bundled either — it downloads
+into the app's data directory the first time you hold the hotkey, with progress shown in the
+search bar. Everything runs locally; audio never leaves the machine.
+
 ### Development
 
 ```bash

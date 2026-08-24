@@ -5,6 +5,8 @@ out
 .eslintcache
 *.log*
 models/
+# PLAN.md §8 chunk D: whisper.cpp binaries are fetched by scripts/fetch-whisper.mjs.
+resources/whisper/
 *.bin
 *.exe
 .env

@@ -1,5 +1,5 @@
 import { ipcMain } from 'electron'
-import { IPC, NavKey } from '../shared/types'
+import { IPC, NavKey, VoiceFailure } from '../shared/types'
 import { getConfig } from './config'
 import {
   beginDotDrag,
@@ -16,7 +16,8 @@ import { activeHotkey } from './hotkey'
 import { focusWindow } from './focus'
 import { dropIfGone } from './window-tracker'
 import { panelData, setQuery } from './panel-data'
-import { launchApp, openDirect } from './launcher'
+import { launchApp, openDirect, openMicrophoneSettings } from './launcher'
+import { receiveAudio, reportCaptureFailure, voiceState } from './voice'
 
 export function registerIpc(): void {
   ipcMain.on(IPC.dotDragStart, (_event, x: number, y: number) => beginDotDrag({ x, y }))
@@ -67,4 +68,14 @@ export function registerIpc(): void {
   })
   // The panel is deliberately unfocusable, so it never sees a key event of its own.
   ipcMain.on(IPC.searchNav, (_event, key: NavKey) => sendToPanel(IPC.panelNav, key))
+
+  // ------------------------------------------------------------------- voice
+  // The search bar draws the voice state and the dot's renderer does the recording, so both
+  // halves of push-to-talk cross here. Neither renderer decides anything: the dot is told when
+  // to record and hands back bytes, and the search bar is told what to display.
+  ipcMain.handle(IPC.getVoiceState, () => voiceState())
+  ipcMain.on(IPC.voiceAudio, (_event, wav: ArrayBuffer) => receiveAudio(Buffer.from(wav)))
+  ipcMain.on(IPC.voiceFailed, (_event, kind: VoiceFailure) => reportCaptureFailure(kind))
+  // §5: a microphone Windows has blocked must lead to the setting, not to a dead button.
+  ipcMain.on(IPC.openMicSettings, () => void openMicrophoneSettings())
 }

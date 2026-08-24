@@ -75,6 +75,13 @@ export async function launchApp(id: string): Promise<boolean> {
   return handOff(what, entry.name)
 }
 
+/** Windows' microphone privacy page. Through Explorer like everything else here — a
+ *  `ms-settings:` URI is a shell namespace target, which is exactly what Explorer resolves,
+ *  and it keeps the Settings app off our environment block. */
+export async function openMicrophoneSettings(): Promise<boolean> {
+  return handOff('ms-settings:privacy-microphone', 'microphone settings')
+}
+
 // ------------------------------------------------------------- paths and URLs
 
 /** What `resolveDirect` worked out, kept so the renderer can ask to open "the direct row"
