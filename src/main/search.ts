@@ -198,6 +198,51 @@ const NEAR_MISS_SIMILARITY = 0.65
  *  the top of the ranking being rejected. */
 const NEAR_TIE = 0.05
 
+/** How many trailing words may be thrown away when the whole phrase matches nothing.
+ *
+ *  Whisper appends things. Measured on this machine: "switch to visual studio code" came back
+ *  as "switch to visual studio code ciao with", and a command that was understood perfectly
+ *  well failed on two words of invention stuck to the end of it. People do it too — "open
+ *  notepad please", "switch to chrome real quick".
+ *
+ *  Two words, no more. It is a cap rather than a threshold: dropping words until something
+ *  matches would eventually find a match for anything, and "click the bell to see more of the
+ *  video" must not end up opening whatever is closest to "click". */
+const MAX_TRAILING_JUNK = 2
+
+/** The phrase to match, then the same phrase without its last word or two.
+ *
+ *  Only offered when a verb vouched for the utterance. A bare name has nothing to trim: it is
+ *  already just a name, and shortening it would be guessing twice over. */
+export function spokenVariants(target: string, strict: boolean): string[] {
+  const words = target
+    .trim()
+    .split(/\s+/)
+    .filter((word) => word !== '')
+  if (strict || words.length <= 1) return [target]
+  const variants = [target]
+  for (let drop = 1; drop <= MAX_TRAILING_JUNK && words.length - drop >= 1; drop++) {
+    const shorter = words.slice(0, words.length - drop)
+    // Nothing is named after a preposition. Measured: "the end" — which is what whisper makes
+    // of a room with nobody talking in it — trimmed down to "the", and "the" begins the name
+    // of an app on this machine. A remnant that is all grammar and no name is not a target.
+    if (shorter.every((word) => FUNCTION_WORDS.has(word))) continue
+    variants.push(shorter.join(' '))
+  }
+  return variants
+}
+
+/** The words a trailing trim can strand on its own. Not a general stop list — these are only
+ *  ever consulted about what is *left over*, never about the phrase the user actually said. */
+const FUNCTION_WORDS = new Set(
+  (
+    'a an and are as at be been but by did do does for from had has have he her here his how i ' +
+    'in is it its me my no not now of ok okay on or our please she so than thank thanks that ' +
+    'the their then there these they this those to up us was we were what when where which who ' +
+    'why will with yeah yes you your'
+  ).split(' ')
+)
+
 /** The single best thing a spoken target names, or null when nothing matches well enough.
  *
  *  The panel shows a list and lets the user pick, so a mediocre match there costs nothing and
@@ -258,6 +303,12 @@ function breakTies(ranked: Ranked[], needle: string): Ranked | undefined {
   let bestRatio = lengthRatio(needle, best.candidate.name)
   for (const hit of ranked) {
     if (hit.rank - best.rank > NEAR_TIE) break
+    // Two windows of the same application are not rival answers, and this rule has nothing
+    // useful to say about them: the ranking has already put the most recently used one first,
+    // and between "*Journa.md - Notepad" and "Untitled - Notepad" a shorter title is not a
+    // better answer — it is just a shorter title. Measured: without this, "notepad" left the
+    // Notepad the user had been in for the one they had not touched.
+    if (sameThing(hit.candidate, best.candidate)) continue
     const ratio = lengthRatio(needle, hit.candidate.name)
     if (ratio <= bestRatio) continue
     winner = hit
@@ -378,11 +429,16 @@ function wordsOf(text: string): string[] {
 function soundsLikeIt(candidate: Candidate, needle: string): boolean {
   if (beginsSomething(candidate, needle)) return true
   if (namesItWordByWord(candidate, needle)) return true
-  const name = depunctuate(candidate.name.toLowerCase())
+  // Against the owning application as well as the title. A window is mostly named after the
+  // document in it, so a near-miss on the *app* name can never clear the length test against
+  // the whole title: measured, whisper clipped "visual studio code" to "visual studio con",
+  // no open window matched it, and the command launched a second copy of VS Code instead of
+  // going to the one already on screen.
   const spoken = depunctuate(needle)
-  return (
-    lengthRatio(spoken, name) >= WHOLE_NAME_RATIO &&
-    similarity(spoken, name) >= NEAR_MISS_SIMILARITY
+  return labelsOf(candidate).some(
+    (label) =>
+      lengthRatio(spoken, label) >= WHOLE_NAME_RATIO &&
+      similarity(spoken, label) >= NEAR_MISS_SIMILARITY
   )
 }
 

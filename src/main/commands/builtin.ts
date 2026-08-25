@@ -18,7 +18,7 @@ import { indexedApps } from '../app-index'
 import { focusWindow } from '../focus'
 import { launchApp, openDirect, resolveDirect } from '../launcher'
 import { hibernateMachine, shutDownMachine, sleepMachine } from '../power'
-import { bestMatch } from '../search'
+import { bestMatch, spokenVariants } from '../search'
 import { listWindows } from '../window-tracker'
 import { closeWindow } from '../win32'
 import { hidePanel } from '../windows'
@@ -156,7 +156,9 @@ export function registerBuiltinCommands(): void {
     describe: (groups) => `Closing ${spoken(groups[1])}`,
     run: async (groups, ctx) => {
       const target = groups[1]
-      const match = bestMatch(target, listWindows(), [])
+      const match = spokenVariants(target, false)
+        .map((phrase) => bestMatch(phrase, listWindows(), []))
+        .find((hit) => hit?.window)
       if (!match?.window) {
         ctx.failed(`I don't see ${spoken(target)} open`)
         return
@@ -188,10 +190,22 @@ export function registerBuiltinCommands(): void {
  *  name match outscores a window whose title only mentions it — and started a second Notepad
  *  beside the one already open. Opening what is already open means going to it. */
 async function goTo(target: string, ctx: CommandContext, strict = false): Promise<void> {
+  // The whole phrase first, then the same phrase without whatever whisper stuck on the end of
+  // it. Each variant walks the full ladder before the next is tried, so a complete phrase that
+  // names an app still beats a trimmed one that half-names a window.
+  for (const phrase of spokenVariants(target, strict)) {
+    if (await tryPhrase(phrase, ctx, strict)) return
+  }
+  ctx.failed(`I couldn't find ${spoken(target)}`)
+}
+
+/** One rung-by-rung attempt at one phrase. Returns false when nothing matched, which is the
+ *  only case the caller retries — a match that then failed to open has already been reported. */
+async function tryPhrase(target: string, ctx: CommandContext, strict: boolean): Promise<boolean> {
   const open = bestMatch(target, listWindows(), [], strict)
   if (open?.window) {
     if (!focus(open.window.id)) ctx.failed(`Windows wouldn't switch to ${open.window.app}`)
-    return
+    return true
   }
 
   const installed = bestMatch(target, [], indexedApps(), strict)
@@ -202,10 +216,10 @@ async function goTo(target: string, ctx: CommandContext, strict = false): Promis
     // Explorer answers in tens of milliseconds either way.
     if (!(await launchApp(installed.app.id))) {
       ctx.failed(`${installed.app.name} wouldn't start`)
-      return
+      return true
     }
     hidePanel()
-    return
+    return true
   }
 
   // The last two rungs. Not offered to a bare target: "documents" should not open a folder
@@ -213,13 +227,13 @@ async function goTo(target: string, ctx: CommandContext, strict = false): Promis
   if (!strict && resolveDirect(spokenUrl(target))) {
     if (!(await openDirect())) {
       ctx.failed(`I couldn't open ${target}`)
-      return
+      return true
     }
     hidePanel()
-    return
+    return true
   }
 
-  ctx.failed(`I couldn't find ${spoken(target)}`)
+  return false
 }
 
 /** Focus, then dismiss — the order ipc.ts uses for a clicked row, and for the same reason:
