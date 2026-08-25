@@ -69,6 +69,32 @@ function isNoise(name: string): boolean {
   return NOISE_PREFIX.test(name) || NOISE_SUFFIX.test(name) || NOISE_EXACT.test(name)
 }
 
+/** An uninstaller wearing the application's name.
+ *
+ *  The name filters above catch "Uninstall Notepad++"; they cannot catch this machine's
+ *  "Antigravity IDE" shortcut, which is left over from an old install and points at
+ *  `unins000.exe`. Nothing about the entry says so — it sorts next to the real app, it is
+ *  indistinguishable in the panel, and both a click and "open antigravity ide" would have
+ *  started an uninstaller. The only place the truth is written down is the target.
+ *
+ *  Reading the link is a synchronous COM call and it is not free: it took the Start Menu scan
+ *  from 73ms to 219ms here. That is a background pass nothing waits on, and the alternative is
+ *  an app whose voice commands can run an uninstaller. */
+function isUninstaller(shortcut: string): boolean {
+  try {
+    const target = shell.readShortcutLink(shortcut).target
+    const uninstaller = target !== undefined && UNINSTALLER_EXE.test(basename(target))
+    if (uninstaller) log(`skipping ${basename(shortcut)}: it points at ${basename(target)}`)
+    return uninstaller
+  } catch {
+    // Not a shell link we can read. The name filters have already had their say.
+    return false
+  }
+}
+
+/** `unins000.exe` is Inno Setup's, `uninstall.exe`/`uninst.exe` cover the rest. */
+const UNINSTALLER_EXE = /^(unins\d*|uninst(all)?|setup|remove)\.exe$/i
+
 /** Directories under the Start Menu that only ever hold plumbing. */
 const SKIP_DIRECTORIES =
   /^(startup|administrative tools|windows administrative tools|windows system|windows tools|accessibility|windows powershell|windows accessories|maintenance)$/i
@@ -199,6 +225,7 @@ async function collect(
     if (extname(entry.name).toLowerCase() !== '.lnk') continue
     const name = basename(entry.name, extname(entry.name))
     if (isNoise(name)) continue
+    if (isUninstaller(full)) continue
     // Both Start Menu trees carry the same shortcuts for machine-wide installs; first wins.
     const key = name.toLowerCase()
     if (found.has(key)) continue

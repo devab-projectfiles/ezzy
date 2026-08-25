@@ -34,7 +34,9 @@ Hold the hotkey, speak, let go:
 | "chrome" | The same — a bare name works when the verb gets clipped |
 | "close this window" | Closes the window you were last in |
 | "close chrome" | Closes that window |
+| "close all windows" | Asks every open window to close |
 | "open github.com" | Opens the URL, or a path that exists |
+| "sleep the pc" / "hibernate" / "shut down" | Exactly that, immediately and with no confirmation |
 
 A tap of the same key still opens the panel to type in, and never touches speech recognition.
 

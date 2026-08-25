@@ -176,10 +176,17 @@ const DECISIVE_GAP = 0.12
 
 /** A whole-name near-miss, for the case word-start cannot see: §5's "sigma" for Figma, where
  *  the substitution is in the first syllable. The two strings have to be the same shape —
- *  measured, sigma/Figma is a length ratio of 1.0 at 0.299, while "batterys port"/BatteryBar
- *  is 0.77 at 0.385 and is not the same word at all. */
+ *  measured, sigma/Figma is a length ratio of 1.0 at 0.299 and "anti-granting"/Antigravity is
+ *  0.85 at 0.488, while "batterys port"/BatteryBar is 0.77 at 0.385 and is a different phrase
+ *  altogether. The ratio is what separates them; the score bar only keeps out the wild ones. */
 const WHOLE_NAME_RATIO = 0.8
-const WHOLE_NAME_SCORE = 0.3
+const WHOLE_NAME_SCORE = 0.5
+
+/** Two ranks this close are a tie, and a tie is decided by which name is closest in length to
+ *  what was said. Measured: "rise" scores 0.354 against both OneDrive and Rize, and without
+ *  this the alphabetically earlier one won — "open rize" opened nothing while OneDrive sat at
+ *  the top of the ranking being rejected. */
+const NEAR_TIE = 0.05
 
 /** The single best thing a spoken target names, or null when nothing matches well enough.
  *
@@ -209,9 +216,10 @@ export function bestMatch(
   const text = query.trim()
   if (text === '') return null
   const startedAt = performance.now()
+  const needle = text.toLowerCase()
   const ranked = rankAll(text, toCandidates(windows, apps))
-  const best = ranked[0]
-  const accepted = best !== undefined && isConfident(best, ranked[1], text.toLowerCase(), strict)
+  const best = breakTies(ranked, needle)
+  const accepted = best !== undefined && isConfident(best, runnerUpTo(ranked, best), needle, strict)
   since(
     `best match for "${text}": ${
       best === undefined
@@ -221,6 +229,45 @@ export function bestMatch(
     startedAt
   )
   return accepted ? best.candidate : null
+}
+
+/** Among matches that scored the same, the one whose name is the same length as what was
+ *  said. Two candidates can only be distinguished by the sound of them at this point, and a
+ *  four-letter word is far likelier to have been a four-letter app than half of a longer one. */
+function breakTies(ranked: Ranked[], needle: string): Ranked | undefined {
+  const best = ranked[0]
+  if (best === undefined) return undefined
+  let winner = best
+  let bestRatio = lengthRatio(needle, best.candidate.name)
+  for (const hit of ranked) {
+    if (hit.rank - best.rank > NEAR_TIE) break
+    const ratio = lengthRatio(needle, hit.candidate.name)
+    if (ratio <= bestRatio) continue
+    winner = hit
+    bestRatio = ratio
+  }
+  return winner
+}
+
+/** The next match that is a genuinely different target.
+ *
+ *  "Antigravity" and "Antigravity IDE" are one thing with two Start Menu entries, and treating
+ *  the second as a rival made the gap rule refuse both: measured, "anti-granting" scored 0.488
+ *  and 0.603 against them, a gap of 0.115 against a threshold of 0.12. Nobody was ambiguous
+ *  about anything. */
+function runnerUpTo(ranked: Ranked[], best: Ranked): Ranked | undefined {
+  return ranked.find((hit) => hit !== best && !sameThing(hit.candidate, best.candidate))
+}
+
+function sameThing(a: Candidate, b: Candidate): boolean {
+  const one = depunctuate(a.name.toLowerCase())
+  const two = depunctuate(b.name.toLowerCase())
+  return one.startsWith(two) || two.startsWith(one)
+}
+
+function lengthRatio(needle: string, name: string): number {
+  const other = name.toLowerCase()
+  return Math.min(needle.length, other.length) / Math.max(needle.length, other.length)
 }
 
 function isConfident(
@@ -239,9 +286,9 @@ function isConfident(
  *  candidate — as opposed to a string that merely shares letters with it. */
 function soundsLikeIt(best: Ranked, needle: string): boolean {
   if (beginsSomething(best.candidate, needle)) return true
-  const name = best.candidate.name.toLowerCase()
-  const ratio = Math.min(needle.length, name.length) / Math.max(needle.length, name.length)
-  return ratio >= WHOLE_NAME_RATIO && best.score <= WHOLE_NAME_SCORE
+  return (
+    lengthRatio(needle, best.candidate.name) >= WHOLE_NAME_RATIO && best.score <= WHOLE_NAME_SCORE
+  )
 }
 
 /** The needle begins the name, one of its words, or the owning app's — the shapes a spoken

@@ -13,6 +13,7 @@ import koffi from 'koffi'
 const user32 = koffi.load('user32.dll')
 const kernel32 = koffi.load('kernel32.dll')
 const dwmapi = koffi.load('dwmapi.dll')
+const powrprof = koffi.load('powrprof.dll')
 
 /** A window handle. Zero is the null handle, which every call below treats as "no window". */
 export type Hwnd = number
@@ -125,6 +126,9 @@ const fn = {
   CloseHandle: kernel32.func('bool __stdcall CloseHandle(uintptr_t handle)'),
   QueryFullProcessImageNameW: kernel32.func(
     'bool __stdcall QueryFullProcessImageNameW(uintptr_t proc, uint32_t flags, _Out_ uint16_t *buf, _Inout_ uint32_t *size)'
+  ),
+  SetSuspendState: powrprof.func(
+    'bool __stdcall SetSuspendState(bool hibernate, bool force, bool wakeupEventsDisabled)'
   ),
   DwmGetWindowAttribute: dwmapi.func(
     'int32_t __stdcall DwmGetWindowAttribute(uintptr_t hwnd, uint32_t attr, _Out_ int32_t *value, uint32_t size)'
@@ -316,6 +320,20 @@ export function tapAltKey(): void {
  *  by reading it, which would make this function's result depend on who called it last. */
 export function isKeyDown(vk: number): boolean {
   return (fn.GetAsyncKeyState(vk) & 0x8000) !== 0
+}
+
+/** Suspend the machine — sleep, or hibernate when asked.
+ *
+ *  `force` is false: applications get their usual chance to object, which is what the Start
+ *  menu's own Sleep does. Wake events stay enabled, so the machine can still be woken by the
+ *  keyboard or a timer.
+ *
+ *  A caveat worth knowing rather than working around: on a machine with hibernation enabled,
+ *  Windows may honour a sleep request with hibernation anyway. That is the documented
+ *  behaviour of this call and of `rundll32 powrprof.dll,SetSuspendState`, which is what every
+ *  other launcher does too. */
+export function suspend(hibernate: boolean): boolean {
+  return fn.SetSuspendState(hibernate, false, false)
 }
 
 // ----------------------------------------------------------------- win events

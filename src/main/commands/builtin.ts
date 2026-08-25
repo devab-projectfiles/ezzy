@@ -4,8 +4,9 @@
  *  `keybd_event` with the `VK_MEDIA_*` codes, which is chunk E's line in §8. A command that
  *  matches and then does nothing is worse than one that is not registered yet.
  *
- *  `close X` is not in §4's list at all. It was asked for after chunk D shipped, and it is
- *  exactly the shape §4 predicted: a pattern, a resolver and twenty lines.
+ *  `close X`, `close all windows` and the three power commands are not in §4's list at all.
+ *  They were asked for after chunk D shipped, and they are exactly the shape §4 predicted: a
+ *  pattern, a resolver and twenty lines.
  *
  *  **`switch to X` and `open X` do the same thing**, on purpose. §4 gives `open X` the ladder
  *  — live window, installed app, file path, URL — and stops `switch to X` at the first rung,
@@ -16,10 +17,12 @@
 import { indexedApps } from '../app-index'
 import { focusWindow } from '../focus'
 import { launchApp, openDirect, resolveDirect } from '../launcher'
+import { hibernateMachine, shutDownMachine, sleepMachine } from '../power'
 import { bestMatch } from '../search'
 import { listWindows } from '../window-tracker'
 import { closeWindow } from '../win32'
 import { hidePanel } from '../windows'
+import { log } from '../verbose'
 import { CommandContext, register } from './registry'
 
 /** "switch to chrome", "go back to code", "switch over to the terminal", "take me to slack".
@@ -30,6 +33,10 @@ const SWITCH =
 /** "open figma", "launch spotify", "start notion", "open github.com". */
 const OPEN =
   /^(?:open|launch|start|run|bring up|pull up|show me|show|focus|activate)(?:\s+up)?\s+(?:the\s+)?(.+)$/
+
+/** "close all windows", "close everything". Before CLOSE_THIS, which would otherwise read
+ *  "close all windows" as "close the window". */
+const CLOSE_ALL = /^(?:close|quit|kill)\s+(?:all|every)\s*(?:the\s+)?(?:windows?|thing|things)?$/
 
 /** "close this window", "close it", "close this", "close the current window". */
 const CLOSE_THIS =
@@ -52,6 +59,41 @@ const BARE = /^([a-z0-9][a-z0-9 .+&'-]{1,40})$/
 const BARE_MAX_WORDS = 4
 
 export function registerBuiltinCommands(): void {
+  // The three that cannot be undone, first in the list. Each matches a whole utterance and
+  // nothing else, so they shadow nothing — while the other way round, "go to sleep" was being
+  // read by `switch to` as a request to switch to something called "sleep".
+  register({
+    id: 'sleep',
+    match:
+      /^(?:sleep|go to sleep|suspend)(?:\s+the)?(?:\s+(?:pc|computer|laptop|machine|system))?$/,
+    describe: () => 'Going to sleep',
+    run: async (_groups, ctx) => {
+      hidePanel()
+      if (!sleepMachine()) ctx.failed('Windows wouldn’t go to sleep')
+    }
+  })
+
+  register({
+    id: 'hibernate',
+    match: /^hibernate(?:\s+the)?(?:\s+(?:pc|computer|laptop|machine|system))?$/,
+    describe: () => 'Hibernating',
+    run: async (_groups, ctx) => {
+      hidePanel()
+      if (!hibernateMachine()) ctx.failed('Windows wouldn’t hibernate')
+    }
+  })
+
+  register({
+    id: 'shut-down',
+    match:
+      /^(?:shut\s*down|power\s*off|turn\s*off)(?:\s+the)?(?:\s+(?:pc|computer|laptop|machine|system))?$/,
+    describe: () => 'Shutting down',
+    run: async (_groups, ctx) => {
+      hidePanel()
+      if (!(await shutDownMachine())) ctx.failed('Windows wouldn’t shut down')
+    }
+  })
+
   register({
     id: 'switch-to',
     match: SWITCH,
@@ -66,8 +108,32 @@ export function registerBuiltinCommands(): void {
     run: (groups, ctx) => goTo(groups[1], ctx)
   })
 
+  register({
+    id: 'close-all',
+    match: CLOSE_ALL,
+    describe: () => 'Closing every window',
+    run: async (_groups, ctx) => {
+      // Snapshotted before the first close, because closing a window changes the list.
+      const open = listWindows()
+      if (open.length === 0) {
+        ctx.failed('There are no windows to close')
+        return
+      }
+      // Every one of them is asked, not told: an app with unsaved work still gets to put its
+      // dialog up, and if it refuses, it stays. Ezzy's own windows are not in this list.
+      let asked = 0
+      for (const window of open) if (closeWindow(window.id)) asked++
+      log(`asked ${asked} of ${open.length} windows to close`)
+      if (asked === 0) {
+        ctx.failed('Windows wouldn’t close any of them')
+        return
+      }
+      hidePanel()
+    }
+  })
+
   // Before CLOSE_NAMED, which would otherwise read "close this window" as a window called
-  // "this".
+  // "this" — and after CLOSE_ALL, which it would read as "close the window".
   register({
     id: 'close-this',
     match: CLOSE_THIS,
