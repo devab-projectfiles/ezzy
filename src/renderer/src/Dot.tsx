@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { DOT_VISUAL, PILL_VISUAL, type PillDirection } from '../../shared/types'
 import glyph from '../assets/dot.svg?raw'
+import { initSpeech, speak } from './speech'
 
 /** Pointer travel below this is a click with a shaky hand, not a drag. */
 const DRAG_THRESHOLD = 4
@@ -20,6 +21,14 @@ function Dot(): React.JSX.Element {
   /** Set when a drag ends. The cursor is still on the pill then, and reopening under it is
    *  not a hover the user asked for — so the pill stays shut until the cursor leaves. */
   const suppressed = useRef(false)
+
+  // §5: `speechSynthesis` is renderer-only, and this is the renderer that never goes away —
+  // a confirmation almost always arrives just after the panel has been dismissed. Nothing
+  // about it is decided here; main/speech.ts sends the finished sentence.
+  useEffect(() => {
+    initSpeech()
+    return window.ezzy.onSpeak(speak)
+  }, [])
 
   // The pill shows the hotkey actually in force, which is not always the configured one.
   useEffect(() => {

@@ -1,8 +1,8 @@
 /** The v1 commands, registered as data (PLAN.md §4).
  *
- *  §4 also lists `pause/play`, `next` and `previous`. Those are deliberately absent — they are
- *  `keybd_event` with the `VK_MEDIA_*` codes, which is chunk E's line in §8. A command that
- *  matches and then does nothing is worse than one that is not registered yet.
+ *  §4's `pause/play`, `next` and `previous` arrived with chunk E, which is where §8 puts the
+ *  `VK_MEDIA_*` codes they need. They are the shape §4 promised: a pattern, one call, and a
+ *  sentence to say afterwards.
  *
  *  `close X`, `close all windows` and the three power commands are not in §4's list at all.
  *  They were asked for after chunk D shipped, and they are exactly the shape §4 predicted: a
@@ -17,6 +17,7 @@
 import { indexedApps } from '../app-index'
 import { focusWindow } from '../focus'
 import { launchApp, openDirect, resolveDirect } from '../launcher'
+import { nextTrack, playPause, previousTrack } from '../media-keys'
 import { hibernateMachine, shutDownMachine, sleepMachine } from '../power'
 import { bestMatch, spokenVariants } from '../search'
 import { listWindows } from '../window-tracker'
@@ -30,9 +31,14 @@ import { CommandContext, register } from './registry'
 const SWITCH =
   /^(?:switch|switched|change|swap|go|jump|flip|move|take me|bring me|head)(?:\s+(?:over|back|me))*\s+to\s+(?:the\s+)?(.+)$/
 
-/** "open figma", "launch spotify", "start notion", "open github.com". */
+/** "open figma", "launch spotify", "start notion", "open github.com", "play spotify".
+ *
+ *  `play` is in this list because it is also in PLAY_PAUSE: a verb that works the media keys
+ *  when it is said on its own still has to reach the launcher when an app name follows it, or
+ *  adding the media commands would have quietly taken "play spotify" away. PLAY_PAUSE is
+ *  registered first and matches only a closed list of objects, so the two never overlap. */
 const OPEN =
-  /^(?:open|launch|start|run|bring up|pull up|show me|show|focus|activate)(?:\s+up)?\s+(?:the\s+)?(.+)$/
+  /^(?:open|launch|start|run|play|bring up|pull up|show me|show|focus|activate)(?:\s+up)?\s+(?:the\s+)?(.+)$/
 
 /** "close all windows", "close everything". Before CLOSE_THIS, which would otherwise read
  *  "close all windows" as "close the window". */
@@ -44,6 +50,23 @@ const CLOSE_THIS =
 
 /** "close chrome", "close the outlook window". */
 const CLOSE_NAMED = /^(?:close|quit|kill)\s+(?:the\s+)?(.+?)(?:\s+window)?$/
+
+/** "play", "pause", "resume", "pause the music", "play/pause".
+ *
+ *  Anchored to the whole utterance and allowing only a handful of objects after the verb, so
+ *  that "play spotify" and "start notion" fall through to OPEN rather than being answered by
+ *  toggling whatever happens to be playing. That is the only reason these can sit above the
+ *  verbs without shadowing them. */
+const PLAY_PAUSE =
+  /^(?:(play|pause|resume|unpause)|play\s*[/-]?\s*pause|toggle)(?:\s+(?:the|this|that))?(?:\s+(?:music|song|track|audio|video|media|playback|it))?$/
+
+/** "next", "next track", "skip", "skip this song". */
+const NEXT_TRACK = /^(?:next|skip|forward)(?:\s+(?:the|this|that))?(?:\s+(?:track|song|one|it))?$/
+
+/** "previous", "previous track", "go back", "last song". "go back" only matches on its own —
+ *  "go back to code" is SWITCH, which needs the "to". */
+const PREVIOUS_TRACK =
+  /^(?:previous|prev|back|go back|last)(?:\s+(?:the|this|that))?(?:\s+(?:track|song|one))?$/
 
 /** A bare name, with no verb in front of it: "chrome", "antigravity".
  *
@@ -91,6 +114,47 @@ export function registerBuiltinCommands(): void {
     run: async (_groups, ctx) => {
       hidePanel()
       if (!(await shutDownMachine())) ctx.failed('Windows wouldn’t shut down')
+    }
+  })
+
+  // The media keys, above the verbs for the same reason as the power commands: each matches a
+  // whole utterance and nothing else, so they shadow nothing, while "next" left to fall
+  // through would be read by `bare-target` as an app called Next.
+  //
+  // None of the three can fail. `keybd_event` returns nothing, Windows routes the key to
+  // whichever app owns the current media session, and Ezzy is never told what happened to it —
+  // so the confirmation says what Ezzy did, not what the music did.
+  register({
+    id: 'play-pause',
+    match: PLAY_PAUSE,
+    // One key toggles both, so the verb the user chose is the only evidence of which one they
+    // meant. Echoing it back is honest — Ezzy genuinely does not know whether anything was
+    // playing — and it reads as an answer rather than as a shrug.
+    describe: (groups) =>
+      groups[1] === 'pause' ? 'Pausing' : groups[1] ? 'Playing' : 'Play/pause',
+    run: async () => {
+      playPause()
+      hidePanel()
+    }
+  })
+
+  register({
+    id: 'next-track',
+    match: NEXT_TRACK,
+    describe: () => 'Next track',
+    run: async () => {
+      nextTrack()
+      hidePanel()
+    }
+  })
+
+  register({
+    id: 'previous-track',
+    match: PREVIOUS_TRACK,
+    describe: () => 'Previous track',
+    run: async () => {
+      previousTrack()
+      hidePanel()
     }
   })
 

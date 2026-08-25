@@ -62,8 +62,12 @@ export const WINEVENT_OUTOFCONTEXT = 0x0000
 
 const PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
 
-/** keybd_event flags, for the synthetic ALT in focus.ts. */
+/** keybd_event flags, for the synthetic ALT in focus.ts and the media keys in media-keys.ts. */
 const KEYEVENTF_KEYUP = 0x0002
+/** The key belongs to the extended set — the grey block, the arrows, and every VK_MEDIA_*.
+ *  Windows routes an extended key by its scan code, and without this flag a media key is
+ *  reported with the wrong one and some apps ignore it. */
+const KEYEVENTF_EXTENDEDKEY = 0x0001
 const VK_MENU = 0x12
 
 // ------------------------------------------------------------------- bindings
@@ -307,6 +311,14 @@ export function currentThreadId(): number {
 export function tapAltKey(): void {
   fn.keybd_event(VK_MENU, 0, 0, 0)
   fn.keybd_event(VK_MENU, 0, KEYEVENTF_KEYUP, 0)
+}
+
+/** Press and release one extended key, as if the keyboard had. Used for the VK_MEDIA_* codes
+ *  (§8 chunk E): Windows delivers them to whichever app owns the current media session, which
+ *  is why this works without Ezzy knowing or caring what is playing. */
+export function tapExtendedKey(vk: number): void {
+  fn.keybd_event(vk, 0, KEYEVENTF_EXTENDEDKEY, 0)
+  fn.keybd_event(vk, 0, KEYEVENTF_EXTENDEDKEY | KEYEVENTF_KEYUP, 0)
 }
 
 /** Whether a key is physically down right now.

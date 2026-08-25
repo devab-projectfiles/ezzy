@@ -1,6 +1,6 @@
 import { Menu, Tray, nativeImage, shell } from 'electron'
 import icon from '../../resources/icon.png?asset'
-import { configFilePath, getConfig } from './config'
+import { configFilePath, getConfig, updateConfig } from './config'
 import { HotkeyResult, activeHotkey } from './hotkey'
 import { resetDotPosition, showDot, togglePanel } from './windows'
 
@@ -26,6 +26,16 @@ export function refreshTray(): void {
       { type: 'separator' },
       { label: 'Show', click: () => showDot() },
       { label: 'Reset dot position', click: () => resetDotPosition() },
+      // §8 chunk E: spoken confirmations are on by default and toggleable. The settings
+      // WINDOW is chunk F — this is the same stopgap as the Settings item below it, which
+      // opens config.json, except that the one setting a user is likely to want off should
+      // not require finding a JSON file to turn off.
+      {
+        label: 'Speak confirmations',
+        type: 'checkbox',
+        checked: getConfig().speech,
+        click: (item) => updateConfig({ speech: item.checked })
+      },
       { label: 'Settings', click: () => void openSettings() },
       { type: 'separator' },
       { label: 'Quit', click: () => quit() }

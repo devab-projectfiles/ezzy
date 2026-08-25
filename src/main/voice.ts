@@ -18,6 +18,7 @@ import { indexedApps } from './app-index'
 import { registerBuiltinCommands } from './commands/builtin'
 import { normaliseTranscript, runCommand } from './commands/registry'
 import { activeHotkey, watchHold } from './hotkey'
+import { hush, speak } from './speech'
 import { isVoiceInstalled, startWhisperServer, transcribe, whenReady } from './stt'
 import { log, since } from './verbose'
 import { ensureModel, hasModel, isDownloading } from './whisper-model'
@@ -36,15 +37,24 @@ let pendingAudio: ((wav: Buffer | null) => void) | null = null
  *  the user was opening the panel, not asking to speak. The next hold reports it instead of
  *  waiting four seconds for audio that cannot come. */
 let armFailure: VoiceFailure | null = null
-let clearErrorTimer: ReturnType<typeof setTimeout> | null = null
+let clearStateTimer: ReturnType<typeof setTimeout> | null = null
+/** What whisper heard for the command currently in flight, or null before there is a
+ *  transcript. Chunk E shows it: a mangled name is the commonest reason a command misses, and
+ *  "I couldn't find Sigma" only makes sense next to the word that produced it. */
+let heard: string | null = null
 
 /** The renderer has to stop the stream, encode a WAV and send it. If that has not happened by
  *  now, something in it has failed in a way it did not report. */
 const AUDIO_TIMEOUT_MS = 4_000
 
-/** How long an error stays on the search bar before it goes back to being a search bar. Long
- *  enough to read a short sentence, short enough not to be in the way of a retry. */
+/** How long an error stays on screen before the surface goes back to being a search bar.
+ *  Long enough to read a short sentence, short enough not to be in the way of a retry. */
 const ERROR_MS = 4_000
+
+/** A confirmation is shorter-lived than a failure: the user asked for it, it happened, and the
+ *  window they wanted is already in front of them. This is long enough to catch out of the
+ *  corner of an eye and confirm what was heard, and no longer. */
+const DONE_MS = 2_600
 
 /** A WAV header is 44 bytes and 16kHz mono PCM is 32,000 bytes a second, so this is a quarter
  *  of a second of audio. Below it the hold was a slip, not a command — usually a tap that
@@ -75,15 +85,22 @@ export function voiceState(): VoiceState {
 function setState(next: VoiceState): void {
   state = next
   sendVoiceState(next)
-  if (clearErrorTimer) clearTimeout(clearErrorTimer)
-  clearErrorTimer = null
-  if (next.kind !== 'error') return
-  clearErrorTimer = setTimeout(() => setState({ kind: 'idle' }), ERROR_MS)
+  if (clearStateTimer) clearTimeout(clearStateTimer)
+  clearStateTimer = null
+  // The two terminal states clear themselves; the rest are cleared by whatever happens next.
+  const linger = next.kind === 'error' ? ERROR_MS : next.kind === 'done' ? DONE_MS : 0
+  if (linger === 0) return
+  clearStateTimer = setTimeout(() => setState({ kind: 'idle' }), linger)
 }
 
+/** A command that could not be carried out. §8 chunk E: "a failed command is as clear as a
+ *  successful one" — which is why this both draws it and says it out loud. Spoken matters more
+ *  here than for a success: the user is looking at the app they expected to be switched away
+ *  from, not at the dot. */
 function fail(message: string, micBlocked = false): void {
   log(`voice: ${message}`)
-  setState({ kind: 'error', message, micBlocked })
+  setState({ kind: 'error', message, micBlocked, heard: heard ?? undefined })
+  speak(message, 'failure')
 }
 
 // ------------------------------------------------------------------ listening
@@ -117,6 +134,10 @@ function cancelCapture(): void {
 
 async function beginListening(): Promise<void> {
   if (capturing) return
+  // Stop any confirmation still playing, before the microphone that is about to open hears
+  // Ezzy talking about the last command.
+  hush()
+  heard = null
 
   if (!isVoiceInstalled()) {
     fail(
@@ -174,18 +195,21 @@ async function finishListening(): Promise<void> {
     return
   }
 
-  const heard = await transcribe(wav, whisperPrompt())
-  if (heard === null) {
+  const raw = await transcribe(wav, whisperPrompt())
+  if (raw === null) {
     fail('I couldn’t transcribe that')
     return
   }
 
-  const text = normaliseTranscript(heard)
-  log(`voice: heard "${heard.trim()}" -> "${text}"`)
+  const text = normaliseTranscript(raw)
+  log(`voice: heard "${raw.trim()}" -> "${text}"`)
   if (text === '') {
     fail('I didn’t catch that')
     return
   }
+  // The normalised form, not the raw one: it is what the commands were matched against, so it
+  // is the honest answer to "what did you think I said".
+  heard = text
 
   const outcome = await runCommand(text)
   if (outcome === null) {
@@ -197,8 +221,13 @@ async function finishListening(): Promise<void> {
     return
   }
   // §7: act before you speak. The command has already put the window in front by the time
-  // this line runs, and the panel went with it — there is nothing left to show.
-  setState({ kind: 'idle' })
+  // either of these lines runs — neither the toast nor the confirmation is allowed to sit
+  // between the user finishing their sentence and the window appearing.
+  //
+  // The panel went with it, so the toast is what draws this: it is the one surface that
+  // outlives a successful command (see sendVoiceState).
+  setState({ kind: 'done', message: outcome.message, heard: text })
+  speak(outcome.message, 'success')
   since(`voice: key release -> ${outcome.message}`, releasedAt)
 }
 

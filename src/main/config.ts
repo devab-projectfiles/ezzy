@@ -66,6 +66,7 @@ function normalise(raw: Partial<EzzyConfig>): EzzyConfig {
         : DEFAULT_CONFIG.hotkey,
     openAtLogin:
       typeof raw.openAtLogin === 'boolean' ? raw.openAtLogin : DEFAULT_CONFIG.openAtLogin,
+    speech: typeof raw.speech === 'boolean' ? raw.speech : DEFAULT_CONFIG.speech,
     dotPositions,
     lastDisplayId: typeof raw.lastDisplayId === 'string' ? raw.lastDisplayId : null
   }

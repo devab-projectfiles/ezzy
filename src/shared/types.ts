@@ -9,6 +9,10 @@ export interface EzzyConfig {
   /** Electron accelerator string, e.g. 'Alt+Space'. */
   hotkey: string
   openAtLogin: boolean
+  /** Spoken confirmations (PLAN.md §8 chunk E) — on by default, and the one thing here a
+   *  user is likely to want off. Only the voice path speaks: someone who clicked a row is
+   *  looking at the screen and does not need telling what they just did. */
+  speech: boolean
   /** Dot position keyed by display id, so each monitor remembers its own spot. */
   dotPositions: Record<string, DotPosition>
   /** Display the dot was last on, used to pick a position at startup. */
@@ -18,6 +22,7 @@ export interface EzzyConfig {
 export const DEFAULT_CONFIG: EzzyConfig = {
   hotkey: 'Alt+Space',
   openAtLogin: true,
+  speech: true,
   dotPositions: {},
   lastDisplayId: null
 }
@@ -54,6 +59,19 @@ export const SEARCH_HEIGHT = 54
 export const SEARCH_PANEL_GAP = 11
 /** Gap between the dot and the search-bar/panel pair. */
 export const PANEL_GAP = 12
+
+/** The toast (§8 chunk E) — its own transparent, click-through window, anchored beside the
+ *  dot exactly the way the pair is, and shown only when the search bar is not up. The two are
+ *  never on screen together: whichever surface exists carries the words.
+ *
+ *  Fixed size, like the dot window and for the same reason — resizing a transparent window
+ *  re-creates its composited surface and flashes. The glass card inside it hugs its text and
+ *  is centred, so a one-line toast and a three-line one cost the same window. */
+export const TOAST_WIDTH = 300
+export const TOAST_HEIGHT = 116
+/** How long the exit animation in toast.css runs, so the window is hidden after it rather
+ *  than through it. §6: exits are faster than entrances. */
+export const TOAST_EXIT_MS = 150
 
 /** The panel is a fixed size: four window rows and two app rows, each section scrolling on
  *  its own. The renderer still measures it rather than computing it here, so panel.css stays
@@ -155,10 +173,13 @@ export type VoiceState =
   /** Between the key coming up and the command running: transcribing, and possibly still
    *  waiting for whisper-server to finish loading the model. */
   | { kind: 'thinking' }
-  /** A command that could not be carried out, and why. There is no matching success state:
-   *  a command that worked has already put the window the user asked for in front of them,
-   *  and the panel is gone. Only a miss needs saying. */
-  | { kind: 'error'; message: string; micBlocked: boolean }
+  /** It worked. Chunk D had no such state — a command that succeeded had already put the
+   *  window in front of the user and taken the panel with it, so there was nothing left to
+   *  draw on. Chunk E gives it the toast, which outlives the panel. */
+  | { kind: 'done'; message: string; heard: string }
+  /** A command that could not be carried out, and why. `heard` is absent when the failure
+   *  came before there was a transcript — a blocked microphone, a download that failed. */
+  | { kind: 'error'; message: string; micBlocked: boolean; heard?: string }
 
 /** What the dot's renderer should do with its microphone.
  *
@@ -205,7 +226,8 @@ export const IPC = {
   voiceCapture: 'voice:capture',
   voiceAudio: 'voice:audio',
   voiceFailed: 'voice:failed',
-  openMicSettings: 'voice:mic-settings'
+  openMicSettings: 'voice:mic-settings',
+  speak: 'speech:speak'
 } as const
 
 /** The surface the preload exposes on `window.ezzy`. Named functions only.
@@ -276,4 +298,10 @@ export interface EzzyApi {
   /** Opens Windows' microphone privacy page — §5: a blocked mic must lead somewhere, not to
    *  a dead button. */
   openMicSettings(): void
+  /** Something to say out loud. §5: `speechSynthesis` is a web API and does not exist in the
+   *  main process, so the sentence is decided there and spoken here. Only the dot's renderer
+   *  subscribes — it is the one window that is always alive, and the confirmation for a
+   *  command usually arrives after the panel has already gone. An empty string means stop
+   *  talking. Returns an unsubscribe function. */
+  onSpeak(callback: (text: string) => void): () => void
 }

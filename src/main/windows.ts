@@ -17,6 +17,9 @@ import {
   PillDirection,
   SEARCH_HEIGHT,
   SEARCH_PANEL_GAP,
+  TOAST_EXIT_MS,
+  TOAST_HEIGHT,
+  TOAST_WIDTH,
   VoiceCapture,
   VoiceState
 } from '../shared/types'
@@ -28,6 +31,12 @@ let dotWindow: BrowserWindow | null = null
 let panelWindow: BrowserWindow | null = null
 /** §6's second glass surface: the 420x54 pill above the panel. */
 let searchWindow: BrowserWindow | null = null
+/** Chunk E's toast. Always alive, click-through, and shown only when the search bar is not —
+ *  the two carry the same words and must never both be on screen. */
+let toastWindow: BrowserWindow | null = null
+/** Set while the toast is playing its exit, so the window is hidden after the animation
+ *  rather than through it. Cleared if something new arrives first. */
+let toastHideTimer: ReturnType<typeof setTimeout> | null = null
 let quitting = false
 let drag: DragState | null = null
 /** The panel's current height. It hugs its content, so the renderer drives this. */
@@ -77,6 +86,8 @@ interface DragState {
   commanded: DotPosition
   startedAt: number
 }
+
+const IDLE: VoiceState = { kind: 'idle' }
 
 /** A drag still running after this long is a lost pointerup, not a patient user. */
 const MAX_DRAG_MS = 20_000
@@ -151,8 +162,17 @@ export function createWindows(): void {
     hidePanel()
   })
 
+  // Chunk E's fourth window. It is furniture in the strongest sense: it never takes focus,
+  // it is never clicked, and it must not eat a click aimed at whatever is underneath it — so
+  // it is click-through for its whole life, unlike the dot, which only becomes solid when the
+  // cursor is actually on the pill.
+  toastWindow = createGlassWindow(TOAST_HEIGHT, TOAST_WIDTH)
+  toastWindow.setFocusable(false)
+  toastWindow.setIgnoreMouseEvents(true)
+
   loadRenderer(searchWindow, 'searchbar')
   loadRenderer(panelWindow, 'panel')
+  loadRenderer(toastWindow, 'toast')
 }
 
 /** One of the two glass surfaces. Both are the same window underneath — only their height
@@ -165,9 +185,9 @@ export function createWindows(): void {
  *
  *  It also buys back real CSS corner radii, which are anti-aliased, where acrylic needed a
  *  window region that was not. */
-function createGlassWindow(height: number): BrowserWindow {
+function createGlassWindow(height: number, width = PANEL_WIDTH): BrowserWindow {
   const win = new BrowserWindow({
-    width: PANEL_WIDTH,
+    width,
     height,
     frame: false,
     transparent: true,
@@ -211,13 +231,18 @@ function applyPermissionPolicy(): void {
 function webPreferences(): Electron.WebPreferences {
   return {
     preload: join(__dirname, '../preload/index.js'),
+    // Chromium counts speech synthesis as playback and gates it behind a user gesture. Our
+    // windows are never clicked — the dot is dragged, the confirmation is triggered by a
+    // global hotkey — so there is no gesture to be had, and the confirmations would be
+    // queued and silently dropped.
+    autoplayPolicy: 'no-user-gesture-required',
     contextIsolation: true,
     nodeIntegration: false,
     sandbox: true
   }
 }
 
-function loadRenderer(win: BrowserWindow, page: 'dot' | 'searchbar' | 'panel'): void {
+function loadRenderer(win: BrowserWindow, page: 'dot' | 'searchbar' | 'panel' | 'toast'): void {
   win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
   win.webContents.on('console-message', (details) => {
     log(`[${page}] ${details.level}: ${details.message}`)
@@ -485,33 +510,12 @@ export function resetDotPosition(): void {
 
 /** §6: the search bar sits 11px above the panel and the two move as one unit, anchored to
  *  the dot and clamped on-screen near edges. This lays the pair out together so the gap
- *  between them is fixed no matter where the dot is parked.
- *
- *  Anchored to the visible circle rather than the padded dot window, or the gap would
- *  silently include DOT_SLACK and read as too wide. */
+ *  between them is fixed no matter where the dot is parked. */
 function layoutPair(): { search: Electron.Rectangle; panel: Electron.Rectangle } {
-  const inset = visualInset()
-  const dot = {
-    x: dotAnchor.x + inset,
-    y: dotAnchor.y + inset,
-    width: DOT_VISUAL,
-    height: DOT_VISUAL
-  }
-  const area = screen.getDisplayMatching(dotBoundsAt(dotAnchor)).workArea
   const totalHeight = SEARCH_HEIGHT + SEARCH_PANEL_GAP + panelHeight
-
-  // Open away from the dot, and flip to its other side when there is no room.
-  let x = dot.x + dot.width + PANEL_GAP
-  if (x + PANEL_WIDTH > area.x + area.width) x = dot.x - PANEL_WIDTH - PANEL_GAP
-  x = Math.min(Math.max(x, area.x + PANEL_GAP), area.x + area.width - PANEL_WIDTH - PANEL_GAP)
-
-  // Centre the whole pair on the dot, then clamp the pair — not each window — so the 11px
-  // gap survives being pushed against the top or bottom of the work area.
-  let y = dot.y + dot.height / 2 - totalHeight / 2
-  y = Math.min(Math.max(y, area.y + PANEL_GAP), area.y + area.height - totalHeight - PANEL_GAP)
-
-  const left = Math.round(x)
-  const top = Math.round(y)
+  // Anchored and clamped as one block — not one window each — so the 11px gap survives being
+  // pushed against the top or bottom of the work area.
+  const { x: left, y: top } = anchorToDot(PANEL_WIDTH, totalHeight)
   return {
     search: { x: left, y: top, width: PANEL_WIDTH, height: SEARCH_HEIGHT },
     panel: {
@@ -521,6 +525,33 @@ function layoutPair(): { search: Electron.Rectangle; panel: Electron.Rectangle }
       height: panelHeight
     }
   }
+}
+
+/** Where a surface of this size goes when it opens next to the dot: on whichever side has
+ *  room, vertically centred on the dot, and clamped into the work area. Shared by the pair and
+ *  by the toast, which are never up at the same time and so can want the same spot.
+ *
+ *  Measured from the visible circle rather than from the padded dot window, or the gap would
+ *  silently include DOT_SLACK and read as too wide. */
+function anchorToDot(width: number, height: number): Electron.Rectangle {
+  const inset = visualInset()
+  const dot = {
+    x: dotAnchor.x + inset,
+    y: dotAnchor.y + inset,
+    width: DOT_VISUAL,
+    height: DOT_VISUAL
+  }
+  const area = screen.getDisplayMatching(dotBoundsAt(dotAnchor)).workArea
+
+  // Open away from the dot, and flip to its other side when there is no room.
+  let x = dot.x + dot.width + PANEL_GAP
+  if (x + width > area.x + area.width) x = dot.x - width - PANEL_GAP
+  x = Math.min(Math.max(x, area.x + PANEL_GAP), area.x + area.width - width - PANEL_GAP)
+
+  let y = dot.y + dot.height / 2 - height / 2
+  y = Math.min(Math.max(y, area.y + PANEL_GAP), area.y + area.height - height - PANEL_GAP)
+
+  return { x: Math.round(x), y: Math.round(y), width, height }
 }
 
 /** Move both surfaces together. */
@@ -561,6 +592,10 @@ export function showPanelForVoice(): void {
 function showPanel(): void {
   const startedAt = performance.now()
   if (!panelWindow || !searchWindow) return
+  // The pair opens exactly where the toast sits. Cut rather than faded: the search bar is
+  // about to say whatever the toast was saying, and watching one fade out from under the
+  // other reads as two separate things happening.
+  hideToastNow()
   // A previous session's query must not survive into this open — the input is about to be
   // cleared, and the results have to be cleared with it or the panel flashes the old ones.
   clearQuery()
@@ -598,12 +633,74 @@ export function sendToPanel(channel: string, payload?: unknown): void {
   panelWindow.webContents.send(channel, payload)
 }
 
-/** Voice state goes to the search bar, which is where §6 puts the mic glyph and the listening
- *  pulse. Skipped while it is hidden — it asks for the current state when it comes back up,
- *  so a download that finishes behind a closed panel is not lost. */
+/** Voice state goes to whichever surface is on screen: the search bar while the panel is up —
+ *  §6 puts the mic glyph and the listening pulse there — and chunk E's toast when it is not.
+ *  Never both, so there is one set of words at a time.
+ *
+ *  Which one wins is not arbitrary. The search bar is where the user is already looking while
+ *  a command is in flight, and it is the only surface that can hold the button a blocked
+ *  microphone needs. The toast is what survives the panel being dismissed — which is every
+ *  successful command, and the reason chunk D had no success state to draw at all.
+ *
+ *  The search bar still asks for the current state when it comes back up, so a download that
+ *  finishes behind a closed panel is not lost. */
 export function sendVoiceState(state: VoiceState): void {
-  if (!searchWindow?.isVisible()) return
-  searchWindow.webContents.send(IPC.voiceState, state)
+  if (searchWindow?.isVisible()) {
+    hideToastNow()
+    searchWindow.webContents.send(IPC.voiceState, state)
+    return
+  }
+  showToast(state)
+}
+
+/** Draw a state on the toast, bringing the window up if it is not already. */
+function showToast(state: VoiceState): void {
+  if (!toastWindow) return
+  if (state.kind === 'idle') {
+    dismissToast()
+    return
+  }
+  if (toastHideTimer) {
+    clearTimeout(toastHideTimer)
+    toastHideTimer = null
+  }
+  toastWindow.webContents.send(IPC.voiceState, state)
+  if (toastWindow.isVisible()) return
+  // Positioned at show time rather than kept in step with the dot: it is only ever up for a
+  // few seconds, and the dot is not being dragged during them.
+  toastWindow.setBounds(anchorToDot(TOAST_WIDTH, TOAST_HEIGHT))
+  // showInactive, like every other surface here (§5). A toast that took focus would steal it
+  // straight back off the window the user just asked to be switched to.
+  toastWindow.showInactive()
+}
+
+/** Let the card play its exit, then hide the window under it. */
+function dismissToast(): void {
+  if (!toastWindow?.isVisible() || toastHideTimer) return
+  toastWindow.webContents.send(IPC.voiceState, IDLE)
+  toastHideTimer = setTimeout(() => {
+    toastHideTimer = null
+    toastWindow?.hide()
+  }, TOAST_EXIT_MS)
+}
+
+function hideToastNow(): void {
+  if (toastHideTimer) {
+    clearTimeout(toastHideTimer)
+    toastHideTimer = null
+  }
+  if (!toastWindow?.isVisible()) return
+  toastWindow.hide()
+  // Otherwise the card is left holding its last message and the next show flashes it for a
+  // frame before the new one arrives.
+  toastWindow.webContents.send(IPC.voiceState, IDLE)
+}
+
+/** §5: `speechSynthesis` is renderer-only. The dot's renderer is the one that speaks — it is
+ *  always alive, where the search bar exists only while the panel is open, which is not long
+ *  enough to carry a confirmation that arrives after the panel has been dismissed. */
+export function speakInDot(text: string): void {
+  dotWindow?.webContents.send(IPC.speak, text)
 }
 
 /** Recording runs in the dot's renderer: it is the only window that is always alive, and

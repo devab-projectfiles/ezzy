@@ -69,7 +69,12 @@ const ezzy: EzzyApi = {
   },
   sendVoiceAudio: (wav) => ipcRenderer.send(IPC.voiceAudio, wav),
   reportVoiceFailure: (kind) => ipcRenderer.send(IPC.voiceFailed, kind),
-  openMicSettings: () => ipcRenderer.send(IPC.openMicSettings)
+  openMicSettings: () => ipcRenderer.send(IPC.openMicSettings),
+  onSpeak: (callback) => {
+    const handler = (_event: unknown, text: string): void => callback(text)
+    ipcRenderer.on(IPC.speak, handler)
+    return () => void ipcRenderer.removeListener(IPC.speak, handler)
+  }
 }
 
 contextBridge.exposeInMainWorld('ezzy', ezzy)
