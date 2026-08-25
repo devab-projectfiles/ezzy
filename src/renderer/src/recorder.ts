@@ -9,30 +9,66 @@
  *  MediaRecorder produces WebM/Opus. Decoding that would mean shipping ffmpeg (the server's
  *  `--convert` flag needs it); writing a 44-byte WAV header instead costs nothing.
  *
- *  The microphone is opened when the hold starts and closed the moment it ends. Ezzy never
- *  holds it open between commands — the Windows recording indicator should be on exactly when
- *  Ezzy is listening, because that indicator is the user's only real guarantee. */
+ *  The microphone opens when the hotkey goes *down*, not when the hold is recognised 350ms
+ *  later: opening a device takes 300-960ms here, and a user who starts talking as they press
+ *  loses their first word to it. A press that turns out to be a tap is cancelled — the buffer
+ *  is dropped and the device closed without anything being sent anywhere.
+ *
+ *  It is never held open between commands. The Windows recording indicator should be on
+ *  exactly while Ezzy has the microphone, because that indicator is the user's only real
+ *  guarantee about an app like this one. */
 
 /** What whisper wants: 16kHz mono. The AudioContext resamples the device's own rate for us. */
 const SAMPLE_RATE = 16_000
 
-/** ScriptProcessor's buffer, in frames — 256ms at 16kHz. Large enough that the callback is not
- *  hot, small enough that the tail of an utterance is not lost when the key comes up. */
-const BUFFER_FRAMES = 4096
+/** ScriptProcessor's buffer, in frames — 64ms at 16kHz.
+ *
+ *  This is the granularity of everything the recorder can lose. A block is only handed over
+ *  once it is full, so up to one block goes missing at each end of a recording, and a press
+ *  shorter than one block records nothing at all — measured, at 4096 frames (256ms) a brief
+ *  press on a cold device came back empty. Copying 1024 floats fifteen times a second is not
+ *  a cost worth weighing against that. */
+const BUFFER_FRAMES = 1024
+
+/** How long the device stays open after a command.
+ *
+ *  Opening it costs 225-400ms even with echo cancellation off, and that time comes out of the
+ *  start of the recording — measured, a 2000ms press captured 1536ms of audio. Someone giving
+ *  two commands in a row should not pay it twice, so the graph is left running for a while and
+ *  the second command captures every syllable.
+ *
+ *  Twenty seconds, not indefinitely: Windows shows a microphone indicator for as long as the
+ *  device is open, and it should go out shortly after Ezzy stops using it. A press that turns
+ *  out to be a tap closes it immediately rather than starting this timer at all. */
+const KEEP_WARM_MS = 20_000
+
+/** How much of the audio from *before* the key went down is kept.
+ *
+ *  Half a second. It exists because even a warm graph loses the start of an utterance: the
+ *  press has to cross IPC and it lands somewhere inside a block that has already begun.
+ *  Measured, a warm 2000ms press captured 1792ms of itself without this and 2560ms with it.
+ *
+ *  Only ever filled while the device is already open for a command that just ran, and thrown
+ *  away with everything else when it closes. */
+const PREROLL_MS = 500
+const PREROLL_BLOCKS = Math.ceil((PREROLL_MS / 1000) * (SAMPLE_RATE / BUFFER_FRAMES))
 
 let context: AudioContext | null = null
 let source: MediaStreamAudioSourceNode | null = null
 let processor: ScriptProcessorNode | null = null
 let stream: MediaStream | null = null
 let chunks: Float32Array[] = []
+/** The last few blocks to come through a warm-but-idle graph. See PREROLL_BLOCKS. */
+let preroll: Float32Array[] = []
+let idleTimer: ReturnType<typeof setTimeout> | null = null
 /** Whether the key is still held. Distinct from whether the graph is running: the release can
  *  land while `getUserMedia` is still being granted, and then nothing should start at all. */
 let wanted = false
 
 export function listenForCapture(): void {
-  window.ezzy.onVoiceCapture((recording) => {
-    if (recording) void start()
-    else void stop()
+  window.ezzy.onVoiceCapture((capture) => {
+    if (capture === 'arm') void start()
+    else void stop(capture === 'stop')
   })
 }
 
@@ -40,15 +76,31 @@ async function start(): Promise<void> {
   if (wanted) return
   wanted = true
   chunks = []
+  if (idleTimer) clearTimeout(idleTimer)
+  idleTimer = null
+
+  // Still warm from the last command: the graph never stopped, it was only ignoring what came
+  // through it. This is the path that costs nothing — and the half second it has been holding
+  // in the pre-roll covers the moment between the key going down and this running.
+  if (context && processor && stream?.active) {
+    chunks = preroll
+    preroll = []
+    return
+  }
+
   const startedAt = performance.now()
 
   try {
     stream = await navigator.mediaDevices.getUserMedia({
       audio: {
         channelCount: 1,
-        // All three are Chromium's own processing, and all three help: a launcher is used in
-        // rooms with fans and keyboards in them, not in a booth.
-        echoCancellation: true,
+        // Echo cancellation is off, and that is a latency decision rather than a quality one.
+        // Measured: with AEC on, opening the device took 720-870ms; with it off, 225-400ms.
+        // Chromium has to wire up the render side of the audio pipeline to cancel against, and
+        // every millisecond of that is a millisecond of the user's first word on the floor.
+        // Noise suppression and gain control cost nothing measurable and both help in the
+        // rooms this is actually used in, so they stay.
+        echoCancellation: false,
         noiseSuppression: true,
         autoGainControl: true
       }
@@ -77,9 +129,16 @@ async function start(): Promise<void> {
   // extra build entry for twenty lines of copying floats.
   processor = context.createScriptProcessor(BUFFER_FRAMES, 1, 1)
   processor.onaudioprocess = (event) => {
-    if (!wanted) return
     // Copied, not referenced: the event's buffer is reused for the next block.
-    chunks.push(new Float32Array(event.inputBuffer.getChannelData(0)))
+    const block = new Float32Array(event.inputBuffer.getChannelData(0))
+    if (wanted) {
+      chunks.push(block)
+      return
+    }
+    // Between commands, while the device is still open. Kept only long enough to cover the
+    // start of the next one.
+    preroll.push(block)
+    if (preroll.length > PREROLL_BLOCKS) preroll.shift()
   }
 
   // A ScriptProcessorNode only runs while it is connected to the destination, so the graph has
@@ -96,12 +155,31 @@ async function start(): Promise<void> {
   console.log(`microphone open in ${(performance.now() - startedAt).toFixed(0)}ms`)
 }
 
-async function stop(): Promise<void> {
+async function stop(send: boolean): Promise<void> {
   if (!wanted) return
   wanted = false
   const recorded = chunks
   chunks = []
-  release()
+  // A tap. Nothing recorded during it is looked at, encoded, or sent, and the device goes
+  // straight back — nobody who was not asking for voice should be left with an indicator on.
+  if (!send) {
+    release()
+    return
+  }
+
+  // A graph that delivered nothing at all. Seen once in testing, on a cold device while
+  // another process was taking the speakers — a ScriptProcessorNode is pulled by the audio
+  // *output*, so an output device that stalls stops the input arriving with it.
+  //
+  // The important part is not to keep it: a graph in this state would stay warm for the next
+  // twenty seconds and swallow every command given in them. Tear it down, say so, and let the
+  // next press build a new one. The main process reports the empty recording to the user.
+  if (recorded.length === 0) {
+    console.error(`[ezzy] the audio graph delivered nothing (context ${context?.state})`)
+    release()
+  } else {
+    keepWarm()
+  }
   // Sent even when it is a fraction of a second long: the main process is waiting for exactly
   // one answer per hold, and it is the one that decides whether that was enough audio to be a
   // command. Silence answered with silence is a clearer failure than a timeout.
@@ -110,8 +188,20 @@ async function stop(): Promise<void> {
   window.ezzy.sendVoiceAudio(wav)
 }
 
+/** Leave the device open for a moment in case another command follows. */
+function keepWarm(): void {
+  if (idleTimer) clearTimeout(idleTimer)
+  idleTimer = setTimeout(() => {
+    idleTimer = null
+    release()
+  }, KEEP_WARM_MS)
+}
+
 /** Tear the graph down and let go of the device. */
 function release(): void {
+  if (idleTimer) clearTimeout(idleTimer)
+  idleTimer = null
+  preroll = []
   if (processor) {
     processor.onaudioprocess = null
     processor.disconnect()
@@ -125,10 +215,34 @@ function release(): void {
   stream = null
 }
 
+/** Quiet recordings transcribe badly, and a laptop's built-in microphone two feet from the
+ *  speaker's mouth is quiet. Chromium's gain control helps but is conservative.
+ *
+ *  Bounded at both ends. Nothing louder than HEADROOM is touched, so a normal recording passes
+ *  through untouched; nothing quieter than SILENCE is touched either, because scaling a
+ *  near-empty buffer up by 8x turns room tone into something whisper will happily invent
+ *  sentences out of. */
+const HEADROOM = 0.9
+const SILENCE = 0.02
+const MAX_GAIN = 8
+
+function gainFor(blocks: Float32Array[]): number {
+  let peak = 0
+  for (const block of blocks) {
+    for (const sample of block) {
+      const level = Math.abs(sample)
+      if (level > peak) peak = level
+    }
+  }
+  if (peak >= HEADROOM || peak <= SILENCE) return 1
+  return Math.min(HEADROOM / peak, MAX_GAIN)
+}
+
 /** 16-bit PCM, mono, in a canonical 44-byte WAV. */
 function encodeWav(blocks: Float32Array[]): ArrayBuffer {
   let frames = 0
   for (const block of blocks) frames += block.length
+  const gain = gainFor(blocks)
 
   const buffer = new ArrayBuffer(44 + frames * 2)
   const view = new DataView(buffer)
@@ -153,9 +267,9 @@ function encodeWav(blocks: Float32Array[]): ArrayBuffer {
   let offset = 44
   for (const block of blocks) {
     for (const sample of block) {
-      // Clamped before scaling: the web audio range is nominally -1..1 but a loud room does
-      // overshoot it, and wrapping a sample round is an audible click.
-      const clamped = Math.max(-1, Math.min(1, sample))
+      // Clamped after the gain and before scaling: the web audio range is nominally -1..1 but
+      // a loud room does overshoot it, and wrapping a sample round is an audible click.
+      const clamped = Math.max(-1, Math.min(1, sample * gain))
       view.setInt16(offset, clamped < 0 ? clamped * 0x8000 : clamped * 0x7fff, true)
       offset += 2
     }

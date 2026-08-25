@@ -35,6 +35,10 @@ export const DWMWA_CLOAKED = 14
 
 export const SW_RESTORE = 9
 
+/** The polite "please close" every title-bar X sends. Not TerminateProcess: the app gets to
+ *  run its own close handler, prompt about unsaved work, and refuse. */
+export const WM_CLOSE = 0x0010
+
 /** The WinEvents we subscribe to. §5: subscribe, never poll EnumWindows. */
 export const EVENT_SYSTEM_FOREGROUND = 0x0003
 export const EVENT_OBJECT_CREATE = 0x8000
@@ -98,6 +102,9 @@ const fn = {
   GetForegroundWindow: user32.func('uintptr_t __stdcall GetForegroundWindow()'),
   SetForegroundWindow: user32.func('bool __stdcall SetForegroundWindow(uintptr_t hwnd)'),
   BringWindowToTop: user32.func('bool __stdcall BringWindowToTop(uintptr_t hwnd)'),
+  PostMessageW: user32.func(
+    'bool __stdcall PostMessageW(uintptr_t hwnd, uint32_t msg, uintptr_t wparam, intptr_t lparam)'
+  ),
   ShowWindow: user32.func('bool __stdcall ShowWindow(uintptr_t hwnd, int cmd)'),
   AttachThreadInput: user32.func(
     'bool __stdcall AttachThreadInput(uint32_t attach, uint32_t attachTo, bool join)'
@@ -268,6 +275,15 @@ export function bringWindowToTop(hwnd: Hwnd): boolean {
 
 export function showWindow(hwnd: Hwnd, command: number): boolean {
   return fn.ShowWindow(hwnd, command)
+}
+
+/** Ask a window to close, the same way its title-bar X does.
+ *
+ *  Posted rather than sent: SendMessage would block Ezzy's message loop until the other app
+ *  finished closing — and an app that puts up "save your changes?" would freeze the launcher
+ *  behind its own dialog. The return value only says the message was queued.  */
+export function closeWindow(hwnd: Hwnd): boolean {
+  return fn.PostMessageW(hwnd, WM_CLOSE, 0, 0)
 }
 
 export function attachThreadInput(attach: number, attachTo: number, join: boolean): boolean {

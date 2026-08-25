@@ -39,10 +39,14 @@ const HOLD_POLL_MS = 25
 const MAX_HOLD_MS = 30_000
 
 export interface HoldHandlers {
+  /** The hotkey has gone down, and it is not yet known whether this is a tap or a hold.
+   *  Voice uses this to open the microphone early — see VoiceCapture. */
+  onPress(): void
   /** The hotkey has been held past HOLD_MS. */
   onHold(): void
-  /** It has been released. Only ever called after onHold. */
-  onRelease(): void
+  /** It has come back up. Always called, whether or not the press became a hold, so the
+   *  handler can throw away a recording that turned out to be a tap. `held` says which. */
+  onRelease(held: boolean): void
 }
 
 /** Push-to-talk (§8 chunk D). The hotkey is the one key Ezzy already owns, so holding it is
@@ -104,7 +108,9 @@ function tryRegister(accelerator: string): boolean {
 function onHotkey(): void {
   if (holdPoll) return
   trigger()
-  if (holdKey !== null) watchTheKey(holdKey)
+  if (holdKey === null) return
+  hold?.onPress()
+  watchTheKey(holdKey)
 }
 
 function watchTheKey(vk: number): void {
@@ -130,9 +136,9 @@ function watchTheKey(vk: number): void {
 function endPress(): void {
   if (holdPoll) clearInterval(holdPoll)
   holdPoll = null
-  if (!holding) return
+  const wasHeld = holding
   holding = false
-  hold?.onRelease()
+  hold?.onRelease(wasHeld)
 }
 
 /** Named keys Electron's accelerators use, mapped to the virtual-key codes GetAsyncKeyState

@@ -17,6 +17,7 @@ import {
   PillDirection,
   SEARCH_HEIGHT,
   SEARCH_PANEL_GAP,
+  VoiceCapture,
   VoiceState
 } from '../shared/types'
 import { getConfig, updateConfig } from './config'
@@ -607,12 +608,8 @@ export function sendVoiceState(state: VoiceState): void {
 
 /** Recording runs in the dot's renderer: it is the only window that is always alive, and
  *  `getUserMedia` is a web API with no main-process equivalent. */
-export function startCapture(): void {
-  dotWindow?.webContents.send(IPC.voiceCapture, true)
-}
-
-export function stopCapture(): void {
-  dotWindow?.webContents.send(IPC.voiceCapture, false)
+export function sendCapture(capture: VoiceCapture): void {
+  dotWindow?.webContents.send(IPC.voiceCapture, capture)
 }
 
 export function showDot(): void {

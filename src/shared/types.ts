@@ -160,6 +160,21 @@ export type VoiceState =
    *  and the panel is gone. Only a miss needs saying. */
   | { kind: 'error'; message: string; micBlocked: boolean }
 
+/** What the dot's renderer should do with its microphone.
+ *
+ *  Three states rather than a boolean because arming happens *before* listening does. The
+ *  microphone takes 300-950ms to open — measured on this machine — and a user who starts
+ *  talking as they press loses the first word to that. So the device is opened the instant the
+ *  hotkey goes down, before Ezzy knows whether this is a tap or a hold, and a tap throws the
+ *  recording away unheard. */
+export type VoiceCapture =
+  /** Open the microphone and start buffering. */
+  | 'arm'
+  /** Stop and send what was recorded. */
+  | 'stop'
+  /** Stop, discard it, and let go of the device — this press turned out to be a tap. */
+  | 'cancel'
+
 /** Why the renderer could not record. Mapped from the DOMException getUserMedia rejects
  *  with, because the exception itself must not cross the bridge. */
 export type VoiceFailure = 'denied' | 'no-device' | 'failed'
@@ -248,11 +263,11 @@ export interface EzzyApi {
   /** The state as of right now. The search bar is hidden for most of a download, so it asks
    *  on the way back up rather than relying on having heard every change. */
   getVoiceState(): Promise<VoiceState>
-  /** The dot window's half of push-to-talk: `true` starts recording, `false` stops it.
-   *  Recording lives in the dot's renderer because `getUserMedia` is a web API and the dot is
-   *  the one window that is always alive — the search bar only exists while the panel is open,
-   *  which is not long enough to hold a microphone open across a command. */
-  onVoiceCapture(callback: (recording: boolean) => void): () => void
+  /** The dot window's half of push-to-talk. Recording lives in the dot's renderer because
+   *  `getUserMedia` is a web API and the dot is the one window that is always alive — the
+   *  search bar only exists while the panel is open, which is not long enough to hold a
+   *  microphone open across a command. */
+  onVoiceCapture(callback: (capture: VoiceCapture) => void): () => void
   /** The recorded utterance as a 16kHz mono WAV. The main process POSTs it to whisper-server;
    *  the bytes never touch the network beyond localhost. */
   sendVoiceAudio(wav: ArrayBuffer): void

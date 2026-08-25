@@ -140,36 +140,131 @@ function toCandidates(windows: EzzyWindow[], apps: IndexedApp[]): Candidate[] {
 /** Rebuilt per query rather than kept warm. Both lists change constantly — every window title
  *  edit and every icon that lands re-publishes them — so a cached index would need invalidating
  *  on both, and building one over a few hundred short strings is sub-millisecond. */
-function rankAll(
-  text: string,
-  candidates: Candidate[]
-): Array<{ candidate: Candidate; rank: number }> {
+function rankAll(text: string, candidates: Candidate[]): Ranked[] {
   const needle = text.toLowerCase()
   return new Fuse(candidates, OPTIONS)
     .search(text)
-    .map((hit) => ({ candidate: hit.item, rank: rank(hit.item, hit.score ?? 1, needle) }))
+    .map((hit) => ({
+      candidate: hit.item,
+      score: hit.score ?? 1,
+      rank: rank(hit.item, hit.score ?? 1, needle)
+    }))
     .sort((a, b) => a.rank - b.rank || a.candidate.order - b.candidate.order)
 }
 
-/** The single best thing a spoken target names, or null when nothing plausibly matches.
+interface Ranked {
+  candidate: Candidate
+  /** Fuse's own score, 0 for a perfect match. Kept apart from `rank` because the favours
+   *  that go into a rank are about *ordering* a list, and confidence is about whether the top
+   *  of that list means anything at all. */
+  score: number
+  rank: number
+}
+
+/** A match good enough to act on without asking. Everything at or under this is either the
+ *  right answer or a near-duplicate of it: measured against this machine's index, "chrome"
+ *  scores 0.026 on Google Chrome, "cursor" 0.000, "anti-gravity" 0.155 on Antigravity. */
+const CONFIDENT = 0.45
+
+/** Above CONFIDENT but still worth acting on *if nothing else is close*. */
+const PLAUSIBLE = 0.7
+
+/** How far ahead of the runner-up a merely plausible match has to be. Measured, "crawl"
+ *  returns Calculator and Calendar tied at 0.503 and "crow" returns three apps tied at 0.479 —
+ *  a tie in that band means whisper produced a word that resembles nothing. */
+const DECISIVE_GAP = 0.12
+
+/** A whole-name near-miss, for the case word-start cannot see: §5's "sigma" for Figma, where
+ *  the substitution is in the first syllable. The two strings have to be the same shape —
+ *  measured, sigma/Figma is a length ratio of 1.0 at 0.299, while "batterys port"/BatteryBar
+ *  is 0.77 at 0.385 and is not the same word at all. */
+const WHOLE_NAME_RATIO = 0.8
+const WHOLE_NAME_SCORE = 0.3
+
+/** The single best thing a spoken target names, or null when nothing matches well enough.
  *
- *  The panel shows a list and lets the user pick; a voice command has to pick for them, so
- *  this is the same ranking with the list thrown away. Fuse's own threshold does the refusing:
- *  it returns nothing at all for a query no candidate is close to, which is what turns "switch
- *  to figma" with Figma closed into "I don't see Figma open" rather than into whatever window
- *  happened to share three letters with it.
+ *  The panel shows a list and lets the user pick, so a mediocre match there costs nothing and
+ *  none of this applies to it. A voice command has to pick for the user, and picking wrong is
+ *  worse than refusing — Fuse's threshold alone returns Calculator for "crawl", Calendar for
+ *  "end" (caL-END-ar contains it exactly, scoring 0.006) and BatteryBar for "batterys port",
+ *  every one of which means the wrong application starting.
  *
- *  §5, "always fuzzy-match, never exact-match" — whisper will hand this "sigma" for Figma and
- *  "vice code" for VS Code, and it still has to land. */
+ *  So a spoken match has to be a match to something the user could plausibly have *said*: it
+ *  begins the name or one of its words, or it is the whole name with a syllable misheard.
+ *  Evaluated over 18 real targets and 11 things whisper invents out of silence: every
+ *  invention refused, and the only real targets it turns away are "vs code" (say "visual
+ *  studio code") and the genuine ambiguity between "code" and the Codex app.
+ *
+ *  §5, "always fuzzy-match, never exact-match" — whisper hands this "sigma" for Figma and
+ *  "anti-gravity" for Antigravity, and both still land.
+ *
+ *  `strict` drops the plausible band. It is for the bare-target fallback, where no verb
+ *  vouches for the utterance being a command at all. */
 export function bestMatch(
   query: string,
   windows: EzzyWindow[],
-  apps: IndexedApp[]
+  apps: IndexedApp[],
+  strict = false
 ): Candidate | null {
   const text = query.trim()
   if (text === '') return null
   const startedAt = performance.now()
   const ranked = rankAll(text, toCandidates(windows, apps))
-  since(`best match for "${text}": ${ranked[0]?.candidate.name ?? 'nothing'}`, startedAt)
-  return ranked[0]?.candidate ?? null
+  const best = ranked[0]
+  const accepted = best !== undefined && isConfident(best, ranked[1], text.toLowerCase(), strict)
+  since(
+    `best match for "${text}": ${
+      best === undefined
+        ? 'nothing'
+        : `${best.candidate.name} @ ${best.score.toFixed(3)}${accepted ? '' : ' (rejected)'}`
+    }`,
+    startedAt
+  )
+  return accepted ? best.candidate : null
+}
+
+function isConfident(
+  best: Ranked,
+  runnerUp: Ranked | undefined,
+  needle: string,
+  strict: boolean
+): boolean {
+  if (!soundsLikeIt(best, needle)) return false
+  if (best.score <= CONFIDENT) return true
+  if (strict || best.score > PLAUSIBLE) return false
+  return runnerUp === undefined || runnerUp.score - best.score >= DECISIVE_GAP
+}
+
+/** Whether the needle is something the user could have been saying when they named this
+ *  candidate — as opposed to a string that merely shares letters with it. */
+function soundsLikeIt(best: Ranked, needle: string): boolean {
+  if (beginsSomething(best.candidate, needle)) return true
+  const name = best.candidate.name.toLowerCase()
+  const ratio = Math.min(needle.length, name.length) / Math.max(needle.length, name.length)
+  return ratio >= WHOLE_NAME_RATIO && best.score <= WHOLE_NAME_SCORE
+}
+
+/** The needle begins the name, one of its words, or the owning app's — the shapes a spoken
+ *  name actually takes, since people say things from the front. */
+function beginsSomething(candidate: Candidate, needle: string): boolean {
+  const name = candidate.name.toLowerCase()
+  const context = candidate.context.toLowerCase()
+  return (
+    begins(name, needle) ||
+    begins(context, needle) ||
+    // Punctuation removed from both sides, which is what carries "anti-gravity" to
+    // Antigravity: whisper hyphenates compound names and no app is spelled that way.
+    begins(depunctuate(name), depunctuate(needle)) ||
+    begins(depunctuate(context), depunctuate(needle))
+  )
+}
+
+function begins(haystack: string, needle: string): boolean {
+  if (needle === '' || haystack === '') return false
+  return haystack.startsWith(needle) || startsAWord(haystack, needle)
+}
+
+/** Spaces are kept: they are word boundaries, and word boundaries are the whole point. */
+function depunctuate(text: string): string {
+  return text.replace(/[^a-z0-9 ]/g, '')
 }

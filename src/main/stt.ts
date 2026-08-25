@@ -276,6 +276,11 @@ function multipart(boundary: string, wav: Buffer, prompt: string, seconds: numbe
     // Deterministic decoding. The fallback temperatures exist to recover from a bad sample on
     // long-form audio; on a two-second command they only add a re-decode.
     ['temperature', '0'],
+    // Beam search rather than greedy decoding. Measured at +50ms on this machine with
+    // audio_ctx below — the encoder is the expensive half and beams only touch the decoder —
+    // which is a small price for the case it exists to fix: a word the greedy path commits to
+    // early and then cannot back out of.
+    ['beam_size', '5'],
     ['prompt', prompt]
   ]
   if (seconds <= SHORT_AUDIO_SECONDS) fields.push(['audio_ctx', String(SHORT_AUDIO_CTX)])

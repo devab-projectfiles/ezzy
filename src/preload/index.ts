@@ -1,5 +1,13 @@
 import { contextBridge, ipcRenderer } from 'electron'
-import { EzzyApi, IPC, NavKey, PanelData, PillDirection, VoiceState } from '../shared/types'
+import {
+  EzzyApi,
+  IPC,
+  NavKey,
+  PanelData,
+  PillDirection,
+  VoiceCapture,
+  VoiceState
+} from '../shared/types'
 
 // Only named functions cross the bridge — `ipcRenderer` itself is never exposed.
 const ezzy: EzzyApi = {
@@ -55,7 +63,7 @@ const ezzy: EzzyApi = {
   },
   getVoiceState: () => ipcRenderer.invoke(IPC.getVoiceState),
   onVoiceCapture: (callback) => {
-    const handler = (_event: unknown, recording: boolean): void => callback(recording)
+    const handler = (_event: unknown, capture: VoiceCapture): void => callback(capture)
     ipcRenderer.on(IPC.voiceCapture, handler)
     return () => void ipcRenderer.removeListener(IPC.voiceCapture, handler)
   },

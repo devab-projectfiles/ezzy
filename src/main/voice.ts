@@ -22,13 +22,20 @@ import { isVoiceInstalled, startWhisperServer, transcribe, whenReady } from './s
 import { log, since } from './verbose'
 import { ensureModel, hasModel, isDownloading } from './whisper-model'
 import { listWindows } from './window-tracker'
-import { sendVoiceState, showPanelForVoice, startCapture, stopCapture } from './windows'
+import { sendCapture, sendVoiceState, showPanelForVoice } from './windows'
 
 let state: VoiceState = { kind: 'idle' }
-/** Set between the hold starting and the audio arriving. */
+/** The microphone is open and buffering. Set on the press, before it is known whether this
+ *  will be a hold — see `armCapture`. */
+let armed = false
+/** The press became a hold, so what is being buffered is a command. */
 let capturing = false
 /** Resolves when the renderer hands the recording over, or when it says it cannot. */
 let pendingAudio: ((wav: Buffer | null) => void) | null = null
+/** A microphone failure from a press that never became a hold. Held rather than announced:
+ *  the user was opening the panel, not asking to speak. The next hold reports it instead of
+ *  waiting four seconds for audio that cannot come. */
+let armFailure: VoiceFailure | null = null
 let clearErrorTimer: ReturnType<typeof setTimeout> | null = null
 
 /** The renderer has to stop the stream, encode a WAV and send it. If that has not happened by
@@ -45,16 +52,18 @@ const ERROR_MS = 4_000
  *  for a transcription first. */
 const MIN_AUDIO_BYTES = 44 + 8_000
 
-/** Whisper's prompt is a few hundred tokens at most, and a list this long already covers
- *  every app anyone switches to by voice. */
-const PROMPT_NAMES = 60
-const PROMPT_MAX_CHARS = 600
+/** Whisper's prompt is capped at a couple of hundred tokens, and it has to leave room for the
+ *  command phrasings that go in front of the names — those are what bias it towards hearing a
+ *  command at all. Forty names covers everything anyone switches to by voice. */
+const PROMPT_NAMES = 40
+const PROMPT_MAX_CHARS = 400
 
 export function initVoice(): void {
   registerBuiltinCommands()
   watchHold({
+    onPress: () => armCapture(),
     onHold: () => void beginListening(),
-    onRelease: () => void finishListening()
+    onRelease: (held) => void (held ? finishListening() : cancelCapture())
   })
   log(isVoiceInstalled() ? 'voice: whisper.cpp found' : 'voice: whisper.cpp is not installed')
 }
@@ -79,6 +88,33 @@ function fail(message: string, micBlocked = false): void {
 
 // ------------------------------------------------------------------ listening
 
+/** The hotkey has gone down. Nobody knows yet whether this is a tap or a command, and that is
+ *  exactly why the microphone opens here rather than 350ms later.
+ *
+ *  Measured: `getUserMedia` takes 300-960ms to hand back a stream. Starting it at the hold
+ *  threshold meant the device was still opening while the user was already speaking, and the
+ *  verb went missing — "open antigravity" arrived as "antigravity", which is most of what was
+ *  behind commands being understood and then refused.
+ *
+ *  The cost is that Windows' microphone indicator blinks on every panel open, including taps
+ *  that never record. Nothing is sent anywhere for a tap: `cancelCapture` throws the buffer
+ *  away and closes the device. */
+function armCapture(): void {
+  if (armed || !isVoiceInstalled() || !hasModel()) return
+  armed = true
+  // Started here rather than at launch and left running afterwards — §5's "model load is the
+  // real latency". The first command of a session waits for it; the rest do not.
+  startWhisperServer()
+  sendCapture('arm')
+}
+
+function cancelCapture(): void {
+  if (!armed) return
+  armed = false
+  capturing = false
+  sendCapture('cancel')
+}
+
 async function beginListening(): Promise<void> {
   if (capturing) return
 
@@ -100,21 +136,26 @@ async function beginListening(): Promise<void> {
     return
   }
 
-  // Started on the first hold rather than at launch, and left running afterwards — §5's
-  // "model load is the real latency". The first command of a session waits for it; the rest
-  // do not.
-  startWhisperServer()
-
+  // The microphone has been buffering since the press; this only decides that what it has is
+  // going to be a command.
+  if (!armed) armCapture()
+  if (!armed && armFailure !== null) {
+    reportFailure(armFailure)
+    return
+  }
   capturing = true
   setState({ kind: 'listening' })
-  startCapture()
 }
 
 async function finishListening(): Promise<void> {
-  if (!capturing) return
+  if (!capturing) {
+    cancelCapture()
+    return
+  }
   capturing = false
+  armed = false
   const releasedAt = performance.now()
-  stopCapture()
+  sendCapture('stop')
   setState({ kind: 'thinking' })
 
   const wav = await audioFromRenderer()
@@ -148,7 +189,7 @@ async function finishListening(): Promise<void> {
 
   const outcome = await runCommand(text)
   if (outcome === null) {
-    fail(`I don’t know how to "${text}"`)
+    fail(`I didn’t understand "${text}"`)
     return
   }
   if (!outcome.ok) {
@@ -180,14 +221,29 @@ function audioFromRenderer(): Promise<Buffer | null> {
 /** The dot's renderer has finished recording. */
 export function receiveAudio(wav: Buffer): void {
   log(`voice: ${(wav.length / 1024).toFixed(0)}KB of audio`)
+  // The device answered, so whatever went wrong last time is over.
+  armFailure = null
   pendingAudio?.(wav)
 }
 
 /** The dot's renderer could not record at all. §5: a blocked microphone has to lead somewhere,
  *  so the message that goes with `micBlocked` is paired with a button in the search bar. */
 export function reportCaptureFailure(kind: VoiceFailure): void {
+  const wasListening = capturing
+  armed = false
   capturing = false
+  armFailure = kind
   pendingAudio?.(null)
+  // A microphone that could not be opened during a press is not worth interrupting a tap
+  // over — the user was opening the panel, not asking to speak.
+  if (!wasListening) {
+    log(`voice: microphone unavailable (${kind})`)
+    return
+  }
+  reportFailure(kind)
+}
+
+function reportFailure(kind: VoiceFailure): void {
   switch (kind) {
     case 'denied':
       fail('Microphone access is blocked for Ezzy', true)
@@ -239,7 +295,15 @@ function whisperPrompt(): string {
 
   let list = names.join(', ')
   if (list.length > PROMPT_MAX_CHARS) list = list.slice(0, list.lastIndexOf(', ', PROMPT_MAX_CHARS))
-  // Phrased as a sentence rather than a bare list: the prompt is prior *text*, and whisper
-  // conditions on it as language, not as a vocabulary.
-  return `Voice commands for a window switcher. Switch to or open: ${list}.`
+
+  // Whole sentences in the shapes the commands are written in, not a bare vocabulary list: the
+  // prompt is prior *text* and whisper conditions on it as language. Giving it "Switch to
+  // Antigravity." makes both the verb and the name likelier, and the verb matters as much as
+  // the name — a command whose verb was misheard is a command that does not run.
+  const examples = [
+    `Switch to ${names[0] ?? 'Chrome'}.`,
+    `Open ${names[1] ?? 'Notepad'}.`,
+    'Close this window.'
+  ].join(' ')
+  return `${examples} Apps: ${list}.`
 }

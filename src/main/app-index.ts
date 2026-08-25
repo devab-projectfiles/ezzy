@@ -57,9 +57,13 @@ const NOISE_PREFIX =
 const NOISE_SUFFIX =
   /( help| manual| documentation| tools| console| command prompt| setup| uninstaller| readme| website| on the web| home page|\(64-bit\)|\(32-bit\))$/i
 
-/** Whole names that are pure plumbing whatever else is installed. */
-const NOISE_EXACT =
-  /^(help|support|administrative tools|windows tools|command prompt|file explorer|run|control panel)$/i
+/** Whole names that are pure plumbing whatever else is installed.
+ *
+ *  "File Explorer" and "Control Panel" used to be on this list and are not any more: they read
+ *  as plumbing next to the Start Menu's other entries, but they are things people ask for by
+ *  name — "open file explorer" came back as "I couldn't find File Explorer" purely because
+ *  this pattern had removed it from the index. */
+const NOISE_EXACT = /^(help|support|administrative tools|windows tools|command prompt|run)$/i
 
 function isNoise(name: string): boolean {
   return NOISE_PREFIX.test(name) || NOISE_SUFFIX.test(name) || NOISE_EXACT.test(name)

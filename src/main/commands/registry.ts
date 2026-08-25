@@ -97,6 +97,10 @@ export function normaliseTranscript(raw: string): string {
   let text = raw.toLowerCase().replace(NON_SPEECH, ' ')
   // Curly quotes and apostrophes come back from whisper as typed punctuation.
   text = text.replace(/[“”"'’]/g, '')
+  // Interior punctuation whisper adds to a two-word utterance: "Chrome, Ooby" for one word it
+  // could not place. A comma is never part of anything anyone is trying to open, and leaving
+  // it in stops the bare-name pattern matching at all. Dots survive — "github.com" needs one.
+  text = text.replace(/[,;!?]/g, ' ')
   text = text.replace(/\s+/g, ' ').trim()
   text = text.replace(ADDRESSED, '')
   // Twice: "um, okay, switch to chrome" is one utterance people actually produce.
