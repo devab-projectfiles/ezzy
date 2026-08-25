@@ -197,10 +197,11 @@ const NEAR_TIE = 0.05
  *  every one of which means the wrong application starting.
  *
  *  So a spoken match has to be a match to something the user could plausibly have *said*: it
- *  begins the name or one of its words, or it is the whole name with a syllable misheard.
- *  Evaluated over 18 real targets and 11 things whisper invents out of silence: every
- *  invention refused, and the only real targets it turns away are "vs code" (say "visual
- *  studio code") and the genuine ambiguity between "code" and the Codex app.
+ *  begins the name or one of its words, or it spells the name out word by word with
+ *  initialisms allowed, or it is the whole name with a syllable misheard. Evaluated by running
+ *  this function over this machine's real index — 23 things a user would ask for and 15 things
+ *  whisper invents out of silence, including four collected from its attempts at "VS Code":
+ *  every invention refused, every real target reached but a bare "vs" on its own.
  *
  *  §5, "always fuzzy-match, never exact-match" — whisper hands this "sigma" for Figma and
  *  "anti-gravity" for Antigravity, and both still land.
@@ -259,10 +260,31 @@ function runnerUpTo(ranked: Ranked[], best: Ranked): Ranked | undefined {
   return ranked.find((hit) => hit !== best && !sameThing(hit.candidate, best.candidate))
 }
 
+/** Whether two candidates are the same target wearing different labels.
+ *
+ *  A window and the app that owns it are the obvious case, and it is not a small one: "vs
+ *  code" ranks the open Visual Studio Code *window* first at 0.599 and the Visual Studio Code
+ *  *app* second at 0.582 — a runner-up that scores better than the winner, so the gap rule
+ *  refused both. They were never two answers. The window's owning app is compared as well as
+ *  its title for exactly that.
+ *
+ *  Prefix rather than equality, so "Antigravity" and "Antigravity IDE" merge too, with a floor
+ *  on the length: two short names sharing three letters are not the same application. */
 function sameThing(a: Candidate, b: Candidate): boolean {
-  const one = depunctuate(a.name.toLowerCase())
-  const two = depunctuate(b.name.toLowerCase())
+  return labelsOf(a).some((one) => labelsOf(b).some((two) => sharePrefix(one, two)))
+}
+
+const SAME_PREFIX_MIN = 4
+
+function sharePrefix(one: string, two: string): boolean {
+  if (Math.min(one.length, two.length) < SAME_PREFIX_MIN) return one === two
   return one.startsWith(two) || two.startsWith(one)
+}
+
+function labelsOf(candidate: Candidate): string[] {
+  return [candidate.name, candidate.context]
+    .map((label) => depunctuate(label.toLowerCase()))
+    .filter((label) => label !== '')
 }
 
 function lengthRatio(needle: string, name: string): number {
@@ -276,14 +298,68 @@ function isConfident(
   needle: string,
   strict: boolean
 ): boolean {
-  if (!soundsLikeIt(best, needle)) return false
+  // Spelling out the name word by word is the strongest signal there is — far stronger than
+  // any score — so it is also what lets a bare utterance through the plausible band. Nothing
+  // whisper invents out of silence lines up with an application's words in order.
+  const spelledOut = namesItWordByWord(best.candidate, needle)
+  if (!spelledOut && !soundsLikeIt(best, needle)) return false
   if (best.score <= CONFIDENT) return true
-  if (strict || best.score > PLAUSIBLE) return false
+  if (best.score > PLAUSIBLE) return false
+  if (strict && !spelledOut) return false
   return runnerUp === undefined || runnerUp.score - best.score >= DECISIVE_GAP
 }
 
 /** Whether the needle is something the user could have been saying when they named this
  *  candidate — as opposed to a string that merely shares letters with it. */
+/** Whether the needle walks the candidate's words in order, allowing an initialism to stand
+ *  for the words it abbreviates.
+ *
+ *  This is what makes "vs code" reach Visual Studio Code, which §5 asks for by name and which
+ *  nothing else here could do: "vs" is not a prefix of anything, the strings share barely a
+ *  third of their letters, and Fuse scores the pair 0.599 — indistinguishable by score alone
+ *  from a word that means nothing at all. What separates them is structure. "vs" spells the
+ *  initials of Visual Studio and "code" is the word that follows, in that order.
+ *
+ *  Matching may start at any word of the candidate, because a window title is mostly document
+ *  name: `index.ts — Visual Studio Code` has to answer to "vs code" too. It may not start
+ *  mid-word, which is what keeps "end" away from Calendar. */
+function namesItWordByWord(candidate: Candidate, needle: string): boolean {
+  const spoken = wordsOf(needle)
+  if (spoken.length === 0) return false
+  for (const text of [candidate.name, candidate.context]) {
+    const target = wordsOf(text)
+    for (let start = 0; start < target.length; start++) {
+      if (walk(target, spoken, start, 0)) return true
+    }
+  }
+  return false
+}
+
+/** Consume one spoken token at a time: either as the start of the next word, or as the
+ *  initials of the next few. Recursive because a token can be both and only one way leads on —
+ *  "code" could begin "Code" or stand for "Chrome OS Desktop Edition". The inputs are a
+ *  handful of short words, so the backtracking costs nothing worth measuring. */
+function walk(target: string[], spoken: string[], t: number, s: number): boolean {
+  if (s === spoken.length) return true
+  if (t >= target.length) return false
+  const token = spoken[s]
+  if (target[t].startsWith(token) && walk(target, spoken, t + 1, s + 1)) return true
+  if (token.length >= 2 && t + token.length <= target.length) {
+    const initials = target
+      .slice(t, t + token.length)
+      .map((word) => word[0])
+      .join('')
+    if (initials === token && walk(target, spoken, t + token.length, s + 1)) return true
+  }
+  return false
+}
+
+function wordsOf(text: string): string[] {
+  return depunctuate(text.toLowerCase())
+    .split(' ')
+    .filter((word) => word !== '')
+}
+
 function soundsLikeIt(best: Ranked, needle: string): boolean {
   if (beginsSomething(best.candidate, needle)) return true
   return (
