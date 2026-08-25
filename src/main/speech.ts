@@ -29,7 +29,7 @@ const FAILURE_LEADS = ['', '', 'Sorry, ', 'Hmm, ']
 export type Tone = 'success' | 'failure'
 
 /** Say something, if the user has left speech on. The text is whatever the command's
- *  `describe` returned, or the reason it gave for failing — the same words the toast shows,
+ *  `describe` returned, or the reason it gave for failing — the same words the pill shows,
  *  so what is heard and what is read never disagree. */
 export function speak(text: string, tone: Tone): void {
   if (text.trim() === '') return

@@ -75,6 +75,14 @@
   height: 32px;
 }
 
+/* The state marks are line art where the dot mark is three solid cards, so they need to sit
+   smaller in the same slot or they read as heavier than the thing they replace. */
+.pill__glyph--state svg {
+  width: 22px;
+  height: 22px;
+  filter: drop-shadow(0 1px 2px rgba(8, 10, 20, 0.7));
+}
+
 /* The two back cards slide outward, so the mark performs a window-switch on every hover. */
 .pill__glyph #ezyCardLeft,
 .pill__glyph #ezyCardRight {
@@ -133,4 +141,130 @@
   border-radius: inherit;
   pointer-events: none;
   background: var(--glass-sheen);
+}
+
+/* ---------------------------------------------------------------- the pill carrying state
+
+   §6 ends the hover-pill section with "later the same pill carries state — a waveform while
+   listening, 'didn't catch that' on a failed command. Keep it as one reusable component."
+   Chunk E is that later, and this is the whole of it: the same capsule, the same opening
+   motion, the same glass. Only what sits in it changes.
+
+   Two lines rather than one, both clipped: the transcript is what explains a miss, and a
+   sentence that ran off the end of the pill would explain nothing. */
+.pill__status {
+  flex: 0 0 auto;
+  min-width: 0;
+  /* STATUS_VISUAL minus the mark's slot. The pill measures this element and opens to it, so
+     this is also what stops a hallucinated sentence from asking for a wider window than the
+     one it has to be drawn in. */
+  max-width: 264px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding-right: 16px;
+  text-align: left;
+  /* The same reveal as the hover label — the pill opens and then the words arrive, rather
+     than the words being stretched out with it. */
+  opacity: 0;
+  transform: translateX(-10px);
+  transition:
+    opacity 220ms var(--ease-glass) 90ms,
+    transform 220ms var(--ease-glass) 90ms;
+}
+
+.pill--expanded .pill__status {
+  opacity: 1;
+  transform: translateX(0);
+}
+
+.pill__heard,
+.pill__message {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-shadow: var(--text-shadow);
+}
+
+/* Evidence, not the message: it is quoted and dim so it reads as a transcript rather than as
+   something Ezzy is saying. */
+.pill__heard {
+  font-size: 11px;
+  line-height: 14px;
+  color: var(--text-faint);
+}
+
+.pill__message {
+  font-size: 13px;
+  line-height: 17px;
+  color: var(--text-strong);
+}
+
+/* The two outcomes are the only things on the dot that take a colour. Everything else is
+   white on dark glass, so a tint here reads as meaning rather than as decoration — and it is
+   what makes a miss legible from across the desk without reading the sentence. */
+.pill--done .pill__glyph {
+  color: rgba(150, 232, 190, 0.96);
+}
+
+.pill--error .pill__glyph {
+  color: rgba(255, 168, 160, 0.96);
+}
+
+.pill--thinking .pill__glyph,
+.pill--downloading .pill__glyph {
+  color: var(--text-faint);
+}
+
+/* §6 puts the listening pulse on the rim and not on the icon, for the search bar and here
+   alike: a pulsing glyph reads as a spinner, and this is not a wait, it is an open
+   microphone. The dot's rim is a border rather than the inset ring the large surfaces use. */
+.pill--listening {
+  animation: pill-listening 1.6s var(--ease-glass) infinite;
+}
+
+@keyframes pill-listening {
+  0%,
+  100% {
+    border-color: var(--glass-rim);
+  }
+  50% {
+    border-color: rgba(255, 255, 255, 0.95);
+  }
+}
+
+/* The one state that is a wait rather than an outcome. */
+.pill__dots circle {
+  animation: pill-dots 1.1s var(--ease-glass) infinite;
+}
+
+.pill__dots circle:nth-child(2) {
+  animation-delay: 140ms;
+}
+
+.pill__dots circle:nth-child(3) {
+  animation-delay: 280ms;
+}
+
+@keyframes pill-dots {
+  0%,
+  70%,
+  100% {
+    opacity: 0.35;
+  }
+  35% {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pill--listening {
+    animation: none;
+    border-color: rgba(255, 255, 255, 0.95);
+  }
+
+  .pill__dots circle {
+    animation: none;
+    opacity: 0.8;
+  }
 }

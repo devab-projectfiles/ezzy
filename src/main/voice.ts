@@ -221,10 +221,10 @@ async function finishListening(): Promise<void> {
     return
   }
   // §7: act before you speak. The command has already put the window in front by the time
-  // either of these lines runs — neither the toast nor the confirmation is allowed to sit
+  // either of these lines runs — neither the pill nor the confirmation is allowed to sit
   // between the user finishing their sentence and the window appearing.
   //
-  // The panel went with it, so the toast is what draws this: it is the one surface that
+  // The panel went with it, so the dot's pill is what draws this: it is the one surface that
   // outlives a successful command (see sendVoiceState).
   setState({ kind: 'done', message: outcome.message, heard: text })
   speak(outcome.message, 'success')

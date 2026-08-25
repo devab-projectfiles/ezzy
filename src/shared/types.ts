@@ -39,10 +39,21 @@ export const DEFAULT_CONFIG: EzzyConfig = {
  *  see setDotInteractive. DOT_SLACK is transparent margin the drop shadow can fall into. */
 export const DOT_VISUAL = 56
 export const PILL_VISUAL = 212
-export const PILL_DELTA = PILL_VISUAL - DOT_VISUAL
+/** The pill's other ceiling. §6 ends the hover-pill section with "later the same pill carries
+ *  state — a waveform while listening, 'didn't catch that' on a failed command. Keep it as one
+ *  reusable component", and chunk E is that later: the pill is where a voice command reports
+ *  itself once the panel has gone.
+ *
+ *  A whole sentence is wider than "Ezzy · Alt + Space", and the window cannot grow to fit one
+ *  — see the note above. So the window is sized for the longest thing the pill will ever say
+ *  ("Microphone access is blocked for Ezzy" is the current record) and the hover pill simply
+ *  opens to less of it. The extra width costs nothing: it is transparent and click-through
+ *  until something is drawn in it. */
+export const STATUS_VISUAL = 320
+export const PILL_DELTA = STATUS_VISUAL - DOT_VISUAL
 export const DOT_SLACK = 16
 export const DOT_WINDOW = DOT_VISUAL + DOT_SLACK * 2
-export const PILL_WINDOW = PILL_VISUAL + DOT_SLACK * 2
+export const PILL_WINDOW = STATUS_VISUAL + DOT_SLACK * 2
 export const DOT_GLYPH_SIZE = 32
 /** §6: the search bar and the panel are two separate windows that show, hide and move as a
  *  unit, 11px apart — not one window with a divider.
@@ -59,19 +70,6 @@ export const SEARCH_HEIGHT = 54
 export const SEARCH_PANEL_GAP = 11
 /** Gap between the dot and the search-bar/panel pair. */
 export const PANEL_GAP = 12
-
-/** The toast (§8 chunk E) — its own transparent, click-through window, anchored beside the
- *  dot exactly the way the pair is, and shown only when the search bar is not up. The two are
- *  never on screen together: whichever surface exists carries the words.
- *
- *  Fixed size, like the dot window and for the same reason — resizing a transparent window
- *  re-creates its composited surface and flashes. The glass card inside it hugs its text and
- *  is centred, so a one-line toast and a three-line one cost the same window. */
-export const TOAST_WIDTH = 300
-export const TOAST_HEIGHT = 116
-/** How long the exit animation in toast.css runs, so the window is hidden after it rather
- *  than through it. §6: exits are faster than entrances. */
-export const TOAST_EXIT_MS = 150
 
 /** The panel is a fixed size: four window rows and two app rows, each section scrolling on
  *  its own. The renderer still measures it rather than computing it here, so panel.css stays
@@ -175,7 +173,7 @@ export type VoiceState =
   | { kind: 'thinking' }
   /** It worked. Chunk D had no such state — a command that succeeded had already put the
    *  window in front of the user and taken the panel with it, so there was nothing left to
-   *  draw on. Chunk E gives it the toast, which outlives the panel. */
+   *  draw on. Chunk E gives it the dot's own pill, which outlives the panel. */
   | { kind: 'done'; message: string; heard: string }
   /** A command that could not be carried out, and why. `heard` is absent when the failure
    *  came before there was a transcript — a blocked microphone, a download that failed. */

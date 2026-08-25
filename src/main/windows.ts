@@ -17,9 +17,7 @@ import {
   PillDirection,
   SEARCH_HEIGHT,
   SEARCH_PANEL_GAP,
-  TOAST_EXIT_MS,
-  TOAST_HEIGHT,
-  TOAST_WIDTH,
+  STATUS_VISUAL,
   VoiceCapture,
   VoiceState
 } from '../shared/types'
@@ -31,12 +29,6 @@ let dotWindow: BrowserWindow | null = null
 let panelWindow: BrowserWindow | null = null
 /** §6's second glass surface: the 420x54 pill above the panel. */
 let searchWindow: BrowserWindow | null = null
-/** Chunk E's toast. Always alive, click-through, and shown only when the search bar is not —
- *  the two carry the same words and must never both be on screen. */
-let toastWindow: BrowserWindow | null = null
-/** Set while the toast is playing its exit, so the window is hidden after the animation
- *  rather than through it. Cleared if something new arrives first. */
-let toastHideTimer: ReturnType<typeof setTimeout> | null = null
 let quitting = false
 let drag: DragState | null = null
 /** The panel's current height. It hugs its content, so the renderer drives this. */
@@ -58,6 +50,12 @@ let hovered = false
  *  with it, or the window keeps claiming mouse input over space it no longer paints. */
 let pillOpen = false
 let hoverTimer: ReturnType<typeof setInterval> | null = null
+/** Whether the pill is currently drawing a voice status rather than the dot mark. Owned here
+ *  because this process is what decides to send one — the renderer is never asked. */
+let dotStatus = false
+/** How far the dot window has been slid off its anchor to keep an open status pill on screen.
+ *  Zero except while a status is up on a dot parked past a display edge. */
+let pillSlide = 0
 /** The pill's opened width, measured from its own content by the renderer. */
 let pillWidth = PILL_VISUAL
 
@@ -162,17 +160,8 @@ export function createWindows(): void {
     hidePanel()
   })
 
-  // Chunk E's fourth window. It is furniture in the strongest sense: it never takes focus,
-  // it is never clicked, and it must not eat a click aimed at whatever is underneath it — so
-  // it is click-through for its whole life, unlike the dot, which only becomes solid when the
-  // cursor is actually on the pill.
-  toastWindow = createGlassWindow(TOAST_HEIGHT, TOAST_WIDTH)
-  toastWindow.setFocusable(false)
-  toastWindow.setIgnoreMouseEvents(true)
-
   loadRenderer(searchWindow, 'searchbar')
   loadRenderer(panelWindow, 'panel')
-  loadRenderer(toastWindow, 'toast')
 }
 
 /** One of the two glass surfaces. Both are the same window underneath — only their height
@@ -185,9 +174,9 @@ export function createWindows(): void {
  *
  *  It also buys back real CSS corner radii, which are anti-aliased, where acrylic needed a
  *  window region that was not. */
-function createGlassWindow(height: number, width = PANEL_WIDTH): BrowserWindow {
+function createGlassWindow(height: number): BrowserWindow {
   const win = new BrowserWindow({
-    width,
+    width: PANEL_WIDTH,
     height,
     frame: false,
     transparent: true,
@@ -242,7 +231,7 @@ function webPreferences(): Electron.WebPreferences {
   }
 }
 
-function loadRenderer(win: BrowserWindow, page: 'dot' | 'searchbar' | 'panel' | 'toast'): void {
+function loadRenderer(win: BrowserWindow, page: 'dot' | 'searchbar' | 'panel'): void {
   win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
   win.webContents.on('console-message', (details) => {
     log(`[${page}] ${details.level}: ${details.message}`)
@@ -288,11 +277,30 @@ function applyDotBounds(): void {
   if (!dotWindow) return
   const display = screen.getDisplayMatching(dotBoundsAt(dotAnchor))
   const opensLeft = dotAnchor.x - pillDelta >= display.bounds.x
-  dotWindow.setBounds({
-    x: opensLeft ? dotAnchor.x - pillDelta : dotAnchor.x,
-    y: dotAnchor.y,
-    ...pillFrame
-  })
+  const anchored = opensLeft ? dotAnchor.x - pillDelta : dotAnchor.x
+
+  // §6: the dot "tucks half past the screen edge when idle; slides out on hover". The tuck is
+  // built — clampBounds allows half the dot off a display — and the slide is here, but for a
+  // status rather than for hover.
+  //
+  // It has to exist for a status because the pill's far edge is anchored where the collapsed
+  // circle sits, so a dot the user has tucked takes the end of every sentence off the screen
+  // with it: "Switching to Notepad" was drawn as "Switching to Notep". Sliding the whole
+  // window back inside the display for the two seconds a status is up puts the sentence on
+  // screen and takes the circle with it.
+  //
+  // Deliberately NOT done for hover, which is cursor-driven: moving the window out from under
+  // the pointer moves the hit rectangle with it, the cursor lands outside, the pill closes,
+  // the window slides back, and the whole thing oscillates at the poll rate.
+  let x = anchored
+  if (dotStatus) {
+    const left = display.bounds.x
+    const right = display.bounds.x + display.bounds.width - pillFrame.width
+    x = Math.min(Math.max(anchored, left), right)
+  }
+  pillSlide = x - anchored
+
+  dotWindow.setBounds({ x, y: dotAnchor.y, ...pillFrame })
   const side: PillDirection = opensLeft ? 'left' : 'right'
   if (side === pillSide) return
   pillSide = side
@@ -307,7 +315,7 @@ export function currentPillSide(): PillDirection {
 /** The renderer measures the pill against its own text and reports the result, so the
  *  hover rectangle below matches what is actually drawn. */
 export function setPillWidth(width: number): void {
-  pillWidth = Math.max(DOT_VISUAL, Math.min(Math.round(width), PILL_VISUAL))
+  pillWidth = Math.max(DOT_VISUAL, Math.min(Math.round(width), STATUS_VISUAL))
 }
 
 /** The pill's rectangle in screen coordinates. It grows once hovered, which gives the hover
@@ -315,7 +323,10 @@ export function setPillWidth(width: number): void {
  *  may then roam anywhere over the opened pill without closing it. */
 function pillScreenRect(): Electron.Rectangle {
   const inset = visualInset()
-  const circleX = dotAnchor.x + inset
+  // Plus whatever the window has been slid by: the circle is drawn at a fixed place inside
+  // the window, so a slid window is a moved circle, and hit-testing the anchor would test
+  // where the dot is not.
+  const circleX = dotAnchor.x + inset + pillSlide
   const width = pillOpen ? pillWidth : DOT_VISUAL
   return {
     x: pillSide === 'left' ? circleX + DOT_VISUAL - width : circleX,
@@ -528,8 +539,7 @@ function layoutPair(): { search: Electron.Rectangle; panel: Electron.Rectangle }
 }
 
 /** Where a surface of this size goes when it opens next to the dot: on whichever side has
- *  room, vertically centred on the dot, and clamped into the work area. Shared by the pair and
- *  by the toast, which are never up at the same time and so can want the same spot.
+ *  room, vertically centred on the dot, and clamped into the work area.
  *
  *  Measured from the visible circle rather than from the padded dot window, or the gap would
  *  silently include DOT_SLACK and read as too wide. */
@@ -592,10 +602,9 @@ export function showPanelForVoice(): void {
 function showPanel(): void {
   const startedAt = performance.now()
   if (!panelWindow || !searchWindow) return
-  // The pair opens exactly where the toast sits. Cut rather than faded: the search bar is
-  // about to say whatever the toast was saying, and watching one fade out from under the
-  // other reads as two separate things happening.
-  hideToastNow()
+  // The search bar is about to draw whatever the pill was saying, and two copies of one
+  // sentence on screen is worse than either of them.
+  sendToDot(IDLE)
   // A previous session's query must not survive into this open — the input is about to be
   // cleared, and the results have to be cleared with it or the panel flashes the old ones.
   clearQuery()
@@ -634,66 +643,33 @@ export function sendToPanel(channel: string, payload?: unknown): void {
 }
 
 /** Voice state goes to whichever surface is on screen: the search bar while the panel is up —
- *  §6 puts the mic glyph and the listening pulse there — and chunk E's toast when it is not.
- *  Never both, so there is one set of words at a time.
+ *  §6 puts the mic glyph and the listening pulse there — and the dot's own pill when it is
+ *  not. Never both, so there is one set of words at a time.
  *
  *  Which one wins is not arbitrary. The search bar is where the user is already looking while
  *  a command is in flight, and it is the only surface that can hold the button a blocked
- *  microphone needs. The toast is what survives the panel being dismissed — which is every
- *  successful command, and the reason chunk D had no success state to draw at all.
+ *  microphone needs. The pill is what survives the panel being dismissed — which is every
+ *  successful command, and the reason chunk D had no success state to draw at all. §6 always
+ *  meant the pill to end up carrying this; chunk E is the "later" it refers to.
  *
  *  The search bar still asks for the current state when it comes back up, so a download that
  *  finishes behind a closed panel is not lost. */
 export function sendVoiceState(state: VoiceState): void {
   if (searchWindow?.isVisible()) {
-    hideToastNow()
+    sendToDot(IDLE)
     searchWindow.webContents.send(IPC.voiceState, state)
     return
   }
-  showToast(state)
+  sendToDot(state)
 }
 
-/** Draw a state on the toast, bringing the window up if it is not already. */
-function showToast(state: VoiceState): void {
-  if (!toastWindow) return
-  if (state.kind === 'idle') {
-    dismissToast()
-    return
-  }
-  if (toastHideTimer) {
-    clearTimeout(toastHideTimer)
-    toastHideTimer = null
-  }
-  toastWindow.webContents.send(IPC.voiceState, state)
-  if (toastWindow.isVisible()) return
-  // Positioned at show time rather than kept in step with the dot: it is only ever up for a
-  // few seconds, and the dot is not being dragged during them.
-  toastWindow.setBounds(anchorToDot(TOAST_WIDTH, TOAST_HEIGHT))
-  // showInactive, like every other surface here (§5). A toast that took focus would steal it
-  // straight back off the window the user just asked to be switched to.
-  toastWindow.showInactive()
-}
-
-/** Let the card play its exit, then hide the window under it. */
-function dismissToast(): void {
-  if (!toastWindow?.isVisible() || toastHideTimer) return
-  toastWindow.webContents.send(IPC.voiceState, IDLE)
-  toastHideTimer = setTimeout(() => {
-    toastHideTimer = null
-    toastWindow?.hide()
-  }, TOAST_EXIT_MS)
-}
-
-function hideToastNow(): void {
-  if (toastHideTimer) {
-    clearTimeout(toastHideTimer)
-    toastHideTimer = null
-  }
-  if (!toastWindow?.isVisible()) return
-  toastWindow.hide()
-  // Otherwise the card is left holding its last message and the next show flashes it for a
-  // frame before the new one arrives.
-  toastWindow.webContents.send(IPC.voiceState, IDLE)
+function sendToDot(state: VoiceState): void {
+  const status = state.kind !== 'idle'
+  dotWindow?.webContents.send(IPC.voiceState, state)
+  if (status === dotStatus) return
+  dotStatus = status
+  // A status opens the pill, which may not fit where a tucked dot sits — see applyDotBounds.
+  applyDotBounds()
 }
 
 /** §5: `speechSynthesis` is renderer-only. The dot's renderer is the one that speaks — it is
