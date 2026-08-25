@@ -175,12 +175,22 @@ const PLAUSIBLE = 0.7
 const DECISIVE_GAP = 0.12
 
 /** A whole-name near-miss, for the case word-start cannot see: §5's "sigma" for Figma, where
- *  the substitution is in the first syllable. The two strings have to be the same shape —
- *  measured, sigma/Figma is a length ratio of 1.0 at 0.299 and "anti-granting"/Antigravity is
- *  0.85 at 0.488, while "batterys port"/BatteryBar is 0.77 at 0.385 and is a different phrase
- *  altogether. The ratio is what separates them; the score bar only keeps out the wild ones. */
+ *  the substitution is in the first syllable.
+ *
+ *  Two tests, because one of them was not enough. The strings have to be the same *shape* — a
+ *  length ratio of at least this — and they have to be the same *sound in the same order*,
+ *  which is what edit distance measures and what Fuse's score does not.
+ *
+ *  That second test exists because of a real miss: "open codex" came back from whisper as
+ *  "cordix", which shares six letters with Discord, scores 0.439 against it and has a length
+ *  ratio of 0.86 — so Ezzy opened Discord. Reordered letters are cheap for a bitap search and
+ *  expensive for edit distance, and that is exactly the difference between the two cases:
+ *  measured over this machine's index, every near-miss worth taking scores 0.667 or better
+ *  (sigma/Figma 0.800, rise/Rize 0.750, anti-granting/Antigravity 0.667) and every one worth
+ *  refusing scores 0.615 or worse (batterys port/BatteryBar 0.615, view as code/Visual Studio
+ *  Code 0.444, cordix/Discord 0.286). */
 const WHOLE_NAME_RATIO = 0.8
-const WHOLE_NAME_SCORE = 0.5
+const NEAR_MISS_SIMILARITY = 0.65
 
 /** Two ranks this close are a tie, and a tie is decided by which name is closest in length to
  *  what was said. Measured: "rise" scores 0.354 against both OneDrive and Rize, and without
@@ -219,8 +229,14 @@ export function bestMatch(
   const startedAt = performance.now()
   const needle = text.toLowerCase()
   const ranked = rankAll(text, toCandidates(windows, apps))
-  const best = breakTies(ranked, needle)
-  const accepted = best !== undefined && isConfident(best, runnerUpTo(ranked, best), needle, strict)
+  // Everything the user could plausibly have been saying, in ranked order. Filtering before
+  // choosing rather than gating the winner afterwards is what lets the ranking fall through:
+  // "cordix" ranks Discord first and Codex second, and Discord is not something anyone says
+  // "cordix" for. Refusing at that point would throw away the answer sitting behind it.
+  const eligible = ranked.filter((hit) => soundsLikeIt(hit.candidate, needle))
+  const best = breakTies(eligible, needle)
+  const accepted =
+    best !== undefined && isConfident(best, runnerUpTo(eligible, best), needle, strict)
   since(
     `best match for "${text}": ${
       best === undefined
@@ -302,7 +318,6 @@ function isConfident(
   // any score — so it is also what lets a bare utterance through the plausible band. Nothing
   // whisper invents out of silence lines up with an application's words in order.
   const spelledOut = namesItWordByWord(best.candidate, needle)
-  if (!spelledOut && !soundsLikeIt(best, needle)) return false
   if (best.score <= CONFIDENT) return true
   if (best.score > PLAUSIBLE) return false
   if (strict && !spelledOut) return false
@@ -360,11 +375,39 @@ function wordsOf(text: string): string[] {
     .filter((word) => word !== '')
 }
 
-function soundsLikeIt(best: Ranked, needle: string): boolean {
-  if (beginsSomething(best.candidate, needle)) return true
+function soundsLikeIt(candidate: Candidate, needle: string): boolean {
+  if (beginsSomething(candidate, needle)) return true
+  if (namesItWordByWord(candidate, needle)) return true
+  const name = depunctuate(candidate.name.toLowerCase())
+  const spoken = depunctuate(needle)
   return (
-    lengthRatio(needle, best.candidate.name) >= WHOLE_NAME_RATIO && best.score <= WHOLE_NAME_SCORE
+    lengthRatio(spoken, name) >= WHOLE_NAME_RATIO &&
+    similarity(spoken, name) >= NEAR_MISS_SIMILARITY
   )
+}
+
+/** 1 for identical strings, 0 for nothing in common. Levenshtein over two short words, which
+ *  is a handful of microseconds and is only ever asked about candidates Fuse already returned. */
+function similarity(one: string, two: string): number {
+  const longest = Math.max(one.length, two.length)
+  if (longest === 0) return 1
+  return 1 - editDistance(one, two) / longest
+}
+
+function editDistance(one: string, two: string): number {
+  let previous = Array.from({ length: two.length + 1 }, (_, column) => column)
+  for (let row = 1; row <= one.length; row++) {
+    const current = [row]
+    for (let column = 1; column <= two.length; column++) {
+      current[column] = Math.min(
+        previous[column] + 1,
+        current[column - 1] + 1,
+        previous[column - 1] + (one[row - 1] === two[column - 1] ? 0 : 1)
+      )
+    }
+    previous = current
+  }
+  return previous[two.length]
 }
 
 /** The needle begins the name, one of its words, or the owning app's — the shapes a spoken
