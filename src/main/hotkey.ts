@@ -64,6 +64,14 @@ export function registerHotkey(onTrigger: () => void): HotkeyResult {
   return apply()
 }
 
+/** Re-register against the config as it stands now — the settings window changing the hotkey
+ *  (§8 chunk F). The result says whether the OS actually gave us what was asked for, which is
+ *  what the window reports back: a hotkey another app already owns has to say so, or the user
+ *  is left pressing a key that silently belongs to something else. */
+export function reapplyHotkey(): HotkeyResult {
+  return apply()
+}
+
 function apply(): HotkeyResult {
   globalShortcut.unregisterAll()
   active = null

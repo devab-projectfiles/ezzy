@@ -217,7 +217,7 @@ function applyPermissionPolicy(): void {
   )
 }
 
-function webPreferences(): Electron.WebPreferences {
+export function webPreferences(): Electron.WebPreferences {
   return {
     preload: join(__dirname, '../preload/index.js'),
     // Chromium counts speech synthesis as playback and gates it behind a user gesture. Our
@@ -231,7 +231,12 @@ function webPreferences(): Electron.WebPreferences {
   }
 }
 
-function loadRenderer(win: BrowserWindow, page: 'dot' | 'searchbar' | 'panel'): void {
+/** The four pages, one per window. The settings window (§8 chunk F) is the odd one out: it is
+ *  an ordinary framed window rather than a glass overlay, so it is built in settings-window.ts
+ *  and only borrows the loading and the security flags from here. */
+export type RendererPage = 'dot' | 'searchbar' | 'panel' | 'settings'
+
+export function loadRenderer(win: BrowserWindow, page: RendererPage): void {
   win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
   win.webContents.on('console-message', (details) => {
     log(`[${page}] ${details.level}: ${details.message}`)

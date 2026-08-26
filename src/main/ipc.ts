@@ -1,5 +1,5 @@
 import { ipcMain } from 'electron'
-import { IPC, NavKey, VoiceFailure } from '../shared/types'
+import { EzzyConfig, IPC, NavKey, VoiceFailure } from '../shared/types'
 import { getConfig } from './config'
 import {
   beginDotDrag,
@@ -18,6 +18,10 @@ import { dropIfGone } from './window-tracker'
 import { panelData, setQuery } from './panel-data'
 import { launchApp, openDirect, openMicrophoneSettings } from './launcher'
 import { receiveAudio, reportCaptureFailure, voiceState } from './voice'
+import { logRendererError, openLogFile } from './logger'
+import { applySettings, closeSettingsWindow, settingsSnapshot } from './settings-window'
+import { checkForUpdates, installUpdate, updateStatus } from './updater'
+import { refreshTray } from './tray'
 
 export function registerIpc(): void {
   ipcMain.on(IPC.dotDragStart, (_event, x: number, y: number) => beginDotDrag({ x, y }))
@@ -78,4 +82,23 @@ export function registerIpc(): void {
   ipcMain.on(IPC.voiceFailed, (_event, kind: VoiceFailure) => reportCaptureFailure(kind))
   // §5: a microphone Windows has blocked must lead to the setting, not to a dead button.
   ipcMain.on(IPC.openMicSettings, () => void openMicrophoneSettings())
+
+  // ---------------------------------------------------------------- chunk F
+  ipcMain.handle(IPC.getSettings, () => settingsSnapshot())
+  ipcMain.handle(IPC.setSettings, (_event, patch: Partial<EzzyConfig>) => {
+    const result = applySettings(patch)
+    // The tray shows the hotkey in force in both its tooltip and its first menu item, and
+    // that is exactly what a settings change can invalidate. Rebuilding the menu is cheap
+    // enough that it is not worth working out whether this particular change needed it.
+    refreshTray()
+    return result
+  })
+  ipcMain.on(IPC.closeSettings, () => closeSettingsWindow())
+  ipcMain.on(IPC.openLogFile, () => void openLogFile())
+  ipcMain.on(IPC.reportError, (_event, page: string, message: string) => {
+    logRendererError(page, message)
+  })
+  ipcMain.handle(IPC.getUpdateStatus, () => updateStatus())
+  ipcMain.on(IPC.checkForUpdates, () => checkForUpdates())
+  ipcMain.on(IPC.installUpdate, () => installUpdate())
 }

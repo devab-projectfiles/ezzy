@@ -1,0 +1,32 @@
+{
+    "version": "1.0.0",
+    "description": "Floating launcher and window switcher for Windows.",
+    "homepage": "https://github.com/devab-projectfiles/ezzy",
+    "license": "MIT",
+    "architecture": {
+        "64bit": {
+            "url": "https://github.com/devab-projectfiles/ezzy/releases/download/v1.0.0/Ezzy-1.0.0-portable.zip",
+            "hash": "418b9092d78e0372be02596fb8468fc5dd72b582ec3dd69c242e1278ab897c0a"
+        }
+    },
+    "bin": "Ezzy.exe",
+    "shortcuts": [
+        [
+            "Ezzy.exe",
+            "Ezzy"
+        ]
+    ],
+    "notes": [
+        "Ezzy lives in the tray. Press Alt+Space to open it, hold Alt+Space to speak.",
+        "Settings, the log file and Quit are all in the tray menu.",
+        "Update with: scoop update ezzy"
+    ],
+    "checkver": "github",
+    "autoupdate": {
+        "architecture": {
+            "64bit": {
+                "url": "https://github.com/devab-projectfiles/ezzy/releases/download/v$version/Ezzy-$version-portable.zip"
+            }
+        }
+    }
+}

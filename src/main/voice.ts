@@ -20,7 +20,13 @@ import { normaliseTranscript, runCommand } from './commands/registry'
 import { getConfig } from './config'
 import { activeHotkey, watchHold } from './hotkey'
 import { hush, speak } from './speech'
-import { isVoiceInstalled, startWhisperServer, transcribe, whenReady } from './stt'
+import {
+  isVoiceInstalled,
+  startWhisperServer,
+  stopWhisperServer,
+  transcribe,
+  whenReady
+} from './stt'
 import { log, since } from './verbose'
 import { ensureModel, hasModel, isDownloading } from './whisper-model'
 import { listWindows } from './window-tracker'
@@ -83,6 +89,19 @@ export function voiceState(): VoiceState {
   return state
 }
 
+/** Voice has just been switched off in settings (§8 chunk F).
+ *
+ *  Turning it off has to give the memory back, or the switch is only a promise about future
+ *  holds: whisper-server is ~300MB resident and nothing else ever stops it before quit. Any
+ *  press in flight is cancelled too, so the microphone is not left open by a hold that was
+ *  armed a moment before the switch was flipped. */
+export function releaseVoice(): void {
+  if (getConfig().voice) return
+  cancelCapture()
+  stopWhisperServer()
+  if (state.kind !== 'idle') setState({ kind: 'idle' })
+}
+
 function setState(next: VoiceState): void {
   state = next
   sendVoiceState(next)
@@ -128,7 +147,7 @@ function fail(message: string, micBlocked = false): void {
  *  that never record. Nothing is sent anywhere for a tap: `cancelCapture` throws the buffer
  *  away and closes the device. */
 function armCapture(): void {
-  if (armed || !isVoiceInstalled() || !hasModel()) return
+  if (armed || !getConfig().voice || !isVoiceInstalled() || !hasModel()) return
   armed = true
   // Started here rather than at launch and left running afterwards — §5's "model load is the
   // real latency". The first command of a session waits for it; the rest do not.
@@ -145,6 +164,10 @@ function cancelCapture(): void {
 
 async function beginListening(): Promise<void> {
   if (capturing) return
+  // §8 chunk F's voice switch. Off, a hold is just a long tap — no microphone, no download, no
+  // message. Saying "voice is off" here would be worse than silence: the user turned it off,
+  // and the panel the press already opened is exactly where they can type instead.
+  if (!getConfig().voice) return
   // Stop any confirmation still playing, before the microphone that is about to open hears
   // Ezzy talking about the last command.
   hush()

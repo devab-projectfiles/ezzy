@@ -13,6 +13,13 @@ export interface EzzyConfig {
    *  user is likely to want off. Only the voice path speaks: someone who clicked a row is
    *  looking at the screen and does not need telling what they just did. */
   speech: boolean
+  /** Whether holding the hotkey listens at all (PLAN.md §8 chunk F, "voice on/off").
+   *
+   *  On by default, because voice is the reason people try the app. Off, a hold is just a
+   *  long tap: no microphone is opened, no model is downloaded and whisper-server is stopped
+   *  if it was running — which is the point of the switch, since the server holds ~300MB for
+   *  as long as the session lasts. The typed path is untouched either way (§7). */
+  voice: boolean
   /** Whether holding the hotkey opens the panel, or leaves voice on the dot.
    *
    *  Off by default: holding a key to say four words should not throw a 420px window list
@@ -34,6 +41,7 @@ export const DEFAULT_CONFIG: EzzyConfig = {
   hotkey: 'Alt+Space',
   openAtLogin: true,
   speech: true,
+  voice: true,
   voicePanel: false,
   dotPositions: {},
   lastDisplayId: null
@@ -210,6 +218,48 @@ export type VoiceCapture =
  *  with, because the exception itself must not cross the bridge. */
 export type VoiceFailure = 'denied' | 'no-device' | 'failed'
 
+/** Everything the settings window draws (PLAN.md §8 chunk F). It is a fourth window and a
+ *  cold renderer, so it asks for all of this once on open rather than assembling it from
+ *  four round trips. */
+export interface SettingsSnapshot {
+  config: EzzyConfig
+  /** The accelerator actually in force, which is not always `config.hotkey` — another app may
+   *  have owned it first (§5). Null when every candidate was taken. */
+  activeHotkey: string | null
+  version: string
+  /** False in dev. `openAtLogin` and the updater both do nothing outside a packaged build,
+   *  and the window says so rather than offering controls that quietly no-op. */
+  packaged: boolean
+  /** The log file §8 asks for, so the window can point at the file users attach to issues. */
+  logPath: string
+}
+
+/** The answer to a settings change. The hotkey is the one field the OS can refuse — every
+ *  other setting is ours to keep — so it comes back with the snapshot rather than being
+ *  reported through a second channel. */
+export interface SettingsResult {
+  snapshot: SettingsSnapshot
+  /** Non-null when the requested hotkey could not be registered; the message names what took
+   *  over instead. The config still holds what was asked for, so it can be tried again after
+   *  the other app is closed. */
+  hotkeyError: string | null
+}
+
+/** Where the auto-updater is (PLAN.md §8 chunk F). Drawn by the settings window and reduced
+ *  to one line in the tray menu. */
+export type UpdateStatus =
+  | { kind: 'idle' }
+  /** Dev builds and anything else electron-updater will not check. */
+  | { kind: 'unsupported'; reason: string }
+  | { kind: 'checking' }
+  | { kind: 'current'; version: string }
+  | { kind: 'available'; version: string }
+  | { kind: 'downloading'; version: string; percent: number }
+  /** Downloaded and staged. It installs on the next quit on its own; restarting now is the
+   *  offer, not the requirement. */
+  | { kind: 'ready'; version: string }
+  | { kind: 'error'; message: string }
+
 export const IPC = {
   dotDragStart: 'dot:drag-start',
   dotDragMove: 'dot:drag-move',
@@ -237,7 +287,16 @@ export const IPC = {
   voiceAudio: 'voice:audio',
   voiceFailed: 'voice:failed',
   openMicSettings: 'voice:mic-settings',
-  speak: 'speech:speak'
+  speak: 'speech:speak',
+  getSettings: 'settings:get',
+  setSettings: 'settings:set',
+  closeSettings: 'settings:close',
+  openLogFile: 'log:open',
+  reportError: 'log:renderer-error',
+  updateStatus: 'update:status',
+  getUpdateStatus: 'update:get-status',
+  checkForUpdates: 'update:check',
+  installUpdate: 'update:install'
 } as const
 
 /** The surface the preload exposes on `window.ezzy`. Named functions only.
@@ -314,4 +373,24 @@ export interface EzzyApi {
    *  command usually arrives after the panel has already gone. An empty string means stop
    *  talking. Returns an unsubscribe function. */
   onSpeak(callback: (text: string) => void): () => void
+
+  // ---------------------------------------------------------------- chunk F
+  /** Everything the settings window draws, as of now. */
+  getSettings(): Promise<SettingsSnapshot>
+  /** Changes one or more settings and returns the state that resulted — which is not always
+   *  the state that was asked for, since Windows can refuse a hotkey. */
+  setSettings(patch: Partial<EzzyConfig>): Promise<SettingsResult>
+  closeSettings(): void
+  /** Opens the log file §8 asks for, in whatever the machine uses for .log. */
+  openLogFile(): void
+  /** A crash in a renderer, on its way to that same log file. The error object itself does
+   *  not cross the bridge — only the page it happened on and what it said. */
+  reportError(page: string, message: string): void
+  getUpdateStatus(): Promise<UpdateStatus>
+  /** Returns an unsubscribe function. */
+  onUpdateStatus(callback: (status: UpdateStatus) => void): () => void
+  /** Checks now, rather than waiting for the next scheduled check. */
+  checkForUpdates(): void
+  /** Quits and installs a downloaded update. */
+  installUpdate(): void
 }

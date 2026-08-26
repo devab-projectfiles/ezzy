@@ -5,6 +5,7 @@ import {
   NavKey,
   PanelData,
   PillDirection,
+  UpdateStatus,
   VoiceCapture,
   VoiceState
 } from '../shared/types'
@@ -74,7 +75,20 @@ const ezzy: EzzyApi = {
     const handler = (_event: unknown, text: string): void => callback(text)
     ipcRenderer.on(IPC.speak, handler)
     return () => void ipcRenderer.removeListener(IPC.speak, handler)
-  }
+  },
+  getSettings: () => ipcRenderer.invoke(IPC.getSettings),
+  setSettings: (patch) => ipcRenderer.invoke(IPC.setSettings, patch),
+  closeSettings: () => ipcRenderer.send(IPC.closeSettings),
+  openLogFile: () => ipcRenderer.send(IPC.openLogFile),
+  reportError: (page, message) => ipcRenderer.send(IPC.reportError, page, message),
+  getUpdateStatus: () => ipcRenderer.invoke(IPC.getUpdateStatus),
+  onUpdateStatus: (callback) => {
+    const handler = (_event: unknown, status: UpdateStatus): void => callback(status)
+    ipcRenderer.on(IPC.updateStatus, handler)
+    return () => void ipcRenderer.removeListener(IPC.updateStatus, handler)
+  },
+  checkForUpdates: () => ipcRenderer.send(IPC.checkForUpdates),
+  installUpdate: () => ipcRenderer.send(IPC.installUpdate)
 }
 
 contextBridge.exposeInMainWorld('ezzy', ezzy)

@@ -1,6 +1,6 @@
 import { app, nativeTheme } from 'electron'
 import { electronApp, optimizer } from '@electron-toolkit/utils'
-import { getConfig, loadConfig } from './config'
+import { loadConfig } from './config'
 import { registerHotkey, unregisterHotkey, watchForResume } from './hotkey'
 import { registerIpc } from './ipc'
 import { createTray, refreshTray } from './tray'
@@ -20,7 +20,10 @@ import { refreshAppIndex, startAppIndex } from './app-index'
 import { loadIconCache } from './icons'
 import { initVoice } from './voice'
 import { stopWhisperServer } from './stt'
-import { log, since } from './verbose'
+import { since } from './verbose'
+import { startLogging } from './logger'
+import { applyLoginItem } from './login-item'
+import { startUpdater, stopUpdater } from './updater'
 
 const startedAt = performance.now()
 
@@ -45,6 +48,9 @@ function start(): void {
     // `prefers-color-scheme` deterministic rather than leaving that to the machine's setting.
     nativeTheme.themeSource = 'dark'
 
+    // First, so that everything below this line — including anything that throws on the way
+    // up — is in the file a user can attach to an issue (§8 chunk F).
+    startLogging()
     loadConfig()
     applyLoginItem()
     registerIpc()
@@ -74,6 +80,9 @@ function start(): void {
       void refreshAppIndex()
     })
     createTray(quit, hotkey)
+    // Last, and on a timer of its own inside: §9 expects the first 48 hours to need it, and
+    // nothing about it belongs on the startup path.
+    startUpdater()
 
     since('cold start -> tray ready', startedAt)
   })
@@ -84,6 +93,7 @@ function start(): void {
 
   app.on('will-quit', () => {
     unregisterHotkey()
+    stopUpdater()
     stopWatchingCursor()
     // Leaving a WinEvent hook behind makes Windows keep calling into a process that is on
     // its way out.
@@ -98,14 +108,4 @@ function start(): void {
 function quit(): void {
   setQuitting(true)
   app.quit()
-}
-
-/** §5, item 5. In dev this would register the Electron binary rather than Ezzy, so it is
- *  only applied to packaged builds — which is also the only place it can be tested. */
-function applyLoginItem(): void {
-  if (!app.isPackaged) {
-    log('openAtLogin skipped: only applied in a packaged build')
-    return
-  }
-  app.setLoginItemSettings({ openAtLogin: getConfig().openAtLogin })
 }

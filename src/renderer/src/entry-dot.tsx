@@ -2,6 +2,7 @@ import './styles/dot.css'
 
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
+import { ErrorBoundary, watchRendererErrors } from './errors'
 import Dot from './Dot'
 import { listenForCapture } from './recorder'
 
@@ -9,8 +10,13 @@ import { listenForCapture } from './recorder'
 // always alive. Nothing about it is drawn — see recorder.ts.
 listenForCapture()
 
+// §8 chunk F: a crash in a transparent, frameless window is otherwise invisible.
+watchRendererErrors('dot')
+
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <Dot />
+    <ErrorBoundary page="dot">
+      <Dot />
+    </ErrorBoundary>
   </StrictMode>
 )

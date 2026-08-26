@@ -25,11 +25,25 @@ asarUnpack:
   - node_modules/koffi/**
 win:
   executableName: Ezzy
+  # §8 chunk F asks for both. The installer is what most people download and the only target
+  # electron-updater can update in place; the zip is what the Scoop manifest fetches, and what
+  # anyone who will not run an unsigned installer (§9, SmartScreen) can unpack and run.
+  target:
+    - nsis
+    - zip
+  # Applies to the zip; nsis has its own name below, which takes precedence for the installer.
+  artifactName: Ezzy-${version}-portable.${ext}
 nsis:
   artifactName: Ezzy-Setup-${version}.${ext}
   shortcutName: ${productName}
   uninstallDisplayName: ${productName}
   createDesktopShortcut: always
+  # Per-user, so the installer never raises a UAC prompt on top of the SmartScreen warning it
+  # already has to get past (§9). It also keeps electron-updater able to replace the install
+  # without elevation, which is the whole point of shipping updates at all.
+  perMachine: false
+  oneClick: false
+  allowToChangeInstallationDirectory: true
 mac:
   entitlementsInherit: build/entitlements.mac.plist
   extendInfo:
@@ -50,6 +64,9 @@ linux:
 appImage:
   artifactName: ${name}-${version}.${ext}
 npmRebuild: false
+# §3: electron-updater against GitHub Releases, which needs no server and no certificate.
+# electron-builder writes latest.yml alongside the installer here; that file is the feed.
 publish:
-  provider: generic
-  url: https://example.com/auto-updates
+  provider: github
+  owner: devab-projectfiles
+  repo: ezzy

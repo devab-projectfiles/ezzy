@@ -1,3 +1,7 @@
-provider: generic
-url: https://example.com/auto-updates
+# Only read when EZZY_DEV_UPDATES=1 and the app is unpackaged (see main/updater.ts) — it is
+# how the update feed can be exercised without cutting an installer first. Packaged builds get
+# their feed from electron-builder.yml instead.
+provider: github
+owner: devab-projectfiles
+repo: ezzy
 updaterCacheDirName: ezzy-updater

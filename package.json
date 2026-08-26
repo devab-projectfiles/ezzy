@@ -6,6 +6,14 @@
   "main": "./out/main/index.js",
   "author": "Ezzy",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/devab-projectfiles/ezzy.git"
+  },
+  "bugs": {
+    "url": "https://github.com/devab-projectfiles/ezzy/issues"
+  },
+  "homepage": "https://github.com/devab-projectfiles/ezzy",
   "scripts": {
     "format": "prettier --write .",
     "lint": "eslint --cache .",
@@ -21,7 +29,9 @@
     "build:mac": "electron-vite build && electron-builder --mac",
     "build:linux": "electron-vite build && electron-builder --linux",
     "dev:verbose": "electron-vite dev -- --verbose",
-    "fetch:whisper": "node scripts/fetch-whisper.mjs"
+    "fetch:whisper": "node scripts/fetch-whisper.mjs",
+    "scoop:manifest": "node scripts/scoop-manifest.mjs",
+    "publish:win": "npm run build && electron-builder --win --publish always"
   },
   "dependencies": {
     "@electron-toolkit/preload": "^3.0.2",
