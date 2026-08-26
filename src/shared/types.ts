@@ -288,6 +288,7 @@ export const IPC = {
   voiceFailed: 'voice:failed',
   openMicSettings: 'voice:mic-settings',
   speak: 'speech:speak',
+  openSettings: 'settings:open',
   getSettings: 'settings:get',
   setSettings: 'settings:set',
   closeSettings: 'settings:close',
@@ -375,6 +376,10 @@ export interface EzzyApi {
   onSpeak(callback: (text: string) => void): () => void
 
   // ---------------------------------------------------------------- chunk F
+  /** Opens the settings window. On the panel's APPS header, which is the only surface a
+   *  keyboard-only user ever has in front of them — the tray menu needs a mouse and a trip to
+   *  the notification area. Dismisses the panel with it. */
+  openSettings(): void
   /** Everything the settings window draws, as of now. */
   getSettings(): Promise<SettingsSnapshot>
   /** Changes one or more settings and returns the state that resulted — which is not always

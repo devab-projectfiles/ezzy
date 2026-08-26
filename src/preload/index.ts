@@ -76,6 +76,7 @@ const ezzy: EzzyApi = {
     ipcRenderer.on(IPC.speak, handler)
     return () => void ipcRenderer.removeListener(IPC.speak, handler)
   },
+  openSettings: () => ipcRenderer.send(IPC.openSettings),
   getSettings: () => ipcRenderer.invoke(IPC.getSettings),
   setSettings: (patch) => ipcRenderer.invoke(IPC.setSettings, patch),
   closeSettings: () => ipcRenderer.send(IPC.closeSettings),

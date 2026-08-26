@@ -187,7 +187,25 @@ function Panel(): React.JSX.Element {
           )}
         </div>
         <span className="panel__divider" aria-hidden="true" />
-        <p className="panel__section">APPS</p>
+        <p className="panel__section">
+          APPS
+          {/* The only way into settings that does not need the tray. Parked on this header
+              because it is the one that has spare room — OPEN WINDOWS is what the panel is
+              for, and a gear beside it would sit next to the first thing the eye lands on. */}
+          <button
+            type="button"
+            className="panel__gear"
+            title="Settings"
+            aria-label="Settings"
+            // Outside the focus model, exactly like the rows: this window cannot take focus,
+            // and a button that tried would carry the platform's own ring.
+            tabIndex={-1}
+            onMouseDown={(event) => event.preventDefault()}
+            onClick={window.ezzy.openSettings}
+          >
+            <GearGlyph />
+          </button>
+        </p>
         <div
           className="panel__scroll panel__scroll--apps"
           onWheel={dropStaleHover}
@@ -274,6 +292,29 @@ function Panel(): React.JSX.Element {
       </>
     )
   }
+}
+
+/** 14px, drawn on the same 24-unit grid as the row glyphs. Eight teeth as one path plus a
+ *  ring, so it stays legible at this size where a detailed gear turns to mush. */
+function GearGlyph(): React.JSX.Element {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path
+        d="M12 15.2a3.2 3.2 0 1 0 0-6.4 3.2 3.2 0 0 0 0 6.4Z"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.7"
+      />
+      <path
+        d="M19.4 13.6a1.5 1.5 0 0 0 .3 1.65l.05.05a1.8 1.8 0 1 1-2.55 2.55l-.05-.05a1.5 1.5 0 0 0-1.65-.3 1.5 1.5 0 0 0-.9 1.37V19a1.8 1.8 0 0 1-3.6 0v-.07a1.5 1.5 0 0 0-.98-1.37 1.5 1.5 0 0 0-1.65.3l-.05.05a1.8 1.8 0 1 1-2.55-2.55l.05-.05a1.5 1.5 0 0 0 .3-1.65 1.5 1.5 0 0 0-1.37-.9H5a1.8 1.8 0 0 1 0-3.6h.07a1.5 1.5 0 0 0 1.37-.98 1.5 1.5 0 0 0-.3-1.65l-.05-.05a1.8 1.8 0 1 1 2.55-2.55l.05.05a1.5 1.5 0 0 0 1.65.3H10.4a1.5 1.5 0 0 0 .9-1.37V5a1.8 1.8 0 0 1 3.6 0v.07a1.5 1.5 0 0 0 .9 1.37 1.5 1.5 0 0 0 1.65-.3l.05-.05a1.8 1.8 0 1 1 2.55 2.55l-.05.05a1.5 1.5 0 0 0-.3 1.65v.07a1.5 1.5 0 0 0 1.37.9H21a1.8 1.8 0 0 1 0 3.6h-.07a1.5 1.5 0 0 0-1.37.9Z"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.7"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  )
 }
 
 function title(row: Row): string {

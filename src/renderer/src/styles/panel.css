@@ -156,6 +156,43 @@
   text-shadow: var(--text-shadow);
 }
 
+/* The way into settings from the panel itself. It sits in the APPS header's spare width, at
+   the header's own faint weight — it is a way out of the launcher, not a result, and it must
+   not compete with the rows for attention. It brightens to the row-icon weight on hover so it
+   is still obviously a control. */
+.panel__gear {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  margin-left: auto;
+  /* Optical, not geometric: the header's 14px padding is measured to the text, and a 22px hit
+     target centred on it would push the glyph in past the rows' right edge. */
+  margin-right: -4px;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  color: var(--text-faint);
+  cursor: pointer;
+  outline: none;
+  transition:
+    color 140ms var(--ease-glass),
+    background 140ms var(--ease-glass);
+}
+
+.panel__gear:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--icon-selected);
+}
+
+.panel__gear svg {
+  width: 14px;
+  height: 14px;
+  filter: drop-shadow(0 1px 2px rgba(8, 10, 20, 0.7));
+}
+
 /* Fills its section rather than collapsing it, so an empty OPEN WINDOWS keeps its four rows
    of space and APPS stays exactly where it always is. */
 .panel__empty {

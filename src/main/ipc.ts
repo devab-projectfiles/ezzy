@@ -19,7 +19,12 @@ import { panelData, setQuery } from './panel-data'
 import { launchApp, openDirect, openMicrophoneSettings } from './launcher'
 import { receiveAudio, reportCaptureFailure, voiceState } from './voice'
 import { logRendererError, openLogFile } from './logger'
-import { applySettings, closeSettingsWindow, settingsSnapshot } from './settings-window'
+import {
+  applySettings,
+  closeSettingsWindow,
+  openSettingsWindow,
+  settingsSnapshot
+} from './settings-window'
 import { checkForUpdates, installUpdate, updateStatus } from './updater'
 import { refreshTray } from './tray'
 
@@ -84,6 +89,14 @@ export function registerIpc(): void {
   ipcMain.on(IPC.openMicSettings, () => void openMicrophoneSettings())
 
   // ---------------------------------------------------------------- chunk F
+  ipcMain.on(IPC.openSettings, () => {
+    // Dismiss first, like a launch: the settings window takes the foreground, and leaving a
+    // panel hovering over it would be a launcher sitting on top of its own settings. The
+    // search bar's blur would hide it a moment later anyway — doing it here makes the order
+    // deterministic rather than a race between two windows.
+    hidePanel()
+    openSettingsWindow()
+  })
   ipcMain.handle(IPC.getSettings, () => settingsSnapshot())
   ipcMain.handle(IPC.setSettings, (_event, patch: Partial<EzzyConfig>) => {
     const result = applySettings(patch)
