@@ -153,7 +153,9 @@ npm run build:win       # dist/Ezzy-Setup-x.y.z.exe + dist/Ezzy-x.y.z-portable.z
 3. `npm run scoop:manifest` — rewrites `scoop/ezzy.json` with the new version and the zip's
    hash. Commit it.
 4. Publish a GitHub release tagged `vx.y.z` with **all** of `Ezzy-Setup-x.y.z.exe`,
-   `Ezzy-x.y.z-portable.zip` and `latest.yml` attached.
+   `Ezzy-Setup-x.y.z.exe.blockmap`, `Ezzy-x.y.z-portable.zip` and `latest.yml` attached.
+   The blockmap is what lets the *next* release download as a delta instead of another
+   100MB — leave it off and every update is a full download.
    (`GH_TOKEN=... npm run publish:win` does the upload for you, as a draft.)
 5. Installed copies pick it up within six hours, or immediately from Settings → Check.
 

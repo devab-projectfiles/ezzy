@@ -48,7 +48,14 @@ export function startUpdater(): void {
   if (!supported()) return
   // Straight to the file: `console` is teed there (see logger.ts), and electron-updater is
   // chatty enough to be worth having when an update does not arrive.
-  autoUpdater.logger = { info: log, warn: log, error: onError, debug: log }
+  //
+  // Its `error` channel is deliberately NOT wired to `onError`. Measured against a real feed:
+  // electron-updater logs "Cannot download differentially, fallback to full download" at error
+  // level, which is not a failure at all — it is the delta path giving up because the OLD
+  // version's blockmap is not on the feed, and the full download then succeeds. Routing that
+  // to the status put "Update check failed" in the settings window and the tray while the
+  // update was downloading normally behind it. Only the `error` EVENT below is a real failure.
+  autoUpdater.logger = { info: log, warn: log, error: log, debug: log }
   // Without this an unpackaged build refuses to check at all, and EZZY_DEV_UPDATES could not
   // be used to test the feed before cutting a release.
   autoUpdater.forceDevUpdateConfig = !app.isPackaged
