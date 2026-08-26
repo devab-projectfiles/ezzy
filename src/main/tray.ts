@@ -36,6 +36,14 @@ export function refreshTray(): void {
         checked: getConfig().speech,
         click: (item) => updateConfig({ speech: item.checked })
       },
+      // The other half of the same stopgap. Off, voice happens entirely on the dot; on, it is
+      // chunk D's behaviour, with the panel up and the search bar reporting.
+      {
+        label: 'Show the panel while listening',
+        type: 'checkbox',
+        checked: getConfig().voicePanel,
+        click: (item) => updateConfig({ voicePanel: item.checked })
+      },
       { label: 'Settings', click: () => void openSettings() },
       { type: 'separator' },
       { label: 'Quit', click: () => quit() }

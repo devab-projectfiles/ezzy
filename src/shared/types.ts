@@ -13,6 +13,17 @@ export interface EzzyConfig {
    *  user is likely to want off. Only the voice path speaks: someone who clicked a row is
    *  looking at the screen and does not need telling what they just did. */
   speech: boolean
+  /** Whether holding the hotkey opens the panel, or leaves voice on the dot.
+   *
+   *  Off by default: holding a key to say four words should not throw a 420px window list
+   *  over what you were reading, and since chunk E the pill can carry the whole exchange —
+   *  listening, thinking, and the answer. On, it is chunk D's behaviour: the panel comes up
+   *  with the search bar reporting, so a command that misses leaves you in a field you can
+   *  finish typing into.
+   *
+   *  A blocked microphone opens the panel either way. §5 is explicit that it has to lead to
+   *  the setting rather than to a dead button, and that button lives on the search bar. */
+  voicePanel: boolean
   /** Dot position keyed by display id, so each monitor remembers its own spot. */
   dotPositions: Record<string, DotPosition>
   /** Display the dot was last on, used to pick a position at startup. */
@@ -23,6 +34,7 @@ export const DEFAULT_CONFIG: EzzyConfig = {
   hotkey: 'Alt+Space',
   openAtLogin: true,
   speech: true,
+  voicePanel: false,
   dotPositions: {},
   lastDisplayId: null
 }

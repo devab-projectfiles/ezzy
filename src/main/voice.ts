@@ -17,13 +17,14 @@ import { VoiceFailure, VoiceState } from '../shared/types'
 import { indexedApps } from './app-index'
 import { registerBuiltinCommands } from './commands/builtin'
 import { normaliseTranscript, runCommand } from './commands/registry'
+import { getConfig } from './config'
 import { activeHotkey, watchHold } from './hotkey'
 import { hush, speak } from './speech'
 import { isVoiceInstalled, startWhisperServer, transcribe, whenReady } from './stt'
 import { log, since } from './verbose'
 import { ensureModel, hasModel, isDownloading } from './whisper-model'
 import { listWindows } from './window-tracker'
-import { sendCapture, sendVoiceState, showPanelForVoice } from './windows'
+import { hidePanel, sendCapture, sendVoiceState, showPanelForVoice } from './windows'
 
 let state: VoiceState = { kind: 'idle' }
 /** The microphone is open and buffering. Set on the press, before it is known whether this
@@ -100,6 +101,16 @@ function setState(next: VoiceState): void {
 function fail(message: string, micBlocked = false): void {
   log(`voice: ${message}`)
   setState({ kind: 'error', message, micBlocked, heard: heard ?? undefined })
+  // §5: a blocked microphone has to lead somewhere rather than to a dead button, and the
+  // button it leads to lives on the search bar. So this one failure brings the panel up even
+  // when the preference says voice should stay on the dot — a sentence about a blocked device
+  // with no way to act on it is exactly the dead end that rule is about.
+  if (micBlocked) {
+    showPanelForVoice()
+    // The panel has just opened over the pill, so the message is routed again: the search bar
+    // takes it and the pill lets go of it.
+    sendVoiceState(state)
+  }
   speak(message, 'failure')
 }
 
@@ -148,9 +159,15 @@ async function beginListening(): Promise<void> {
     return
   }
 
-  // The hold may have arrived on a closed panel, or on one the press just closed. Either way
-  // the search bar is where everything below is reported, so it has to be up.
-  showPanelForVoice()
+  // Whether the panel comes up for this is the user's call (`voicePanel`). Off — the default
+  // — the dot's pill carries the whole exchange and nothing covers what you were reading. On,
+  // it is chunk D's behaviour: the hold may have arrived on a closed panel, or on one the
+  // press just closed, so it has to be brought back up for the search bar to report on.
+  if (getConfig().voicePanel) showPanelForVoice()
+  // Quiet mode has to CLOSE a panel rather than not open one: the press toggles it before
+  // anyone knows this is a hold, and that is deliberate — §7 gives the tap a 50ms budget from
+  // the press, so the panel cannot wait 350ms to find out what kind of press it was.
+  else hidePanel()
 
   if (!hasModel()) {
     void fetchModel()
