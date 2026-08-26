@@ -279,21 +279,20 @@ function applyDotBounds(): void {
   const opensLeft = dotAnchor.x - pillDelta >= display.bounds.x
   const anchored = opensLeft ? dotAnchor.x - pillDelta : dotAnchor.x
 
-  // §6: the dot "tucks half past the screen edge when idle; slides out on hover". The tuck is
-  // built — clampBounds allows half the dot off a display — and the slide is here, but for a
-  // status rather than for hover.
+  // §6: the dot "tucks half past the screen edge when idle; slides out on hover". The tuck
+  // is built — clampBounds allows half the dot off a display — and this is the slide.
   //
-  // It has to exist for a status because the pill's far edge is anchored where the collapsed
-  // circle sits, so a dot the user has tucked takes the end of every sentence off the screen
-  // with it: "Switching to Notepad" was drawn as "Switching to Notep". Sliding the whole
-  // window back inside the display for the two seconds a status is up puts the sentence on
-  // screen and takes the circle with it.
+  // It exists because the pill's far edge is anchored where the collapsed circle sits, so a
+  // dot the user has tucked takes the end of whatever the pill says off the screen with it:
+  // "Switching to Notepad" drew as "Switching to Notep", and the hover label as "Alt + Spa".
+  // Sliding the whole window back inside the display while the pill is open puts the content
+  // on screen and takes the circle with it.
   //
-  // Deliberately NOT done for hover, which is cursor-driven: moving the window out from under
-  // the pointer moves the hit rectangle with it, the cursor lands outside, the pill closes,
-  // the window slides back, and the whole thing oscillates at the poll rate.
+  // Never while dragging: the drag is anchored to the pointer, and a window that keeps
+  // clamping itself into the display would lag the cursor as it neared the edge. See
+  // moveDotDrag, which folds any outstanding slide into the anchor on the first real move.
   let x = anchored
-  if (dotStatus) {
+  if (!drag && (dotStatus || pillOpen)) {
     const left = display.bounds.x
     const right = display.bounds.x + display.bounds.width - pillFrame.width
     x = Math.min(Math.max(anchored, left), right)
@@ -323,17 +322,26 @@ export function setPillWidth(width: number): void {
  *  may then roam anywhere over the opened pill without closing it. */
 function pillScreenRect(): Electron.Rectangle {
   const inset = visualInset()
+  const anchoredX = dotAnchor.x + inset
   // Plus whatever the window has been slid by: the circle is drawn at a fixed place inside
   // the window, so a slid window is a moved circle, and hit-testing the anchor would test
   // where the dot is not.
-  const circleX = dotAnchor.x + inset + pillSlide
+  const circleX = anchoredX + pillSlide
   const width = pillOpen ? pillWidth : DOT_VISUAL
-  return {
-    x: pillSide === 'left' ? circleX + DOT_VISUAL - width : circleX,
-    y: dotAnchor.y + inset,
-    width,
-    height: DOT_VISUAL
-  }
+  const x = pillSide === 'left' ? circleX + DOT_VISUAL - width : circleX
+  const y = dotAnchor.y + inset
+  if (pillSlide === 0) return { x, y, width, height: DOT_VISUAL }
+
+  // The rectangle also has to cover where the circle was BEFORE the slide, and this is the
+  // whole reason hover can slide at all. Opening the pill is what moves the window, and the
+  // cursor that opened it is sitting on the untucked circle's old position — which the moved
+  // rectangle no longer contains. Without this the cursor lands outside the instant the
+  // window moves, the pill closes, the window slides back under it, and the pair oscillates
+  // at the poll rate. The union is 30-odd pixels of transparent glass at the display edge,
+  // and it doubles as hysteresis.
+  const left = Math.min(x, anchoredX)
+  const right = Math.max(x + width, anchoredX + DOT_VISUAL)
+  return { x: left, y, width: right - left, height: DOT_VISUAL }
 }
 
 /** Reading the cursor is only self-referential while the window is being moved under it,
@@ -352,6 +360,8 @@ export function watchCursor(): void {
     hovered = inside
     dotWindow.setIgnoreMouseEvents(!inside)
     pillOpen = inside
+    // An opening pill may not fit where a tucked dot sits — see applyDotBounds.
+    applyDotBounds()
     dotWindow.webContents.send(IPC.dotHover, inside)
   }, HOVER_POLL_MS)
 }
@@ -491,6 +501,18 @@ export function moveDotDrag(pointer: DotPosition): void {
     endDotDrag()
     return
   }
+  // The pill may have slid the window off its anchor to fit on screen, and the user grabbed
+  // the dot where they could see it. Folding that offset into the anchor on the first real
+  // move — rather than at the press — means the window does not move at all here, so the dot
+  // never jumps out from under the cursor. Doing it at the press instead would untuck a
+  // tucked dot on a stray click, since a click is a drag that never moved.
+  if (pillSlide !== 0) {
+    dotAnchor = { x: dotAnchor.x + pillSlide, y: dotAnchor.y }
+    drag.windowOrigin = { x: drag.windowOrigin.x + pillSlide, y: drag.windowOrigin.y }
+    drag.commanded = { ...dotAnchor }
+    pillSlide = 0
+  }
+
   const target = dotBoundsAt({
     x: drag.windowOrigin.x + (pointer.x - drag.pointerOrigin.x),
     y: drag.windowOrigin.y + (pointer.y - drag.pointerOrigin.y)
