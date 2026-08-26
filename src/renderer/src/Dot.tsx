@@ -33,8 +33,12 @@ function Dot(): React.JSX.Element {
   // a confirmation almost always arrives just after the panel has been dismissed. Nothing
   // about it is decided here; main/speech.ts sends the finished sentence.
   useEffect(() => {
-    initSpeech()
-    return window.ezzy.onSpeak(speak)
+    const stopWatchingVoices = initSpeech()
+    const stopListening = window.ezzy.onSpeak(speak)
+    return () => {
+      stopWatchingVoices()
+      stopListening()
+    }
   }, [])
 
   // §6, "the hover pill": "later the same pill carries state — a waveform while listening,

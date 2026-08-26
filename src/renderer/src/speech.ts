@@ -31,10 +31,14 @@ const VOLUME = 0.85
  *  is a fallback for a machine that does not have them. */
 const PREFERRED = ['aria', 'jenny', 'guy', 'natural', 'zira', 'david', 'mark']
 
-export function initSpeech(): void {
+/** Returns a disposer, so the caller's effect can clean up after itself. The dot's component
+ *  never unmounts in a packaged build, but it does under StrictMode in dev, and a listener
+ *  that survives its own effect is the kind of thing that is only ever noticed later. */
+export function initSpeech(): () => void {
   pickVoice()
   // The list is populated asynchronously and is usually empty on the first call.
   window.speechSynthesis.addEventListener('voiceschanged', pickVoice)
+  return () => window.speechSynthesis.removeEventListener('voiceschanged', pickVoice)
 }
 
 /** Say it, interrupting whatever is already being said. An empty string only interrupts —
