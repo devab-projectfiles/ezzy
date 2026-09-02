@@ -2,8 +2,23 @@
  *
  *  Two commands, registered as data, exactly the case PLAN.md §4 says the registry exists
  *  for. Nothing here is an integration: §1 lists per-app APIs as a permanent non-goal, and
- *  the feature note repeats it — no OAuth, no tokens, no Web API. A search URI and, for
- *  Spotify, the same media key chunk E already sends. That is the whole feature.
+ *  the feature note repeats it — no OAuth, no tokens, no Web API. A search URI, and that is
+ *  the whole feature.
+ *
+ *  **Which means it shows results; it does not start them playing, and it must not pretend
+ *  to.** The feature note ends "play daft punk opens Spotify on those results and music
+ *  starts", with a `PLAY_PAUSE` after a 900ms wait to do the second half. That was built, and
+ *  it was wrong in the way that matters: a media key is not addressed to anything. Windows
+ *  hands it to whoever owns the current media session, so it resumes — or, if the user was
+ *  already listening to something, PAUSES — the track that was already there, and never the
+ *  artist that was just asked for. Reported from real use, and reproduced: after
+ *  `spotify:search:daft punk` the client shows the results with nothing playing, and neither
+ *  the media key nor Enter on the focused results page starts the top result.
+ *
+ *  Starting a NAMED track needs a playable id (`spotify:track:…`), and turning a name into an
+ *  id is the Spotify Web API — which §1 rules out permanently, and which is Premium-only for
+ *  playback anyway. So the honest scope is: Ezzy takes you to the results, you press play. The
+ *  confirmation says exactly that.
  *
  *  **Order matters twice**, and only one of the two is in the feature note:
  *
@@ -14,9 +29,7 @@
  *     point that satisfies both — see the call site there. */
 
 import { indexedApps } from '../app-index'
-import { getConfig } from '../config'
 import { openProtocolUri } from '../launcher'
-import { playPause } from '../media-keys'
 import { bestMatch } from '../search'
 import { log } from '../verbose'
 import { listWindows } from '../window-tracker'
@@ -54,13 +67,14 @@ const SPOTIFY =
  *  than matching the optional suffix, so the guard has to name them. */
 const NOTHING_TO_PLAY = /^on\s+(?:spotify|youtube)$/
 
-/** How long Spotify gets to come up and render results before the play key is sent. A guess,
- *  which is why it is `spotifyPlayDelayMs` in config.json rather than a number in this file:
- *  a cold start needs longer than an app that is already running, and nobody can tell from
- *  here which one this is. */
-function playDelay(): number {
-  return getConfig().spotifyPlayDelayMs
-}
+/** What the last `spotify-play` run actually did, so the confirmation can say the true one.
+ *
+ *  A module-scoped value read by `describe` is not a thing to do lightly, but the registry
+ *  calls `describe` immediately after the same command's `run` resolves, on the same turn and
+ *  one command at a time — so it cannot be read out of order. The alternative is one sentence
+ *  covering two outcomes, and the outcomes are genuinely different: one opened an app, the
+ *  other put a list of search results on screen. */
+let lastRun: 'opened' | 'searched' = 'searched'
 
 export function registerMediaSearchCommands(resolveTarget: ResolveTarget): void {
   // YouTube first. "play rust tutorial on youtube" matches both patterns, and the one that
@@ -90,10 +104,13 @@ export function registerMediaSearchCommands(resolveTarget: ResolveTarget): void 
   register({
     id: 'spotify-play',
     match: SPOTIFY,
-    // One sentence for both outcomes, and it is true of both: the app came up either way. A
-    // message that distinguished them would have to be decided in `run` and read back here,
-    // and "Playing Spotify" is not worth a piece of state between the two.
-    describe: (groups) => `Playing ${spoken(groups[1].trim())}`,
+    // "Playing X" was a lie in the case that matters. Ezzy can put Spotify on the search
+    // results for a name; it cannot start that artist playing (see `playOnSpotify`), and a
+    // confirmation that claims otherwise is worse than the limitation it hides.
+    describe: (groups) =>
+      lastRun === 'opened'
+        ? `Opening ${spoken(groups[1].trim())}`
+        : `Searching Spotify for ${spoken(groups[1].trim())}`,
     run: async (groups, ctx) => {
       const q = groups[1].trim()
       // §4's note asks for an explicit empty guard rather than trusting `(.+?)`.
@@ -111,10 +128,12 @@ export function registerMediaSearchCommands(resolveTarget: ResolveTarget): void 
       // ladder picks that, the same way it does for "open X".
       if (groups[2] === undefined && bestMatch(q, listWindows(), indexedApps(), true)) {
         log(`media-search: "${q}" names something on this machine, opening it instead`)
+        lastRun = 'opened'
         await resolveTarget(q, ctx, true)
         return
       }
 
+      lastRun = 'searched'
       await playOnSpotify(q, ctx)
     }
   })
@@ -133,15 +152,6 @@ async function playOnSpotify(query: string, ctx: CommandContext): Promise<void> 
     await openProtocolUri('spotify', `spotify:search:${encoded}`, `Spotify search for ${query}`)
   ) {
     hidePanel()
-    // Scheduled, not awaited. §7 is explicit that nothing may sit between the user finishing
-    // their sentence and the thing happening — and `runCommand` does not resolve until `run`
-    // does, so awaiting this would hold the spoken confirmation and the pill for the better
-    // part of a second, and spend most of the 1200ms voice budget on a timer.
-    const delay = playDelay()
-    setTimeout(() => {
-      log(`media-search: play key ${delay}ms after opening Spotify`)
-      playPause()
-    }, delay)
     return
   }
 

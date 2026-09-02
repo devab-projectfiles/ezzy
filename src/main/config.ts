@@ -49,10 +49,6 @@ function save(): void {
   }
 }
 
-/** No more than ten seconds. Past that the user has walked away from whatever they asked
- *  for, and a play key arriving then is a surprise rather than a confirmation. */
-const MAX_PLAY_DELAY_MS = 10_000
-
 /** The config file is hand-editable, so every field is checked rather than trusted. */
 function normalise(raw: Partial<EzzyConfig>): EzzyConfig {
   const dotPositions: Record<string, DotPosition> = {}
@@ -73,16 +69,7 @@ function normalise(raw: Partial<EzzyConfig>): EzzyConfig {
     speech: typeof raw.speech === 'boolean' ? raw.speech : DEFAULT_CONFIG.speech,
     voice: typeof raw.voice === 'boolean' ? raw.voice : DEFAULT_CONFIG.voice,
     voicePanel: typeof raw.voicePanel === 'boolean' ? raw.voicePanel : DEFAULT_CONFIG.voicePanel,
-    // Clamped, not just type-checked: this one is a duration a hand-editor is invited to
-    // change, and a negative or absurd value would either fire the play key before Spotify
-    // exists or leave a timer running for an hour.
-    spotifyPlayDelayMs: clampDelay(raw.spotifyPlayDelayMs),
     dotPositions,
     lastDisplayId: typeof raw.lastDisplayId === 'string' ? raw.lastDisplayId : null
   }
-}
-
-function clampDelay(raw: unknown): number {
-  if (typeof raw !== 'number' || !Number.isFinite(raw)) return DEFAULT_CONFIG.spotifyPlayDelayMs
-  return Math.min(Math.max(Math.round(raw), 0), MAX_PLAY_DELAY_MS)
 }
