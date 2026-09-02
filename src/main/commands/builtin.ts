@@ -24,6 +24,7 @@ import { listWindows } from '../window-tracker'
 import { closeWindow } from '../win32'
 import { hidePanel } from '../windows'
 import { log } from '../verbose'
+import { registerMediaSearchCommands } from './media-search'
 import { CommandContext, register } from './registry'
 
 /** "switch to chrome", "go back to code", "switch over to the terminal", "take me to slack".
@@ -157,6 +158,17 @@ export function registerBuiltinCommands(): void {
       hidePanel()
     }
   })
+
+  // FEATURE-media-search.md's two commands go HERE, and the position is the whole of their
+  // integration. After the media keys, so "play", "play the music" and "play pause" still
+  // reach `play-pause` rather than searching Spotify for them. Before every pattern below,
+  // because "play daft punk" would otherwise be read by `open` as an app called Daft Punk —
+  // and if it somehow got past that, by `bare-target` as one.
+  //
+  // `goTo` is handed over rather than imported by that file, which keeps the two out of an
+  // import cycle: "play spotify" still has to launch Spotify, and this is the ladder that
+  // knows how (see the note on OPEN above).
+  registerMediaSearchCommands(goTo)
 
   register({
     id: 'switch-to',

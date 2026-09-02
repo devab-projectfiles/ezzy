@@ -82,6 +82,143 @@ export async function openMicrophoneSettings(): Promise<boolean> {
   return handOff('ms-settings:privacy-microphone', 'microphone settings')
 }
 
+/** Open a URI through the handler its scheme is registered to — `spotify:search:…`, or a
+ *  search URL that has to reach the default browser intact (FEATURE-media-search.md).
+ *
+ *  **Explorer cannot deliver either of those, and both were measured.**
+ *
+ *  - A custom scheme: handed `spotify:search:…` Explorer exits 1 and nothing happens, checked
+ *    against a running Spotify whose search never changed. `ms-settings:display` through the
+ *    same call opens Settings, so this is the scheme, not the mechanism.
+ *  - **A URL with a query string.** `https://example.com/` opens a tab;
+ *    `https://example.com/?q=x` opens nothing at all. Explorer takes its argument as a shell
+ *    path, and `?` is not legal in one. Every search URL in this app is a query string, so
+ *    `handOff` is simply not available to them — note that `openDirect`'s URL rung has the
+ *    same limitation, which is out of scope here but is not a difference in intent.
+ *
+ *  ShellExecute does deliver it, which is what `shell.openExternal` would use — and that is
+ *  the one thing this file exists to avoid, because ShellExecute hands the child OUR
+ *  environment. So we do what Windows would have done, ourselves: read the handler the scheme
+ *  is registered to and run it, with the dev variables stripped out. Verified: Spotify
+ *  navigated to a two-word search with its query intact.
+ *
+ *  Returns false when nothing is registered for the scheme, which is also the answer to "is
+ *  that app installed" — the caller falls back to the web on the same signal. */
+export async function openProtocolUri(
+  scheme: string,
+  uri: string,
+  label: string
+): Promise<boolean> {
+  const command = await registeredHandler(scheme)
+  if (command === null) {
+    log(`nothing is registered for ${scheme}:`)
+    return false
+  }
+  const [exe, ...args] = tokenise(command)
+  if (exe === undefined) return false
+  return new Promise((resolve) => {
+    const child = execFile(
+      exe,
+      // Every handler spells its argument differently — Spotify wants `--protocol-uri="%1"`,
+      // others just `"%1"`. Substituting into the registered template rather than hardcoding
+      // one app's flag is what keeps this working across an update that changes it.
+      args.map((arg) => arg.replace('%1', uri)),
+      { windowsHide: true, env: shellEnvironment() }
+    )
+    child.once('error', (err) => {
+      console.error(`[ezzy] could not open ${label}:`, err)
+      resolve(false)
+    })
+    child.once('spawn', () => {
+      log(`opened ${label} through the ${scheme}: handler`)
+      resolve(true)
+    })
+  })
+}
+
+/** The command line a scheme opens with, resolved the way Windows resolves it, or null if
+ *  nothing is registered.
+ *
+ *  **UserChoice first, and that is not a detail.** `HKCR\https` is the machine-wide fallback — on
+ *  this machine it names Edge — while the browser the user actually picked lives in their own
+ *  UserChoice key as a ProgId (`ChromeHTML`). Going straight to HKCR launched a browser the
+ *  user does not use, which then opened no window at all. A launcher that ignores your default
+ *  browser is worse than one that cannot open the link.
+ *
+ *  A custom scheme like `spotify:` normally has no UserChoice entry and falls through to the
+ *  scheme's own key, which is where its installer put it. */
+async function registeredHandler(scheme: string): Promise<string | null> {
+  const progId = await registryValue(
+    `HKCU\\Software\\Microsoft\\Windows\\Shell\\Associations\\UrlAssociations\\${scheme}\\UserChoice`,
+    'ProgId'
+  )
+  const fromChoice =
+    progId === null ? null : await registryValue(`HKCR\\${progId}\\shell\\open\\command`, null)
+  return fromChoice ?? registryValue(`HKCR\\${scheme}\\shell\\open\\command`, null)
+}
+
+/** One registry read. `null` for the name asks for the key's default value. */
+function registryValue(key: string, name: string | null): Promise<string | null> {
+  return new Promise((resolve) => {
+    execFile(
+      'reg.exe',
+      ['query', key, ...(name === null ? ['/ve'] : ['/v', name])],
+      // Bounded: a wedged `reg` must not hold a voice command open. The answer costs ~20ms.
+      { windowsHide: true, timeout: 2_000 },
+      (error, stdout) => {
+        if (error) {
+          resolve(null)
+          return
+        }
+        const line = stdout.split(/\r?\n/).find((text) => text.includes('REG_SZ'))
+        const value = line?.slice(line.indexOf('REG_SZ') + 'REG_SZ'.length).trim()
+        resolve(value !== undefined && value !== '' ? value : null)
+      }
+    )
+  })
+}
+
+/** Our environment with the variables electron-vite and Electron add to it removed.
+ *
+ *  This is the same bug the note on `handOff` is about, met from the other side: Explorer gets
+ *  us a clean environment for free, and spawning a handler ourselves does not. `NODE_ENV` and
+ *  `ELECTRON_RENDERER_URL` are what broke another Electron app when it inherited them, and
+ *  `ELECTRON_RUN_AS_NODE` makes an Electron child boot as bare Node with no window at all. */
+function shellEnvironment(): NodeJS.ProcessEnv {
+  const env = { ...process.env }
+  delete env['NODE_ENV']
+  delete env['ELECTRON_RENDERER_URL']
+  delete env['ELECTRON_RUN_AS_NODE']
+  return env
+}
+
+/** A registered command line split into argv, respecting double quotes. `"C:\u2026\Spotify.exe"
+ *  --protocol-uri="%1"` becomes two elements, the second still carrying its `%1` — the quotes
+ *  are the registry's own escaping and `execFile` does its own, so they come off here. */
+function tokenise(command: string): string[] {
+  const tokens: string[] = []
+  let current = ''
+  let quoted = false
+  let started = false
+  for (const character of command) {
+    if (character === '"') {
+      quoted = !quoted
+      started = true
+      continue
+    }
+    if (!quoted && /\s/.test(character)) {
+      if (started) tokens.push(current)
+      current = ''
+      started = false
+      continue
+    }
+    current += character
+    started = true
+  }
+  if (started) tokens.push(current)
+  return tokens
+}
+
 // ------------------------------------------------------------- paths and URLs
 
 /** What `resolveDirect` worked out, kept so the renderer can ask to open "the direct row"

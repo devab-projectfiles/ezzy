@@ -31,6 +31,14 @@ export interface EzzyConfig {
    *  A blocked microphone opens the panel either way. §5 is explicit that it has to lead to
    *  the setting rather than to a dead button, and that button lives on the search bar. */
   voicePanel: boolean
+  /** How long Spotify gets to come up and draw its search results before "play X" sends the
+   *  play key (FEATURE-media-search.md).
+   *
+   *  A guess, and configurable because it is one: an already-running Spotify is ready in a
+   *  fraction of this and a cold start can need more. Ezzy is never told which — the URI is
+   *  handed to the shell and the shell says nothing back — so the number lives here rather
+   *  than in the command. */
+  spotifyPlayDelayMs: number
   /** Dot position keyed by display id, so each monitor remembers its own spot. */
   dotPositions: Record<string, DotPosition>
   /** Display the dot was last on, used to pick a position at startup. */
@@ -43,6 +51,7 @@ export const DEFAULT_CONFIG: EzzyConfig = {
   speech: true,
   voice: true,
   voicePanel: false,
+  spotifyPlayDelayMs: 900,
   dotPositions: {},
   lastDisplayId: null
 }
