@@ -82,6 +82,20 @@ export async function openMicrophoneSettings(): Promise<boolean> {
   return handOff('ms-settings:privacy-microphone', 'microphone settings')
 }
 
+/** Open a shell target the main process built itself — an `ms-settings:` page, the
+ *  `ms-availablenetworks:` flyout (FEATURE-system-commands.md).
+ *
+ *  Through Explorer, like `openMicrophoneSettings` above and for the same reason: these are
+ *  shell namespace targets, which is precisely what Explorer resolves, and it keeps the
+ *  Settings app off our environment block.
+ *
+ *  **Not for search URLs.** Explorer silently drops any URI carrying a query string — see
+ *  `openProtocolUri`, which exists for those. Everything passed here is a fixed URI from a
+ *  table in this codebase, with nothing of the user's in it. */
+export async function openShellTarget(uri: string, label: string): Promise<boolean> {
+  return handOff(uri, label)
+}
+
 /** Open a URI through the handler its scheme is registered to — `spotify:search:…`, or a
  *  search URL that has to reach the default browser intact (FEATURE-media-search.md).
  *

@@ -294,6 +294,7 @@ export const IPC = {
   voiceFailed: 'voice:failed',
   openMicSettings: 'voice:mic-settings',
   toggleVoice: 'voice:toggle',
+  openTouchpadSettings: 'settings:touchpad',
   speak: 'speech:speak',
   openSettings: 'settings:open',
   getSettings: 'settings:get',
@@ -375,6 +376,9 @@ export interface EzzyApi {
   /** Opens Windows' microphone privacy page — §5: a blocked mic must lead somewhere, not to
    *  a dead button. */
   openMicSettings(): void
+  /** Windows' touchpad page, for the gesture mapping §1 asks users to set up themselves —
+   *  Ezzy reads no gestures of its own. */
+  openTouchpadSettings(): void
   /** The mic button on the search bar. Starts listening if it is not, sends what it has if it
    *  is — a click cannot be held down the way the hotkey is, so the same button ends it. */
   toggleVoice(): void

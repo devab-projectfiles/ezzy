@@ -25,6 +25,7 @@ import { closeWindow } from '../win32'
 import { hidePanel } from '../windows'
 import { log } from '../verbose'
 import { registerMediaSearchCommands } from './media-search'
+import { registerSystemCommands } from './system'
 import { CommandContext, register } from './registry'
 
 /** "switch to chrome", "go back to code", "switch over to the terminal", "take me to slack".
@@ -81,6 +82,69 @@ const PREVIOUS_TRACK =
  *  launch anything. */
 const BARE = /^([a-z0-9][a-z0-9 .+&'-]{1,40})$/
 const BARE_MAX_WORDS = 4
+
+/** What whisper writes when it is given a room rather than a sentence.
+ *
+ *  §5 warns that it invents confident text out of silence, and the empty-transcript check
+ *  catches the obvious half of that. This is the other half, found in use: a click of the mic
+ *  in a quiet room came back as "The", `bare-target` took it as a name, fuzzy matching found
+ *  something close enough, and Ezzy opened an app nobody asked for. Twice.
+ *
+ *  Only bare targets are filtered, and only these words. A verb vouches for an utterance being
+ *  a command — "open the" is a user, "the" on its own is a microphone. Nothing on a Start Menu
+ *  is called any of these, so refusing them costs nothing and stops the one failure that acts
+ *  on its own rather than reporting itself. */
+const NOT_A_TARGET = new Set([
+  'the',
+  'a',
+  'an',
+  'and',
+  'or',
+  'but',
+  'of',
+  'to',
+  'in',
+  'on',
+  'at',
+  'it',
+  'is',
+  'was',
+  'i',
+  'you',
+  'he',
+  'she',
+  'we',
+  'they',
+  'me',
+  'my',
+  'your',
+  'that',
+  'this',
+  'these',
+  'there',
+  'then',
+  'yes',
+  'no',
+  'yeah',
+  'nope',
+  'oh',
+  'ah',
+  'hm',
+  'hmm',
+  'huh',
+  'mm',
+  'bye',
+  'hi',
+  'hello',
+  'thanks',
+  'thank you',
+  'what',
+  'why',
+  'how',
+  'when',
+  'where',
+  'who'
+])
 
 export function registerBuiltinCommands(): void {
   // The three that cannot be undone, first in the list. Each matches a whole utterance and
@@ -170,6 +234,12 @@ export function registerBuiltinCommands(): void {
   // knows how (see the note on OPEN above).
   registerMediaSearchCommands(goTo)
 
+  // FEATURE-system-commands.md, and it sits here for the same reason: `open bluetooth` has to
+  // be considered before `open` reads "bluetooth" as an app to hunt for, and `connect to home`
+  // before `bare-target` reads the whole phrase as one. Neither can shadow anything, because
+  // both patterns name what they accept rather than taking `(.+)`.
+  registerSystemCommands()
+
   register({
     id: 'switch-to',
     match: SWITCH,
@@ -250,6 +320,13 @@ export function registerBuiltinCommands(): void {
     describe: (groups) => `Opening ${spoken(groups[1])}`,
     run: async (groups, ctx) => {
       const target = groups[1]
+      if (NOT_A_TARGET.has(target)) {
+        // Not "I didn't understand", which suggests the user said something Ezzy cannot do.
+        // They almost certainly said nothing at all.
+        log(`ignoring "${target}": whisper heard the room, not a command`)
+        ctx.failed('I didn’t catch that')
+        return
+      }
       if (target.split(/\s+/).length > BARE_MAX_WORDS) {
         ctx.failed(`I didn't understand "${target}"`)
         return

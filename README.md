@@ -82,6 +82,9 @@ Hold the hotkey, speak, let go:
 | "play rust tutorial on youtube" | Plays the first result, in your default browser |
 | "search youtube for rust tutorial" | Opens the results and plays nothing — the verb decides |
 | "play one more time by daft punk on youtube" | Naming the artist with **by** pins the exact video |
+| "open bluetooth" / "open wifi" / "open display" | Opens that Windows settings page |
+| "open networks" | The WiFi flyout, to pick a network by hand |
+| "connect to home" | Joins a WiFi network Windows has already saved |
 | "sleep the pc" / "hibernate" / "shut down" | Exactly that, immediately and with no confirmation |
 
 A tap of the same key still opens the panel and never touches speech recognition.
@@ -128,7 +131,11 @@ off: no microphone, no download, and the speech engine is shut down.
 Windows can map a touchpad gesture to a shortcut, which is the nicest way to open Ezzy:
 
 **Settings → Bluetooth & devices → Touchpad → Three-finger gestures → Tap → Custom shortcut**,
-then record **Alt+Space**.
+then record **Alt+Space**. Ezzy's own Settings window has a **Set up** button that opens that
+page for you.
+
+Ezzy reads no gestures itself and never will (`PLAN.md` §1) — Windows turns the tap into the
+shortcut, and Ezzy only ever sees the shortcut.
 
 ## Settings
 
@@ -159,6 +166,11 @@ between a fix and a guessing game.
   Microphone. Ezzy's own error links straight there.
 - **A game covers the dot.** Fullscreen-exclusive apps cover everything. That is Windows, not
   Ezzy.
+- **"connect to X" opens the network list instead of connecting.** It only joins networks
+  Windows has already saved, and only when the name matches one of them unambiguously — six
+  networks starting "AAU-" are not a match for "AAU". It never handles passwords, adds
+  profiles, or turns the radio on, and it never guesses: joining a neighbour's saved network
+  by accident is a worse outcome than showing you the list.
 
 ## Privacy
 

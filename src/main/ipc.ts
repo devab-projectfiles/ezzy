@@ -16,7 +16,7 @@ import { activeHotkey } from './hotkey'
 import { focusWindow } from './focus'
 import { dropIfGone } from './window-tracker'
 import { panelData, setQuery } from './panel-data'
-import { launchApp, openDirect, openMicrophoneSettings } from './launcher'
+import { launchApp, openDirect, openMicrophoneSettings, openShellTarget } from './launcher'
 import { receiveAudio, reportCaptureFailure, toggleListening, voiceState } from './voice'
 import { logRendererError, openLogFile } from './logger'
 import {
@@ -92,6 +92,12 @@ export function registerIpc(): void {
   ipcMain.on(IPC.toggleVoice, () => toggleListening())
 
   // ---------------------------------------------------------------- chunk F
+  // §1: Ezzy reads no gestures. Windows maps a three-finger tap to a shortcut, and this is
+  // the page where that is done — which is the whole of Ezzy's gesture support.
+  ipcMain.on(IPC.openTouchpadSettings, () => {
+    void openShellTarget('ms-settings:devices-touchpad', 'touchpad settings')
+  })
+
   ipcMain.on(IPC.openSettings, () => {
     // Dismiss first, like a launch: the settings window takes the foreground, and leaving a
     // panel hovering over it would be a launcher sitting on top of its own settings. The

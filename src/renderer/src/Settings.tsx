@@ -47,6 +47,21 @@ function Settings(): React.JSX.Element {
           error={hotkeyError}
           onChange={(hotkey) => void change({ hotkey })}
         />
+        <div className="settings__row">
+          <div className="settings__label">
+            <span className="settings__name">Touchpad gesture</span>
+            <span className="settings__detail">
+              Map a three-finger tap to {config.hotkey} to open Ezzy with a gesture.
+            </span>
+          </div>
+          <button
+            type="button"
+            className="settings__button"
+            onClick={window.ezzy.openTouchpadSettings}
+          >
+            Set up
+          </button>
+        </div>
       </section>
 
       <section className="settings__section">
