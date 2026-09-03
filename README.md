@@ -81,6 +81,7 @@ Hold the hotkey, speak, let go:
 | "listen to miles davis on spotify" | The same again — naming Spotify always means a search |
 | "play rust tutorial on youtube" | Plays the first result, in your default browser |
 | "search youtube for rust tutorial" | Opens the results and plays nothing — the verb decides |
+| "play one more time by daft punk on youtube" | Naming the artist with **by** pins the exact video |
 | "sleep the pc" / "hibernate" / "shut down" | Exactly that, immediately and with no confirmation |
 
 A tap of the same key still opens the panel and never touches speech recognition.
