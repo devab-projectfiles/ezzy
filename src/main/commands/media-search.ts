@@ -78,6 +78,15 @@ const SPOTIFY_SEARCH =
 const SPOTIFY =
   /^play(?!(?:\s+(?:the|this|that))?(?:\s+(?:music|song|track|audio|video|media|playback|it))?$|\s*[/-]?\s*pause$)\s+(.+)$/
 
+/** Which verbs mean "start it" as opposed to "show me".
+ *
+ *  Both belong on YouTube and the user is the one who says which they meant: "play the first
+ *  one" and "let me look at the list" are different requests, and answering the second with
+ *  the first is the same class of surprise as a search that hijacks the music. Tested against
+ *  `ctx.transcript` — the normalised text this command matched — rather than captured in the
+ *  pattern, which would renumber the groups two commands share. */
+const PLAY_VERB = /^(?:play|watch|listen\s+to)\b/
+
 /** "play on spotify" with nothing in between. SPOTIFY_SEARCH refuses it — it has no query to
  *  capture — so it reaches the catch-all, where `(.+)` happily takes the leftovers. */
 const NOTHING_TO_PLAY = /^on\s+(?:spotify|you ?tube)$/
@@ -113,12 +122,15 @@ export function registerMediaSearchCommands(resolveTarget: ResolveTarget): void 
         return
       }
 
-      // The first result if it can be had quickly, the results page if not — `topVideoId`
-      // answers null for every failure it can meet, so this line is the only place the two
-      // outcomes differ and there is no error path to handle. Unlike Spotify, YouTube plays
-      // straight from a URL once the video is named, which is the whole reason this is
-      // possible here and not there.
-      const id = await topVideoId(q)
+      // Only "play"/"watch"/"listen to" go looking for a video. "search youtube for X" is a
+      // request to SEE the results, and it also skips the second of latency that finding the
+      // first video costs — so the phrasing that wants a list gets it faster, too.
+      //
+      // When we do look: `topVideoId` answers null for every failure it can meet, so this is
+      // the only place the two outcomes differ and there is no error path to handle. Unlike
+      // Spotify, YouTube plays straight from a URL once the video is named, which is the whole
+      // reason this is possible here and not there.
+      const id = PLAY_VERB.test(ctx.transcript) ? await topVideoId(q) : null
       lastYouTubeRun = id === null ? 'searched' : 'played'
       const url =
         id === null

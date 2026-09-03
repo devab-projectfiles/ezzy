@@ -80,14 +80,19 @@ Hold the hotkey, speak, let go:
 | "search spotify for daft punk" | The same, said the other way round |
 | "listen to miles davis on spotify" | The same again — naming Spotify always means a search |
 | "play rust tutorial on youtube" | Plays the first result, in your default browser |
-| "search youtube for rust tutorial" | The same, said the other way round |
+| "search youtube for rust tutorial" | Opens the results and plays nothing — the verb decides |
 | "sleep the pc" / "hibernate" / "shut down" | Exactly that, immediately and with no confirmation |
 
 A tap of the same key still opens the panel and never touches speech recognition.
 
-**YouTube plays; Spotify shows you the results.** The difference is not a preference, it is
-what each service makes possible. Ezzy reads the first video's id out of YouTube's own results
-page and opens it directly, which starts it playing. Spotify's search page carries no track
+**The verb decides, and the service decides what is possible.**
+
+Say **play** (or "watch", "listen to") and Ezzy reads the first video's id out of YouTube's own
+results page and opens that video, which starts it playing. Say **search** (or "find", "look
+up") and it opens the results list and plays nothing — which is also the faster of the two,
+since finding the first video is what costs the extra second.
+
+Spotify only ever shows results, whatever verb you use, and that is not a preference either. Spotify's search page carries no track
 ids at all — they arrive later over an authenticated call — so there is nothing to open, and
 "play daft punk" puts Spotify on the results for you to pick from.
 
@@ -160,8 +165,9 @@ Ezzy makes exactly three kinds of network request, and nothing else ever leaves 
 
 1. The update check against GitHub Releases.
 2. The one-time speech model download. Turn voice off and this never happens.
-3. **A YouTube search, only when you ask for one.** "play X on youtube" fetches that search's
-   results page to find the first video, so it can open it directly. It is the same page your
+3. **A YouTube search, only when you ask to play one.** "play X on youtube" fetches that
+   search's results page to find the first video, so it can open it directly. "search youtube
+   for X" makes no request at all — it just opens the results in your browser. It is the same page your
    browser would load, with no key and no account; the query goes to YouTube and nowhere else,
    and nothing about it is stored. No other command makes a request — Spotify, app launching
    and window switching are entirely local.
