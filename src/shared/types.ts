@@ -209,6 +209,12 @@ export type VoiceState =
 export type VoiceCapture =
   /** Open the microphone and start buffering. */
   | 'arm'
+  /** Open it and keep recording until the speaker stops, then send without being asked.
+   *
+   *  The hands-free half of the mic button: a click has no release to end it, so the recorder
+   *  ends it by listening for the end of the sentence. Only the button uses this — a held
+   *  hotkey already knows exactly when the user finished. */
+  | 'listen'
   /** Stop and send what was recorded. */
   | 'stop'
   /** Stop, discard it, and let go of the device — this press turned out to be a tap. */

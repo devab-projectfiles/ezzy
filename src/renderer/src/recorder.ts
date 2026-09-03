@@ -53,6 +53,35 @@ const KEEP_WARM_MS = 20_000
 const PREROLL_MS = 500
 const PREROLL_BLOCKS = Math.ceil((PREROLL_MS / 1000) * (SAMPLE_RATE / BUFFER_FRAMES))
 
+/** Hands-free capture, for the mic button (§8 chunk D gave voice a key to hold; a click has
+ *  no equivalent). The recorder decides when the sentence ended, from the signal it is already
+ *  copying block by block — no analyser node, no library, no model.
+ *
+ *  The threshold is measured rather than assumed, because "loud" depends on the room, the
+ *  microphone and Chromium's own gain control. The first few blocks are taken as the noise
+ *  floor and speech has to clear a multiple of it — a fixed number would either miss a quiet
+ *  voice on a laptop mic or hear a fan as talking. */
+const FLOOR_BLOCKS = 5
+const FLOOR_MULTIPLE = 3.5
+/** Below this, nothing counts as speech however quiet the room is. A near-silent buffer scaled
+ *  up is exactly what whisper invents sentences out of — see `SILENCE` in `gainFor`. */
+const MIN_SPEECH_RMS = 0.012
+
+/** How much quiet ends a sentence. Long enough to survive the pause between words and before
+ *  a name — "switch to … Antigravity" — and short enough that the command does not sit there
+ *  after the user has plainly finished. */
+const TRAILING_SILENCE_MS = 900
+
+/** If nothing that sounds like speech ever arrives, give up rather than hold the microphone.
+ *  The main process reports the empty recording as "I didn't catch that". */
+const NO_SPEECH_MS = 4_000
+
+/** Nobody dictates a launcher command for this long, and a recording that never ends is a
+ *  microphone that never closes. */
+const MAX_UTTERANCE_MS = 15_000
+
+const BLOCK_MS = (BUFFER_FRAMES / SAMPLE_RATE) * 1000
+
 let context: AudioContext | null = null
 let source: MediaStreamAudioSourceNode | null = null
 let processor: ScriptProcessorNode | null = null
@@ -64,17 +93,36 @@ let idleTimer: ReturnType<typeof setTimeout> | null = null
 /** Whether the key is still held. Distinct from whether the graph is running: the release can
  *  land while `getUserMedia` is still being granted, and then nothing should start at all. */
 let wanted = false
+/** Set when the session was started by the mic button, which has no release: the recorder ends
+ *  it itself. Null for a held hotkey, which ends when the key comes up. */
+let autoStop: AutoStop | null = null
+
+interface AutoStop {
+  startedAt: number
+  /** RMS of the first FLOOR_BLOCKS blocks, averaged — the room with nobody talking. */
+  floor: number[]
+  /** What a block has to beat to count as speech. Fixed once the floor is known. */
+  threshold: number
+  /** Whether anything has yet cleared it. Until it has, silence means "has not started". */
+  heard: boolean
+  /** Consecutive quiet blocks since the last loud one. */
+  quiet: number
+}
 
 export function listenForCapture(): void {
   window.ezzy.onVoiceCapture((capture) => {
     if (capture === 'arm') void start()
+    else if (capture === 'listen') void start(true)
     else void stop(capture === 'stop')
   })
 }
 
-async function start(): Promise<void> {
+async function start(handsFree = false): Promise<void> {
   if (wanted) return
   wanted = true
+  autoStop = handsFree
+    ? { startedAt: performance.now(), floor: [], threshold: MIN_SPEECH_RMS, heard: false, quiet: 0 }
+    : null
   chunks = []
   if (idleTimer) clearTimeout(idleTimer)
   idleTimer = null
@@ -133,6 +181,7 @@ async function start(): Promise<void> {
     const block = new Float32Array(event.inputBuffer.getChannelData(0))
     if (wanted) {
       chunks.push(block)
+      if (autoStop && endOfUtterance(block, autoStop)) void stop(true)
       return
     }
     // Between commands, while the device is still open. Kept only long enough to cover the
@@ -158,6 +207,7 @@ async function start(): Promise<void> {
 async function stop(send: boolean): Promise<void> {
   if (!wanted) return
   wanted = false
+  autoStop = null
   const recorded = chunks
   chunks = []
   // A tap. Nothing recorded during it is looked at, encoded, or sent, and the device goes
@@ -213,6 +263,60 @@ function release(): void {
   context = null
   for (const track of stream?.getTracks() ?? []) track.stop()
   stream = null
+}
+
+/** Has the speaker finished? Called for every 64ms block of a hands-free recording.
+ *
+ *  Three ways to be done, and the order matters: a sentence that ended, a sentence that never
+ *  started, and one that will not stop. Only the first is the good case; the other two exist
+ *  so the microphone always closes on its own. */
+function endOfUtterance(block: Float32Array, session: AutoStop): boolean {
+  const elapsed = performance.now() - session.startedAt
+  if (elapsed > MAX_UTTERANCE_MS) {
+    console.log(`hands-free: ${MAX_UTTERANCE_MS}ms cap reached, sending`)
+    return true
+  }
+
+  const level = rms(block)
+
+  // The room, before anyone speaks. Taken from the first blocks of THIS recording rather than
+  // remembered, because the noise floor of a room changes and a stale one is worse than none.
+  if (session.floor.length < FLOOR_BLOCKS) {
+    session.floor.push(level)
+    if (session.floor.length === FLOOR_BLOCKS) {
+      const mean = session.floor.reduce((sum, value) => sum + value, 0) / session.floor.length
+      session.threshold = Math.max(mean * FLOOR_MULTIPLE, MIN_SPEECH_RMS)
+      console.log(
+        `hands-free: noise floor ${mean.toFixed(4)}, speech above ${session.threshold.toFixed(4)}`
+      )
+    }
+    return false
+  }
+
+  if (level >= session.threshold) {
+    session.heard = true
+    session.quiet = 0
+    return false
+  }
+
+  session.quiet++
+  const quietMs = session.quiet * BLOCK_MS
+  if (!session.heard) {
+    // Nothing has been said at all yet. This is a different clock from the one below: waiting
+    // for someone to start is not the same as deciding they have stopped.
+    if (elapsed < NO_SPEECH_MS) return false
+    console.log('hands-free: nothing was said, giving the microphone back')
+    return true
+  }
+  if (quietMs < TRAILING_SILENCE_MS) return false
+  console.log(`hands-free: ${quietMs.toFixed(0)}ms of quiet after speech, sending`)
+  return true
+}
+
+function rms(block: Float32Array): number {
+  let sum = 0
+  for (const sample of block) sum += sample * sample
+  return Math.sqrt(sum / block.length)
 }
 
 /** Quiet recordings transcribe badly, and a laptop's built-in microphone two feet from the

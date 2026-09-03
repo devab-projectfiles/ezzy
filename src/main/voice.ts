@@ -42,8 +42,9 @@ let capturing = false
  *  A held key ends itself when it comes up; a click has to be ended by something, and the two
  *  things that can end it — a timeout and the panel closing — only apply to this case. */
 let fromButton = false
-/** Runs only while a button-started session is open. */
-let buttonTimer: ReturnType<typeof setTimeout> | null = null
+/** The ceiling on a hands-free recording lives in the recorder now (MAX_UTTERANCE_MS): it is
+ *  the half that can see the microphone, so it is the half that can tell a long sentence from
+ *  a forgotten one. */
 /** Resolves when the renderer hands the recording over, or when it says it cannot. */
 let pendingAudio: ((wav: Buffer | null) => void) | null = null
 /** A microphone failure from a press that never became a hold. Held rather than announced:
@@ -60,6 +61,11 @@ let heard: string | null = null
  *  now, something in it has failed in a way it did not report. */
 const AUDIO_TIMEOUT_MS = 4_000
 
+/** Hands-free, the same wait covers the user thinking, speaking, and the recorder deciding
+ *  they have finished — so it has to outlast the recorder's own ceilings rather than the few
+ *  seconds an already-finished recording needs to arrive. */
+const HANDS_FREE_TIMEOUT_MS = 20_000
+
 /** How long an error stays on screen before the surface goes back to being a search bar.
  *  Long enough to read a short sentence, short enough not to be in the way of a retry. */
 const ERROR_MS = 4_000
@@ -68,11 +74,6 @@ const ERROR_MS = 4_000
  *  window they wanted is already in front of them. This is long enough to catch out of the
  *  corner of an eye and confirm what was heard, and no longer. */
 const DONE_MS = 2_600
-
-/** The same guard the hotkey has, for the gesture that cannot rely on a key coming back up: a
- *  microphone opened by a click and then forgotten would record until the app quits. Sends
- *  what it has rather than discarding it, which is what a released key would have done. */
-const MAX_BUTTON_MS = 30_000
 
 /** A WAV header is 44 bytes and 16kHz mono PCM is 32,000 bytes a second, so this is a quarter
  *  of a second of audio. Below it the hold was a slip, not a command — usually a tap that
@@ -126,23 +127,19 @@ export function toggleListening(): void {
     fail('Voice is off — turn it on in Settings')
     return
   }
+  // Clicked again during a session — only reachable by reopening the panel, since the click
+  // closes it. Treated as "I have finished", the same as letting go of the hotkey.
   if (capturing) {
     void finishListening()
     return
   }
   fromButton = true
-  buttonTimer = setTimeout(() => {
-    log(`voice: mic button held open for ${MAX_BUTTON_MS}ms, sending what there is`)
-    void finishListening()
-  }, MAX_BUTTON_MS)
-  void beginListening('mic-button')
+  void listenHandsFree()
 }
 
-/** Both ways a button session can end come through here, so the timer never outlives it. */
+/** The session is over, however it ended. */
 function endButtonSession(): void {
   fromButton = false
-  if (buttonTimer) clearTimeout(buttonTimer)
-  buttonTimer = null
 }
 
 /** Voice has just been switched off in settings (§8 chunk F).
@@ -281,8 +278,60 @@ async function finishListening(): Promise<void> {
   const releasedAt = performance.now()
   sendCapture('stop')
   setState({ kind: 'thinking' })
+  await transcribeAndRun(await audioFromRenderer(), releasedAt)
+}
 
-  const wav = await audioFromRenderer()
+/** Hands-free: the mic button's session, ended by the recorder rather than by a key coming up.
+ *
+ *  The panel is closed on the way in, which is what was asked for and is also what the hotkey
+ *  does in its default quiet mode — the dot's pill carries listening, thinking and the answer,
+ *  so nothing has to stay on screen for the user to talk to. Nothing is clicked to finish: the
+ *  recorder listens for the end of the sentence and sends, and the command runs from that. */
+async function listenHandsFree(): Promise<void> {
+  if (capturing) {
+    endButtonSession()
+    return
+  }
+  hush()
+  heard = null
+
+  if (!isVoiceInstalled()) {
+    fail(
+      app.isPackaged
+        ? 'Speech files are missing from this install'
+        : 'Voice needs whisper.cpp — run npm run fetch:whisper'
+    )
+    endButtonSession()
+    return
+  }
+  // Out of the way first, so the user is talking to the dot rather than to a window sitting
+  // over what they were reading.
+  hidePanel()
+  if (!hasModel()) {
+    void fetchModel()
+    endButtonSession()
+    return
+  }
+
+  startWhisperServer()
+  armed = true
+  capturing = true
+  setState({ kind: 'listening' })
+  sendCapture('listen')
+
+  const wav = await audioFromRenderer(HANDS_FREE_TIMEOUT_MS)
+  // The recorder decides when the sentence ended, so this is the first moment the main process
+  // knows it has — which is exactly when "listening" becomes "thinking".
+  const finishedAt = performance.now()
+  capturing = false
+  armed = false
+  endButtonSession()
+  if (state.kind === 'listening') setState({ kind: 'thinking' })
+  await transcribeAndRun(wav, finishedAt)
+}
+
+/** Everything both gestures do once there is a recording: transcribe it and run what it says. */
+async function transcribeAndRun(wav: Buffer | null, releasedAt: number): Promise<void> {
   // A capture failure reports itself through `reportCaptureFailure`, which has already put a
   // more specific message on screen than anything that could be said here.
   if (!wav || wav.length < MIN_AUDIO_BYTES) {
@@ -335,13 +384,13 @@ async function finishListening(): Promise<void> {
 }
 
 /** The recording, or null if it never arrived. */
-function audioFromRenderer(): Promise<Buffer | null> {
+function audioFromRenderer(timeoutMs = AUDIO_TIMEOUT_MS): Promise<Buffer | null> {
   return new Promise((resolve) => {
     const timer = setTimeout(() => {
       pendingAudio = null
       console.error('[ezzy] the recorder never sent any audio')
       resolve(null)
-    }, AUDIO_TIMEOUT_MS)
+    }, timeoutMs)
     pendingAudio = (wav) => {
       clearTimeout(timer)
       pendingAudio = null

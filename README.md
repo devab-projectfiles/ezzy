@@ -86,6 +86,10 @@ Hold the hotkey, speak, let go:
 
 A tap of the same key still opens the panel and never touches speech recognition.
 
+**Or click the microphone** at the right of the search bar. The panel gets out of the way and
+Ezzy listens — then notices when you stop talking and runs the command itself, with nothing to
+press at the end. Say nothing and it gives the microphone back after a few seconds.
+
 **The verb decides, and the service decides what is possible.**
 
 Say **play** (or "watch", "listen to") and Ezzy reads the first video's id out of YouTube's own
