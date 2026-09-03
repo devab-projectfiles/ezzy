@@ -79,13 +79,24 @@ Hold the hotkey, speak, let go:
 | "play daft punk" | Opens Spotify on those search results — see the note below |
 | "search spotify for daft punk" | The same, said the other way round |
 | "listen to miles davis on spotify" | The same again — naming Spotify always means a search |
-| "play rust tutorial on youtube" | YouTube results for that, in your default browser |
+| "play rust tutorial on youtube" | Plays the first result, in your default browser |
 | "search youtube for rust tutorial" | The same, said the other way round |
 | "sleep the pc" / "hibernate" / "shut down" | Exactly that, immediately and with no confirmation |
 
 A tap of the same key still opens the panel and never touches speech recognition.
 
-**"play X" finds it; you press play.** Ezzy puts Spotify on the results for what you named
+**YouTube plays; Spotify shows you the results.** The difference is not a preference, it is
+what each service makes possible. Ezzy reads the first video's id out of YouTube's own results
+page and opens it directly, which starts it playing. Spotify's search page carries no track
+ids at all — they arrive later over an authenticated call — so there is nothing to open, and
+"play daft punk" puts Spotify on the results for you to pick from.
+
+If the id cannot be had in a moment — a slow connection, a consent page, a change to YouTube's
+markup — Ezzy opens the results page instead. That is the same thing it always did, so the
+worst case is a search rather than an error. It costs about a second before the browser opens,
+which is the price of knowing what to open.
+
+**Why Spotify cannot do the same.** Ezzy puts Spotify on the results for what you named
 and stops there, and that is a limit rather than an oversight. Starting a *named* track needs
 a playable id (`spotify:track:…`), and turning "daft punk" into an id means the Spotify Web
 API — an explicit non-goal (see `PLAN.md` §1), and Premium-only for playback besides. The
@@ -143,8 +154,17 @@ between a fix and a guessing game.
 
 Everything runs on your machine. Audio never leaves it — speech recognition is whisper.cpp
 running as a local process, not a cloud API. There is no telemetry, no account, and no
-analytics. Ezzy makes exactly two kinds of network request: the update check against GitHub
-Releases, and the one-time speech model download. Turn voice off and the second never happens.
+analytics.
+
+Ezzy makes exactly three kinds of network request, and nothing else ever leaves the machine:
+
+1. The update check against GitHub Releases.
+2. The one-time speech model download. Turn voice off and this never happens.
+3. **A YouTube search, only when you ask for one.** "play X on youtube" fetches that search's
+   results page to find the first video, so it can open it directly. It is the same page your
+   browser would load, with no key and no account; the query goes to YouTube and nowhere else,
+   and nothing about it is stored. No other command makes a request — Spotify, app launching
+   and window switching are entirely local.
 
 ## Development
 

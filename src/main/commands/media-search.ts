@@ -1,6 +1,6 @@
 /** "play X" — Spotify and YouTube search (FEATURE-media-search.md).
  *
- *  Two commands, registered as data, exactly the case PLAN.md §4 says the registry exists
+ *  Three commands, registered as data, exactly the case PLAN.md §4 says the registry exists
  *  for. Nothing here is an integration: §1 lists per-app APIs as a permanent non-goal, and
  *  the feature note repeats it — no OAuth, no tokens, no Web API. A search URI, and that is
  *  the whole feature.
@@ -34,6 +34,7 @@ import { indexedApps } from '../app-index'
 import { openProtocolUri } from '../launcher'
 import { bestMatch } from '../search'
 import { log } from '../verbose'
+import { topVideoId } from '../youtube'
 import { listWindows } from '../window-tracker'
 import { hidePanel } from '../windows'
 import { CommandContext, register } from './registry'
@@ -90,24 +91,43 @@ const NOTHING_TO_PLAY = /^on\s+(?:spotify|you ?tube)$/
  *  other put a list of search results on screen. */
 let lastRun: 'opened' | 'searched' = 'searched'
 
+/** The same, for YouTube: whether the last run started a video or only opened the results.
+ *  Which of the two happens is decided by whether the first result could be established at
+ *  all (see `topVideoId`), so it cannot be known until the run is over. */
+let lastYouTubeRun: 'played' | 'searched' = 'searched'
+
 export function registerMediaSearchCommands(resolveTarget: ResolveTarget): void {
   // YouTube first. "play rust tutorial on youtube" matches both patterns, and the one that
   // names where to look is the one that meant it.
   register({
     id: 'youtube-search',
     match: YOUTUBE,
-    describe: (groups) => `Searching YouTube for ${spoken(query(groups))}`,
+    describe: (groups) =>
+      lastYouTubeRun === 'played'
+        ? `Playing ${spoken(query(groups))} on YouTube`
+        : `Searching YouTube for ${spoken(query(groups))}`,
     run: async (groups, ctx) => {
       const q = query(groups)
       if (q === '') {
         ctx.failed('Search YouTube for what?')
         return
       }
-      const url = `https://www.youtube.com/results?search_query=${encodeURIComponent(q)}`
+
+      // The first result if it can be had quickly, the results page if not — `topVideoId`
+      // answers null for every failure it can meet, so this line is the only place the two
+      // outcomes differ and there is no error path to handle. Unlike Spotify, YouTube plays
+      // straight from a URL once the video is named, which is the whole reason this is
+      // possible here and not there.
+      const id = await topVideoId(q)
+      lastYouTubeRun = id === null ? 'searched' : 'played'
+      const url =
+        id === null
+          ? `https://www.youtube.com/results?search_query=${encodeURIComponent(q)}`
+          : `https://www.youtube.com/watch?v=${id}`
+
       // Through the browser's own registered handler, not Explorer: Explorer drops any URL
-      // carrying a query string, and a search URL is nothing but query string. See
-      // `openProtocolUri`.
-      if (!(await openProtocolUri('https', url, `YouTube search for ${q}`))) {
+      // carrying a query string, and both of these are query strings. See `openProtocolUri`.
+      if (!(await openProtocolUri('https', url, `YouTube for ${q}`))) {
         ctx.failed('I couldn’t open YouTube')
         return
       }
