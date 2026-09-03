@@ -3,7 +3,7 @@ import { getConfig } from './config'
 import { log } from './verbose'
 import { isKeyDown } from './win32'
 
-/** §5: Alt+Space is the Windows system menu and other launchers claim it too. Whoever
+/** Alt+Space is the Windows system menu and other launchers claim it too. Whoever
  *  registers first wins, so a fixed default alone leaves Ezzy silently without a hotkey. */
 const FALLBACKS = ['Alt+Space', 'Ctrl+Alt+Space', 'Alt+Shift+Space', 'Ctrl+Shift+Space']
 
@@ -49,7 +49,7 @@ export interface HoldHandlers {
   onRelease(held: boolean): void
 }
 
-/** Push-to-talk (§8 chunk D). The hotkey is the one key Ezzy already owns, so holding it is
+/** Push-to-talk. The hotkey is the one key Ezzy already owns, so holding it is
  *  what starts listening; a tap still toggles the panel and never touches this path. */
 export function watchHold(handlers: HoldHandlers): void {
   hold = handlers
@@ -65,7 +65,7 @@ export function registerHotkey(onTrigger: () => void): HotkeyResult {
 }
 
 /** Re-register against the config as it stands now — the settings window changing the hotkey
- *  (§8 chunk F). The result says whether the OS actually gave us what was asked for, which is
+ *. The result says whether the OS actually gave us what was asked for, which is
  *  what the window reports back: a hotkey another app already owns has to say so, or the user
  *  is left pressing a key that silently belongs to something else. */
 export function reapplyHotkey(): HotkeyResult {
@@ -191,7 +191,7 @@ function holdKeyOf(accelerator: string): number | null {
   return null
 }
 
-/** §5: on resume the hotkey is often silently unregistered while the process survives. */
+/** On resume the hotkey is often silently unregistered while the process survives. */
 export function watchForResume(onReRegistered: (result: HotkeyResult) => void): void {
   powerMonitor.on('resume', () => {
     log('resumed from sleep, re-registering hotkey')

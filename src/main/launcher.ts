@@ -1,6 +1,6 @@
-/** Starting things (PLAN.md §4, `launcher.ts`; §8 chunk C).
+/** Starting things.
  *
- *  Three ways in, in the order §4 gives for resolving `open X`: an indexed app, a file path,
+ *  Three ways in, in the order the plan gives for resolving `open X`: an indexed app, a file path,
  *  a URL. Focusing a live window is the fourth and it is the one thing not here — that is
  *  `focus.ts`, because it is a different problem with a different failure mode.
  *
@@ -257,7 +257,7 @@ const HOME_PATH = /^~[\\/]/
 const ENV_PATH = /^%[^%]+%/
 
 /** Decide whether the query names something directly. Called on every keystroke, so the one
- *  filesystem call it can make is a single `stat` — well inside §7's 16ms.
+ *  filesystem call it can make is a single `stat` — well inside the 16ms budget.
  *
  *  Returns null far more often than not, and that is the point: this is a fallback for when
  *  the index has nothing, not a competitor to it. */

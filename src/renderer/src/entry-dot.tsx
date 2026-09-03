@@ -10,7 +10,7 @@ import { listenForCapture } from './recorder'
 // always alive. Nothing about it is drawn — see recorder.ts.
 listenForCapture()
 
-// §8 chunk F: a crash in a transparent, frameless window is otherwise invisible.
+// A crash in a transparent, frameless window is otherwise invisible.
 watchRendererErrors('dot')
 
 createRoot(document.getElementById('root')!).render(

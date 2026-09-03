@@ -1,14 +1,14 @@
-/** The settings window (PLAN.md §8 chunk F): hotkey, voice, speech, startup.
+/** The settings window: hotkey, voice, speech, startup.
  *
  *  It is the one window in Ezzy that is an ordinary window. The other three are frameless,
- *  transparent, unfocusable furniture that must never appear in the taskbar (§5); this one is
+ *  transparent, unfocusable furniture that must never appear in the taskbar; this one is
  *  something the user deliberately opened, wants in Alt-Tab while they are in it, and closes
  *  when they are done. It gets a frame, a taskbar entry and the system's own close button —
- *  §6's "furniture that disappears when not in use, not a settings app" is about the overlay,
+ *  the "furniture that disappears when not in use, not a settings app" is about the overlay,
  *  and this is the settings app.
  *
- *  §13 lists a settings UI as the third thing to cut if the build runs late. It is here because
- *  the build did not: the hotkey is the one setting that cannot be cut, since §5 requires it to
+ *  A settings UI is the third thing to cut if the build runs late. It is here because
+ *  the build did not: the hotkey is the one setting that cannot be cut, since the plan requires it to
  *  be configurable from day one and until now the only way to change it was to hand-edit
  *  config.json. */
 
@@ -112,7 +112,7 @@ export function applySettings(patch: Partial<EzzyConfig>): SettingsResult {
   let hotkeyError: string | null = null
   if (patch.hotkey !== undefined && patch.hotkey !== before.hotkey) {
     const result = reapplyHotkey()
-    // §5: `globalShortcut.register` returning false is the normal case, not the exceptional
+    // `globalShortcut.register` returning false is the normal case, not the exceptional
     // one — another launcher may already own Alt+Space. The fallback chain means Ezzy still
     // has *a* hotkey, so the failure is a sentence rather than a broken app.
     if (result.accelerator === null) {

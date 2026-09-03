@@ -27,7 +27,7 @@ import { clearQuery, panelData } from './panel-data'
 
 let dotWindow: BrowserWindow | null = null
 let panelWindow: BrowserWindow | null = null
-/** §6's second glass surface: the 420x54 pill above the panel. */
+/** The second glass surface: the 420x54 pill above the panel. */
 let searchWindow: BrowserWindow | null = null
 let quitting = false
 let drag: DragState | null = null
@@ -124,7 +124,7 @@ export function createWindows(): void {
     fullscreenable: false,
     skipTaskbar: true,
     alwaysOnTop: true,
-    // §5: if the dot takes focus we lose track of which window was in front.
+    // If the dot takes focus we lose track of which window was in front.
     focusable: false,
     show: false,
     webPreferences: webPreferences()
@@ -142,7 +142,7 @@ export function createWindows(): void {
   dotWindow.once('ready-to-show', () => dotWindow?.showInactive())
   loadRenderer(dotWindow, 'dot')
 
-  // §6, "Three windows, not one". The search bar and the panel are separate windows so the
+  // Three windows, not one: the search bar and the panel are separate windows so the
   // 11px gap between them shows the desktop rather than a seam. They move as one unit.
   searchWindow = createGlassWindow(SEARCH_HEIGHT)
   panelWindow = createGlassWindow(PANEL_MIN_HEIGHT)
@@ -167,7 +167,7 @@ export function createWindows(): void {
 /** One of the two glass surfaces. Both are the same window underneath — only their height
  *  and contents differ.
  *
- *  `transparent: true`, not §6's acrylic. Acrylic does blur the desktop, which nothing else
+ *  `transparent: true`, not the acrylic. Acrylic does blur the desktop, which nothing else
  *  on Windows can, but it frosts the surface into a milky slab and it follows the Windows
  *  theme, neither of which is the look this is aiming at. The cost is that there is no blur,
  *  so what shows through the glass shows through sharp.
@@ -231,7 +231,7 @@ export function webPreferences(): Electron.WebPreferences {
   }
 }
 
-/** The four pages, one per window. The settings window (§8 chunk F) is the odd one out: it is
+/** The four pages, one per window. The settings window is the odd one out: it is
  *  an ordinary framed window rather than a glass overlay, so it is built in settings-window.ts
  *  and only borrows the loading and the security flags from here. */
 export type RendererPage = 'dot' | 'searchbar' | 'panel' | 'settings'
@@ -251,7 +251,7 @@ export function loadRenderer(win: BrowserWindow, page: RendererPage): void {
   }
 }
 
-/** The "always there" behaviour from PLAN.md §5 — items 1 to 4. */
+/** The "always there" behaviour — items 1 to 4. */
 function applyAlwaysPresent(win: BrowserWindow): void {
   // The plain alwaysOnTop flag sits below too many things; this level clears most of them.
   win.setAlwaysOnTop(true, 'screen-saver')
@@ -275,7 +275,7 @@ function moveDotTo(position: DotPosition): void {
  *  pure move — which is the entire point: resizing a transparent window on Windows
  *  re-creates its composited surface and flashes.
  *
- *  §6: the pill opens leftward, so the window carries its spare width on the left and the
+ *  The pill opens leftward, so the window carries its spare width on the left and the
  *  circle rides at the right edge. A dot parked against the left of a display has no room
  *  for that, so it mirrors: spare width on the right, circle at the left edge. */
 function applyDotBounds(): void {
@@ -284,7 +284,7 @@ function applyDotBounds(): void {
   const opensLeft = dotAnchor.x - pillDelta >= display.bounds.x
   const anchored = opensLeft ? dotAnchor.x - pillDelta : dotAnchor.x
 
-  // §6: the dot "tucks half past the screen edge when idle; slides out on hover". The tuck
+  // The dot "tucks half past the screen edge when idle; slides out on hover". The tuck
   // is built — clampBounds allows half the dot off a display — and this is the slide.
   //
   // It exists because the pill's far edge is anchored where the collapsed circle sits, so a
@@ -391,7 +391,7 @@ function visualInset(): number {
 /** How much of the dot may be tucked past a display edge. Because the slack is uniform,
  *  half the collapsed square is exactly the slack plus half the glass circle — so allowing
  *  half of it past an edge leaves precisely half the visible dot on screen, which is what
- *  §6 describes. Tray > Reset dot position brings it fully back. */
+ *  Describes. Tray > Reset dot position brings it fully back. */
 const OFF_SCREEN_ALLOWANCE = 0.5
 
 /** Clamped against the display's full bounds rather than its work area, so the dot can be
@@ -447,7 +447,7 @@ function persistDotPosition(): void {
   })
 }
 
-/** §5: re-clamp on display changes, or the dot ends up off-screen and unreachable.
+/** Re-clamp on display changes, or the dot ends up off-screen and unreachable.
  *  The clamped position is deliberately not saved — Windows reports transient work areas
  *  while DPI contexts settle, and persisting those would overwrite the spot the user chose. */
 export function clampDotIntoBounds(): void {
@@ -546,7 +546,7 @@ export function resetDotPosition(): void {
 
 // ------------------------------------------------------------- search bar + panel
 
-/** §6: the search bar sits 11px above the panel and the two move as one unit, anchored to
+/** The search bar sits 11px above the panel and the two move as one unit, anchored to
  *  the dot and clamped on-screen near edges. This lays the pair out together so the gap
  *  between them is fixed no matter where the dot is parked. */
 function layoutPair(): { search: Electron.Rectangle; panel: Electron.Rectangle } {
@@ -599,7 +599,7 @@ function applyPairBounds(): void {
   panelWindow.setBounds(panel)
 }
 
-/** §6: the panel hugs its list rather than being a fixed slab, so the renderer measures its
+/** The panel hugs its list rather than being a fixed slab, so the renderer measures its
  *  own content and reports it here. Bounded at both ends — one row minimum, ~8 rows before
  *  it starts scrolling instead of growing. */
 export function setPanelHeight(height: number): void {
@@ -637,7 +637,7 @@ function showPanel(): void {
   clearQuery()
   applyPairBounds()
   // The list rides along with the show event rather than being fetched back by the renderer.
-  // It is already in memory, so this costs one IPC hop instead of a round trip (§7).
+  // It is already in memory, so this costs one IPC hop instead of a round trip.
   panelWindow.webContents.send(IPC.panelShown, panelData())
   searchWindow.webContents.send(IPC.searchReset)
   // The panel is unfocusable, so showInactive is what it gets; the search bar takes the
@@ -685,13 +685,13 @@ export function sendToPanel(channel: string, payload?: unknown): void {
 }
 
 /** Voice state goes to whichever surface is on screen: the search bar while the panel is up —
- *  §6 puts the mic glyph and the listening pulse there — and the dot's own pill when it is
+ *  The mic glyph and the listening pulse live there — and the dot's own pill when it is
  *  not. Never both, so there is one set of words at a time.
  *
  *  Which one wins is not arbitrary. The search bar is where the user is already looking while
  *  a command is in flight, and it is the only surface that can hold the button a blocked
  *  microphone needs. The pill is what survives the panel being dismissed — which is every
- *  successful command, and the reason chunk D had no success state to draw at all. §6 always
+ *  successful command, and the reason chunk D had no success state to draw at all. Always
  *  meant the pill to end up carrying this; chunk E is the "later" it refers to.
  *
  *  The search bar still asks for the current state when it comes back up, so a download that
@@ -714,7 +714,7 @@ function sendToDot(state: VoiceState): void {
   applyDotBounds()
 }
 
-/** §5: `speechSynthesis` is renderer-only. The dot's renderer is the one that speaks — it is
+/** `speechSynthesis` is renderer-only. The dot's renderer is the one that speaks — it is
  *  always alive, where the search bar exists only while the panel is open, which is not long
  *  enough to carry a confirmation that arrives after the panel has been dismissed. */
 export function speakInDot(text: string): void {

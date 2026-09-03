@@ -17,7 +17,7 @@ type Row =
  *  "go back to the other thing" the way Alt-Tab does. That is a real convention, but it is
  *  not what this panel is — it opens under the cursor showing a list, and starting the
  *  selection somewhere other than the top reads as the wrong row being picked rather than as
- *  a shortcut. PLAN.md does not specify either behaviour. */
+ *  a shortcut. the plan does not specify either behaviour. */
 const DEFAULT_SELECTION = 0
 
 function Panel(): React.JSX.Element {
@@ -131,7 +131,7 @@ function Panel(): React.JSX.Element {
 
   // The panel is a fixed size now: both sections have a fixed row count, so this measures the
   // same number every time and the window stops changing height as the list changes. That is
-  // a deliberate move away from §6's "hugs its content" — it is what keeps the APPS section
+  // a deliberate move away from the "hugs its content" — it is what keeps the APPS section
   // pinned in place instead of sliding up whenever a window closes. Still measured rather than
   // hardcoded so the arithmetic stays in the stylesheet and cannot drift from it. The direct
   // row is the one thing that does change the height, since it is only there some of the time.
@@ -171,7 +171,7 @@ function Panel(): React.JSX.Element {
         <p className="panel__section">OPEN WINDOWS</p>
         {/* Its own scroller, sized to WINDOWS_VISIBLE rows. `overflow-y: auto` means it only
             scrolls when there are more windows than fit — with four or fewer the wheel does
-            nothing here, which is what was asked for. Still native scrolling, so §1's
+            nothing here, which is what was asked for. Still native scrolling, so the
             two-finger scroll keeps working and there is no custom scroll handling. */}
         {/* Leaving a section for the divider or a header is still leaving every row, so the
             highlight has to go there too, not only at the edge of the panel. */}
@@ -264,7 +264,7 @@ function Panel(): React.JSX.Element {
               // what keeps a click from trying.
               tabIndex={-1}
               onMouseDown={(event) => event.preventDefault()}
-              // 18ms stagger (§6). Capped so a long list does not take a second to finish.
+              // 18ms stagger. Capped so a long list does not take a second to finish.
               style={{ animationDelay: `${Math.min(index, 10) * 18}ms` }}
               // mousemove, not mouseenter: scrolling the list under a stationary cursor fires
               // enter events and would yank the selection away from the arrow keys.
@@ -331,7 +331,7 @@ function hint(row: Row): string {
   return row.kind === 'app' ? 'launch' : 'open'
 }
 
-/** Windows first, then the apps that are not running (§6) — in MRU and alphabetical order
+/** Windows first, then the apps that are not running — in MRU and alphabetical order
  *  with no query, in match order with one. A direct hit on a URL or a path leads. */
 function toRows(data: PanelData): Row[] {
   const rows: Row[] = []

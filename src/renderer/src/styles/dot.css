@@ -145,7 +145,7 @@
 
 /* ---------------------------------------------------------------- the pill carrying state
 
-   §6 ends the hover-pill section with "later the same pill carries state — a waveform while
+   the plan ends the hover-pill section with "later the same pill carries state — a waveform while
    listening, 'didn't catch that' on a failed command. Keep it as one reusable component."
    Chunk E is that later, and this is the whole of it: the same capsule, the same opening
    motion, the same glass. Only what sits in it changes.
@@ -216,7 +216,7 @@
   color: var(--text-faint);
 }
 
-/* §6 puts the listening pulse on the rim and not on the icon, for the search bar and here
+/* Puts the listening pulse on the rim and not on the icon, for the search bar and here
    alike: a pulsing glyph reads as a spinner, and this is not a wait, it is an open
    microphone. The dot's rim is a border rather than the inset ring the large surfaces use. */
 .pill--listening {

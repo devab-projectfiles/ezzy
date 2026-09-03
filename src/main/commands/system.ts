@@ -1,6 +1,6 @@
 /** Windows settings pages and saved WiFi networks (FEATURE-system-commands.md).
  *
- *  Two commands, registry data like everything else (PLAN.md §4). No new dependencies, no
+ *  Two commands, registry data like everything else. No new dependencies, no
  *  elevation, and nothing here that the user could not do themselves in the Settings app —
  *  which is the whole scope: Ezzy gets you to the page or joins a network Windows already
  *  knows. It never handles a password, adds a profile, or touches a radio.
@@ -136,7 +136,7 @@ async function joinNetwork(spoken: string, ctx: CommandContext): Promise<void> {
 
   if (target === null) {
     // Not a failure with an apology: the user asked to join something, and the list of what
-    // they can join is one keystroke away. §5's rule about the blocked microphone applies to
+    // they can join is one keystroke away. the rule about the blocked microphone applies to
     // every dead end — it has to lead somewhere. Guessing instead would risk joining a
     // neighbour's saved network, which is a worse answer than a list.
     log(`wifi: nothing saved matches "${spoken}" (${saved.length} profiles)`)

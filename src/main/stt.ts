@@ -1,12 +1,11 @@
-/** whisper-server's lifecycle, and one POST of audio for one transcript (PLAN.md §4, §8
- *  chunk D).
+/** whisper-server's lifecycle, and one POST of audio for one transcript.
  *
- *  §5, "model load is the real latency, not inference": spawning `whisper-cli.exe` per command
+ *  Spawning `whisper-cli.exe` per command
  *  pays 150-600ms of model load *every time*. So the server is started once, holds the model
  *  in memory for as long as Ezzy runs, and every utterance is an HTTP POST to localhost. It is
  *  the difference between voice feeling like a feature and feeling like a wait.
  *
- *  It is deliberately not started at app launch. §7's cold start budget is 2s to tray-ready
+ *  It is deliberately not started at app launch. the cold start budget is 2s to tray-ready
  *  and loading base.en costs a good part of that on a cold file cache, for a feature most
  *  sessions never use — so the server comes up the first time the hotkey is held, and stays
  *  up from then on. The second command onward pays nothing. */
@@ -44,14 +43,14 @@ const READY_POLL_MS = 120
  *
  *  Whisper always pads its input to 30s and encodes all of it, which is why a 1.3s command
  *  costs the same as a paragraph. `audio_ctx` shortens that window, and it is the single
- *  biggest lever on §7's voice budget — measured here on base.en, 8 threads, over four
+ *  biggest lever on the voice budget — measured here on base.en, 8 threads, over four
  *  utterances: the full 1500 frames took 1061-1090ms and 512 took 426-439ms, for identical
  *  transcripts. 512 frames is a bit over 10 seconds of audio, which no spoken command comes
  *  near; anything longer is sent at full context rather than quietly truncated. */
 const SHORT_AUDIO_CTX = 512
 const SHORT_AUDIO_SECONDS = 9.5
 
-/** A transcription that has not come back by now is not coming back. §7 budgets 1200ms for
+/** A transcription that has not come back by now is not coming back. Budgets 1200ms for
  *  the whole voice path, so this is a stuck-process guard rather than a deadline. */
 const INFERENCE_TIMEOUT_MS = 20_000
 
@@ -209,7 +208,7 @@ function sleep(ms: number): Promise<void> {
 
 // ------------------------------------------------------------------- inference
 
-/** Transcribe one utterance. `prompt` is §5's highest-leverage mitigation for whisper never
+/** Transcribe one utterance. `prompt` is the highest-leverage mitigation for whisper never
  *  having heard of your software — see `voice.ts`, which builds it from what is installed.
  *
  *  Node's http rather than Electron's net, which is the opposite of the choice made for the

@@ -1,12 +1,12 @@
-/** Where whisper's files are, and getting the one we do not ship (PLAN.md §3, §8 chunk D).
+/** Where whisper's files are, and getting the one we do not ship.
  *
  *  Two halves of the same question, kept together because the answer to both is a path:
  *
- *   * The **binaries** ship with the app. §5: they cannot live inside the asar, so they go in
+ *  * The **binaries** ship with the app. They cannot live inside the asar, so they go in
  *     `extraResources` and resolve through `process.resourcesPath` in a packaged build and
  *     through the repo in dev. They are not in git either — `scripts/fetch-whisper.mjs`
  *     fetches them, and a clone that has not run it has no voice until it does.
- *   * The **model** is downloaded on first run rather than bundled (§3), which is the
+ *  * The **model** is downloaded on first run rather than bundled, which is the
  *     difference between a ~90MB installer and a ~230MB one. It lands in userData, so it
  *     survives an update and an uninstall leaves it with the rest of the app's data.
  */
@@ -18,7 +18,7 @@ import { mkdir, open, rename, rm } from 'fs/promises'
 import { dirname, join } from 'path'
 import { log, since } from './verbose'
 
-/** §3: `base`, English-only. Small enough to download in under a minute on a normal line and
+/** `base`, English-only. Small enough to download in under a minute on a normal line and
  *  accurate enough for "switch to chrome", which is the whole vocabulary this needs. */
 const MODEL_FILE = 'ggml-base.en.bin'
 const MODEL_URL = `https://huggingface.co/ggerganov/whisper.cpp/resolve/main/${MODEL_FILE}`
@@ -39,7 +39,7 @@ export interface DownloadProgress {
 }
 
 /** Where the binaries live. In dev that is the repo's own `resources/whisper`; in a packaged
- *  build it is next to the asar, because §5 is explicit that native binaries cannot be
+ *  build it is next to the asar, because the plan is explicit that native binaries cannot be
  *  loaded out of it. */
 function whisperDir(): string {
   return app.isPackaged
@@ -75,7 +75,7 @@ let downloading: Promise<boolean> | null = null
  *  the hotkey twice while it runs must not start a second one.
  *
  *  Resolves false rather than throwing: a failed download is an ordinary state of the world
- *  (no network on first run is in §10's manual checklist), and the caller's job is to say so
+ *  (no network on first run is in the manual checklist), and the caller's job is to say so
  *  rather than to handle an exception. */
 export function ensureModel(onProgress: (progress: DownloadProgress) => void): Promise<boolean> {
   if (hasModel()) return Promise.resolve(true)

@@ -1,6 +1,6 @@
-/** The `speechSynthesis` wrapper (PLAN.md §4, `renderer/speech.ts`).
+/** The `speechSynthesis` wrapper.
  *
- *  It lives in a renderer because §5 says it has to: speech synthesis is a web API and the
+ *  It lives in a renderer because the plan says it has to: speech synthesis is a web API and the
  *  main process does not have one. Specifically it lives in the DOT's renderer, which is the
  *  only window that is always alive — a confirmation usually arrives just after the panel has
  *  been dismissed, so a search bar that no longer exists cannot be the one talking.

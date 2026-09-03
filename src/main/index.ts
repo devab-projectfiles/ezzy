@@ -27,7 +27,7 @@ import { startUpdater, stopUpdater } from './updater'
 
 const startedAt = performance.now()
 
-// §5: two copies fighting over one global hotkey is a confusing bug to diagnose.
+// Two copies fighting over one global hotkey is a confusing bug to diagnose.
 if (!app.requestSingleInstanceLock()) {
   app.quit()
 } else {
@@ -49,7 +49,7 @@ function start(): void {
     nativeTheme.themeSource = 'dark'
 
     // First, so that everything below this line — including anything that throws on the way
-    // up — is in the file a user can attach to an issue (§8 chunk F).
+    // up — is in the file a user can attach to an issue.
     startLogging()
     loadConfig()
     applyLoginItem()
@@ -58,7 +58,7 @@ function start(): void {
     watchDisplays()
     watchCursor()
     // Hooks are registered after app.whenReady because SetWinEventHook delivers through the
-    // thread's message loop, and Electron only has one running from here onward (§5).
+    // thread's message loop, and Electron only has one running from here onward.
     startTracking()
     onPanelDataChanged(publishPanelData)
     // Scanning the Start Menu touches a few hundred directories, so it is deliberately not
@@ -69,18 +69,18 @@ function start(): void {
     const hotkey = registerHotkey(togglePanel)
     // Push-to-talk hangs off the same hotkey: a tap toggles the panel, a hold listens. Nothing
     // here loads a model or starts a process — that happens the first time the key is held, so
-    // a session that never uses voice never pays for it (§7).
+    // a session that never uses voice never pays for it.
     initVoice()
     watchForResume(() => {
       refreshTray()
-      // §5: the process survives sleep but the hook subscription does not, which leaves the
+      // The process survives sleep but the hook subscription does not, which leaves the
       // list frozen at its pre-sleep state with no visible symptom until you look for it.
       restartTracking()
       // Apps installed while the machine slept would otherwise be missing until a restart.
       void refreshAppIndex()
     })
     createTray(quit, hotkey)
-    // Last, and on a timer of its own inside: §9 expects the first 48 hours to need it, and
+    // Last, and on a timer of its own inside: the plan expects the first 48 hours to need it, and
     // nothing about it belongs on the startup path.
     startUpdater()
 
@@ -88,7 +88,7 @@ function start(): void {
   })
 
   // Ezzy is furniture, not a window you close. Subscribing here overrides Electron's
-  // default of quitting once the last window goes away (§5, item 4).
+  // default of quitting once the last window goes away.
   app.on('window-all-closed', () => {})
 
   app.on('will-quit', () => {
@@ -98,7 +98,7 @@ function start(): void {
     // Leaving a WinEvent hook behind makes Windows keep calling into a process that is on
     // its way out.
     stopTracking()
-    // §8 chunk D: "shut it down cleanly on quit". whisper-server is our child but not our
+    // Chunk D: "shut it down cleanly on quit". whisper-server is our child but not our
     // responsibility to Windows — nothing kills it for us, and a stray one holds 300MB and
     // a port for as long as the session lasts.
     stopWhisperServer()

@@ -34,7 +34,7 @@ let loaded = false
 /** The saved networks, from the cache after the first call.
  *
  *  Read on first use rather than at startup: this is a feature many sessions never touch, and
- *  §7's cold-start budget should not include a process spawn for one of them. The cost lands
+ *  the cold-start budget should not include a process spawn for one of them. The cost lands
  *  on the first "connect to …" instead, once. */
 export async function savedProfiles(): Promise<string[]> {
   if (!loaded) await refreshProfiles()
@@ -120,7 +120,7 @@ function delay(ms: number): Promise<void> {
 
 /** Which saved network a spoken name means, or null.
  *
- *  Exported for its own sake: §10 puts resolution in the layer worth testing, and this is the
+ *  Exported for its own sake: the plan puts resolution in the layer worth testing, and this is the
  *  part of the feature that decides what the machine connects to.
  *
  *  Deliberately generous in the middle and strict at the edges. Network names are not words —

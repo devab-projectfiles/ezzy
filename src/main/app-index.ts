@@ -1,4 +1,4 @@
-/** The installed-app index (PLAN.md §8 chunk C).
+/** The installed-app index.
  *
  *  Two sources, because neither one is complete:
  *
@@ -120,7 +120,7 @@ function startMenuRoots(): string[] {
   return roots
 }
 
-/** §8 chunk C: cached to disk, refreshed on startup. The cache is read first so the very
+/** Cached to disk, refreshed on startup. The cache is read first so the very
  *  first panel of a session has apps in it, then the rescan corrects it in the background. */
 export async function startAppIndex(): Promise<void> {
   await loadCache()

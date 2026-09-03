@@ -1,9 +1,9 @@
-/** Fuzzy matching over the window list and the app index (PLAN.md §8 chunk C).
+/** Fuzzy matching over the window list and the app index.
  *
- *  §8 asks for "Fuse.js over `[...windows, ...apps]`, windows weighted higher", and the two
+ *  The plan asks for "Fuse.js over `[...windows,...apps]`, windows weighted higher", and the two
  *  halves of that sentence pull in different directions: one index is what makes the
  *  weighting mean anything (a window and an app can only be ranked against each other if
- *  they were scored together), but §6's panel has two fixed sections. So both happen — one
+ *  they were scored together), but the panel has two fixed sections. So both happen — one
  *  search over the combined set, then the ranked results split back into their sections,
  *  each keeping the order the combined ranking gave it.
  *
@@ -11,10 +11,10 @@
  *  window and the results are drawn in the panel window, so it has to cross to main either
  *  way; doing the work here costs no extra hop and keeps both lists in one place.
  *
- *  §5, "match against window titles, not just app names": a window is indexed under its
+ *  A window is indexed under its
  *  title *and* its owning app, so `index.ts — Visual Studio Code` answers to "index" and to
  *  "code". It does not answer to "typescript" — that would need a synonym table, which is
- *  not something §8 asks for. */
+ *  not something the plan asks for. */
 
 import Fuse, { type IFuseOptions } from 'fuse.js'
 import { EzzyApp, EzzyWindow, MAX_APP_ROWS } from '../shared/types'
@@ -50,7 +50,7 @@ const OPTIONS: IFuseOptions<Candidate> = {
   ]
 }
 
-/** §8: "windows weighted higher". Applied to the score rather than as a Fuse key weight,
+/** Windows are weighted higher. Applied to the score rather than as a Fuse key weight,
  *  because the preference is for a *kind* of record and Fuse weights fields. Lower is better
  *  in Fuse, so this multiplies a window's score down. */
 const WINDOW_FAVOUR = 0.55
@@ -174,7 +174,7 @@ const PLAUSIBLE = 0.7
  *  a tie in that band means whisper produced a word that resembles nothing. */
 const DECISIVE_GAP = 0.12
 
-/** A whole-name near-miss, for the case word-start cannot see: §5's "sigma" for Figma, where
+/** A whole-name near-miss, for the case word-start cannot see: the "sigma" for Figma, where
  *  the substitution is in the first syllable.
  *
  *  Two tests, because one of them was not enough. The strings have to be the same *shape* — a
@@ -258,7 +258,7 @@ const FUNCTION_WORDS = new Set(
  *  whisper invents out of silence, including four collected from its attempts at "VS Code":
  *  every invention refused, every real target reached but a bare "vs" on its own.
  *
- *  §5, "always fuzzy-match, never exact-match" — whisper hands this "sigma" for Figma and
+ *  Always fuzzy-match, never exact-match — whisper hands this "sigma" for Figma and
  *  "anti-gravity" for Antigravity, and both still land.
  *
  *  `strict` drops the plausible band. It is for the bare-target fallback, where no verb
@@ -380,7 +380,7 @@ function isConfident(
 /** Whether the needle walks the candidate's words in order, allowing an initialism to stand
  *  for the words it abbreviates.
  *
- *  This is what makes "vs code" reach Visual Studio Code, which §5 asks for by name and which
+ *  This is what makes "vs code" reach Visual Studio Code, which the plan asks for by name and which
  *  nothing else here could do: "vs" is not a prefix of anything, the strings share barely a
  *  third of their letters, and Fuse scores the pair 0.599 — indistinguishable by score alone
  *  from a word that means nothing at all. What separates them is structure. "vs" spells the

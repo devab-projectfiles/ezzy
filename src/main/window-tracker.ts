@@ -1,8 +1,8 @@
-/** The live window list and its MRU order (PLAN.md §5, §8 chunk B).
+/** The live window list and its MRU order.
  *
  *  The list is maintained by subscription, never by polling: one EnumWindows sweep seeds the
  *  cache at startup, and after that SetWinEventHook keeps it current. Opening the panel
- *  reads a variable — that is what makes the <50ms budget in §7 reachable at all.
+ *  reads a variable — that is what makes the <50ms budget reachable at all.
  *
  *  Everything here runs on the main thread inside Windows' message dispatch, so the handlers
  *  are deliberately cheap: they touch one window, not the whole desktop. */
@@ -109,7 +109,7 @@ export function stopTracking(): void {
   }
 }
 
-/** §5: sleep does not kill the process, but it does leave the hook subscription stale and
+/** Sleep does not kill the process, but it does leave the hook subscription stale and
  *  the list frozen at its pre-sleep state. Tear it all down and build it again on resume. */
 export function restartTracking(): void {
   stopTracking()
@@ -201,7 +201,7 @@ function promote(hwnd: Hwnd): void {
 
 // ------------------------------------------------------------------- filtering
 
-/** §5's filter, plus the owner walk Alt-Tab itself uses.
+/** the filter, plus the owner walk Alt-Tab itself uses.
  *
  *  EnumWindows returns hundreds of windows that no user would call open: invisible shells,
  *  tool windows, message-only windows, and — the one that catches everybody — UWP apps that
@@ -251,7 +251,7 @@ function isLastActivePopup(hwnd: Hwnd): boolean {
   }
 }
 
-/** The subtitle for a row (§6) and the file its icon comes from: the owning application,
+/** The subtitle for a row and the file its icon comes from: the owning application,
  *  not the window title.
  *
  *  Reading the icon is kicked off here and never waited for. The row is published with
@@ -331,7 +331,7 @@ function seedFromSweep(): void {
  *     produce EVENT_OBJECT_DESTROY at all.
  *
  *  There is no set of subscriptions that closes both. Verifying at read time closes all of
- *  them at once, and it is not the EnumWindows sweep §5 forbids — it walks the handles
+ *  them at once, and it is not the EnumWindows sweep the plan forbids — it walks the handles
  *  already cached, a dozen or two, not the desktop. Measured cost is logged below. */
 export function listWindows(): EzzyWindow[] {
   const startedAt = performance.now()

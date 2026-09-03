@@ -1,11 +1,11 @@
-/** Push-to-talk, end to end (PLAN.md §8 chunk D).
+/** Push-to-talk, end to end.
  *
  *  Hold the hotkey, speak, let go: the panel is already open from the press, the microphone
  *  opens 350ms into the hold, and the release is what sends the audio to whisper-server and
  *  runs whatever came back.
  *
  *  Holding the *same* key that opens the panel is what makes this one gesture rather than two
- *  features. A tap opens the panel and never touches this file — §7 is explicit that the
+ *  features. A tap opens the panel and never touches this file — the plan is explicit that the
  *  keyboard path must never touch whisper, and it does not: nothing here runs, and no model is
  *  even loaded, until the first time someone holds the key.
  *
@@ -142,7 +142,7 @@ function endButtonSession(): void {
   fromButton = false
 }
 
-/** Voice has just been switched off in settings (§8 chunk F).
+/** Voice has just been switched off in settings.
  *
  *  Turning it off has to give the memory back, or the switch is only a promise about future
  *  holds: whisper-server is ~300MB resident and nothing else ever stops it before quit. Any
@@ -166,14 +166,14 @@ function setState(next: VoiceState): void {
   clearStateTimer = setTimeout(() => setState({ kind: 'idle' }), linger)
 }
 
-/** A command that could not be carried out. §8 chunk E: "a failed command is as clear as a
+/** A command that could not be carried out. Chunk E: "a failed command is as clear as a
  *  successful one" — which is why this both draws it and says it out loud. Spoken matters more
  *  here than for a success: the user is looking at the app they expected to be switched away
  *  from, not at the dot. */
 function fail(message: string, micBlocked = false): void {
   log(`voice: ${message}`)
   setState({ kind: 'error', message, micBlocked, heard: heard ?? undefined })
-  // §5: a blocked microphone has to lead somewhere rather than to a dead button, and the
+  // A blocked microphone has to lead somewhere rather than to a dead button, and the
   // button it leads to lives on the search bar. So this one failure brings the panel up even
   // when the preference says voice should stay on the dot — a sentence about a blocked device
   // with no way to act on it is exactly the dead end that rule is about.
@@ -202,7 +202,7 @@ function fail(message: string, micBlocked = false): void {
 function armCapture(): void {
   if (armed || !getConfig().voice || !isVoiceInstalled() || !hasModel()) return
   armed = true
-  // Started here rather than at launch and left running afterwards — §5's "model load is the
+  // Started here rather than at launch and left running afterwards — the "model load is the
   // real latency". The first command of a session waits for it; the rest do not.
   startWhisperServer()
   sendCapture('arm')
@@ -217,7 +217,7 @@ function cancelCapture(): void {
 
 async function beginListening(source: 'hotkey' | 'mic-button' = 'hotkey'): Promise<void> {
   if (capturing) return
-  // §8 chunk F's voice switch. Off, a hold is just a long tap — no microphone, no download, no
+  // Chunk F's voice switch. Off, a hold is just a long tap — no microphone, no download, no
   // message. Saying "voice is off" here would be worse than silence: the user turned it off,
   // and the panel the press already opened is exactly where they can type instead.
   if (!getConfig().voice) return
@@ -245,7 +245,7 @@ async function beginListening(source: 'hotkey' | 'mic-button' = 'hotkey'): Promi
     // press just closed, so it has to be brought back up for the search bar to report on.
     if (getConfig().voicePanel) showPanelForVoice()
     // Quiet mode has to CLOSE a panel rather than not open one: the press toggles it before
-    // anyone knows this is a hold, and that is deliberate — §7 gives the tap a 50ms budget from
+    // anyone knows this is a hold, and that is deliberate — the plan gives the tap a 50ms budget from
     // the press, so the panel cannot wait 350ms to find out what kind of press it was.
     else hidePanel()
   }
@@ -372,7 +372,7 @@ async function transcribeAndRun(wav: Buffer | null, releasedAt: number): Promise
     fail(outcome.message)
     return
   }
-  // §7: act before you speak. The command has already put the window in front by the time
+  // Act before you speak. The command has already put the window in front by the time
   // either of these lines runs — neither the pill nor the confirmation is allowed to sit
   // between the user finishing their sentence and the window appearing.
   //
@@ -407,7 +407,7 @@ export function receiveAudio(wav: Buffer): void {
   pendingAudio?.(wav)
 }
 
-/** The dot's renderer could not record at all. §5: a blocked microphone has to lead somewhere,
+/** The dot's renderer could not record at all. A blocked microphone has to lead somewhere,
  *  so the message that goes with `micBlocked` is paired with a button in the search bar. */
 export function reportCaptureFailure(kind: VoiceFailure): void {
   const wasListening = capturing
@@ -457,7 +457,7 @@ async function fetchModel(): Promise<void> {
   startWhisperServer()
 }
 
-/** §5's highest-leverage mitigation, and the reason "open n8n" has any chance at all: whisper
+/** the highest-leverage mitigation, and the reason "open n8n" has any chance at all: whisper
  *  has never heard of the software on this machine, so it is told what is on it.
  *
  *  Open windows first — the thing someone is switching to is almost always already running —

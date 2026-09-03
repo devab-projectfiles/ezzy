@@ -1,4 +1,4 @@
-/** Bringing someone else's window to the front (PLAN.md §5).
+/** Bringing someone else's window to the front.
  *
  *  SetForegroundWindow silently fails for us. Windows only lets the process that *already*
  *  owns the foreground change it; every other caller gets `false`, or worse, a flashing

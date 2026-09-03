@@ -1,4 +1,4 @@
-/** Timing instrumentation for the budgets in PLAN.md §7, behind `--verbose`. */
+/** Timing instrumentation for the budgets, behind `--verbose`. */
 
 const enabled = process.argv.includes('--verbose') || process.env['EZZY_VERBOSE'] === '1'
 

@@ -2,11 +2,11 @@ import { useEffect, useState } from 'react'
 import type { EzzyConfig, SettingsSnapshot, UpdateStatus } from '../../shared/types'
 import HotkeyField from './HotkeyField'
 
-/** The settings window (PLAN.md §8 chunk F): hotkey, voice on/off, speech on/off, startup.
+/** The settings window: hotkey, voice on/off, speech on/off, startup.
  *
  *  It holds no state of its own beyond what is being edited. Every change goes to the main
  *  process and the snapshot that comes back is what gets drawn — which matters for the hotkey,
- *  where what you asked for and what Windows gave you are not always the same thing (§5). */
+ *  where what you asked for and what Windows gave you are not always the same thing. */
 function Settings(): React.JSX.Element {
   const [snapshot, setSnapshot] = useState<SettingsSnapshot | null>(null)
   const [hotkeyError, setHotkeyError] = useState<string | null>(null)
@@ -128,7 +128,7 @@ function Settings(): React.JSX.Element {
       </section>
 
       <footer className="settings__footer">
-        {/* §8: "a log file users can attach to issues" — which means it has to be findable
+        {/* A log file users can attach to issues has to be findable
             without knowing where %APPDATA% is. */}
         <button type="button" className="settings__link" onClick={window.ezzy.openLogFile}>
           Open log file

@@ -9,7 +9,7 @@
  *
  *  **This is a page fetch, not an API.** No key, no account, no quota — the ids are in the
  *  HTML the browser itself would receive. It is also the only outbound request Ezzy makes that
- *  is not the update check or the model download, and README §11 says so out loud rather than
+ *  is not the update check or the model download, and README the plan says so out loud rather than
  *  quietly making the promise untrue. Nothing about the query is sent anywhere else and no
  *  response is stored.
  *
@@ -21,7 +21,7 @@
 import { net } from 'electron'
 import { log, since } from './verbose'
 
-/** Bounded so a slow network cannot hold a voice command open. §7 gives the whole voice path
+/** Bounded so a slow network cannot hold a voice command open. The whole voice path has
  *  1200ms to put something in front of the user, and this spends part of that budget before
  *  the browser is even asked — so it is deliberately tight, and a miss costs only the fallback
  *  it was already going to take. Measured here: the page arrives in 200-600ms. */

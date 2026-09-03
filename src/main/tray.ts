@@ -39,7 +39,7 @@ export function refreshTray(): void {
       { label: 'Show', click: () => showDot() },
       { label: 'Reset dot position', click: () => resetDotPosition() },
       // Chunk E's two checkbox stopgaps lived here because there was no settings window yet.
-      // There is one now (§8 chunk F), and it holds every setting rather than the two that
+      // There is one now, and it holds every setting rather than the two that
       // happened to be worth a menu item.
       { label: 'Settings…', click: () => openSettingsWindow() },
       { type: 'separator' },

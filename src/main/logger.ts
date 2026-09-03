@@ -1,7 +1,7 @@
-/** The log file users attach to issues (PLAN.md §8 chunk F).
+/** The log file users attach to issues.
  *
  *  Ezzy runs without a console: it is a tray app, it is usually started by Windows at login,
- *  and by the time anyone notices a bug the interesting output is long gone. §9 expects three
+ *  and by the time anyone notices a bug the interesting output is long gone. Expect three
  *  embarrassing bugs in the first 48 hours, and the only way to act on those reports is if the
  *  reporter can attach something.
  *
@@ -28,7 +28,7 @@ let bytes = 0
 let writing = false
 
 export function logFilePath(): string {
-  // userData resolves to .../Ezzy — CLAUDE.md is explicit that it is not overridden.
+  // userData resolves to.../Ezzy — the project rules is explicit that it is not overridden.
   return path ?? join(app.getPath('userData'), 'logs', 'ezzy.log')
 }
 

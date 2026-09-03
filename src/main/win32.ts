@@ -1,4 +1,4 @@
-/** The Win32 calls this app needs, bound through koffi (PLAN.md §3).
+/** The Win32 calls this app needs, bound through koffi.
  *
  *  Everything here is a thin, typed wrapper over user32/kernel32/dwmapi — no policy and no
  *  caching. The rules about *which* windows count live in window-tracker.ts, the
@@ -31,7 +31,7 @@ export const WS_EX_TRANSPARENT = 0x0000_0020
 export const GA_ROOTOWNER = 3
 
 /** DwmGetWindowAttribute: UWP parks suspended apps as cloaked windows, which are invisible
- *  but still pass every IsWindowVisible check (§5). */
+ *  but still pass every IsWindowVisible check. */
 export const DWMWA_CLOAKED = 14
 
 export const SW_RESTORE = 9
@@ -40,7 +40,7 @@ export const SW_RESTORE = 9
  *  run its own close handler, prompt about unsaved work, and refuse. */
 export const WM_CLOSE = 0x0010
 
-/** The WinEvents we subscribe to. §5: subscribe, never poll EnumWindows. */
+/** The WinEvents we subscribe to. Subscribe, never poll EnumWindows. */
 export const EVENT_SYSTEM_FOREGROUND = 0x0003
 export const EVENT_OBJECT_CREATE = 0x8000
 export const EVENT_OBJECT_DESTROY = 0x8001
@@ -193,7 +193,7 @@ export function getShellWindow(): Hwnd {
   return fn.GetShellWindow()
 }
 
-/** True when DWM is hiding the window — how UWP parks a suspended app (§5). A non-zero
+/** True when DWM is hiding the window — how UWP parks a suspended app. A non-zero
  *  HRESULT means the attribute is unsupported, which is not the same as "cloaked". */
 export function isCloaked(hwnd: Hwnd): boolean {
   const out = [0]
@@ -229,7 +229,7 @@ export function getProcessImagePath(pid: number): string | null {
 }
 
 /** A full sweep of top-level windows. Used exactly once, to seed the cache at startup —
- *  after that the WinEvent hooks keep it current. §5: never poll this. */
+ *  after that the WinEvent hooks keep it current. Never poll this. */
 export function enumerateTopLevelWindows(): Hwnd[] {
   const found: Hwnd[] = []
   const callback = koffi.register((hwnd: Hwnd): boolean => {
@@ -314,7 +314,7 @@ export function tapAltKey(): void {
 }
 
 /** Press and release one extended key, as if the keyboard had. Used for the VK_MEDIA_* codes
- *  (§8 chunk E): Windows delivers them to whichever app owns the current media session, which
+ *: Windows delivers them to whichever app owns the current media session, which
  *  is why this works without Ezzy knowing or caring what is playing. */
 export function tapExtendedKey(vk: number): void {
   fn.keybd_event(vk, 0, KEYEVENTF_EXTENDEDKEY, 0)

@@ -1,7 +1,7 @@
 /** Sleeping, hibernating and shutting the machine down.
  *
- *  Not in PLAN.md's command set — asked for after chunk D, and the registry is where a request
- *  like this is supposed to land (§4). It lives in its own file rather than in `builtin.ts`
+ *  Not in the plan's command set — asked for after chunk D, and the registry is where a request
+ *  like this is supposed to land. It lives in its own file rather than in `builtin.ts`
  *  because "how does Windows go to sleep" is a different question from "what did the user
  *  say", and because these three are the only commands in the app that cannot be undone.
  *

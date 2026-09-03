@@ -1,7 +1,7 @@
 /** "play X" — Spotify and YouTube search (FEATURE-media-search.md).
  *
- *  Three commands, registered as data, exactly the case PLAN.md §4 says the registry exists
- *  for. Nothing here is an integration: §1 lists per-app APIs as a permanent non-goal, and
+ *  Three commands, registered as data, exactly the case the plan says the registry exists
+ *  for. Nothing here is an integration: the plan lists per-app APIs as a permanent non-goal, and
  *  the feature note repeats it — no OAuth, no tokens, no Web API. A search URI, and that is
  *  the whole feature.
  *
@@ -16,7 +16,7 @@
  *  the media key nor Enter on the focused results page starts the top result.
  *
  *  Starting a NAMED track needs a playable id (`spotify:track:…`), and turning a name into an
- *  id is the Spotify Web API — which §1 rules out permanently, and which is Premium-only for
+ *  id is the Spotify Web API — which the plan rules out permanently, and which is Premium-only for
  *  playback anyway. So the honest scope is: Ezzy takes you to the results, you press play. The
  *  confirmation says exactly that.
  *
@@ -53,7 +53,7 @@ export type ResolveTarget = (target: string, ctx: CommandContext, strict?: boole
  *  `you ?tube` rather than `youtube`, because this is matched against a transcript: whisper
  *  writes the brand as one word most of the time and as "You Tube" some of the time, and the
  *  difference between those two is the difference between a search and "I didn't understand
- *  that". §5's rule for app names — always fuzzy, never exact — applies to the one word in
+ *  that". the rule for app names — always fuzzy, never exact — applies to the one word in
  *  this pattern that a human actually says out loud. */
 const YOUTUBE =
   /^(?:play|search|find|watch|look\s+up)\s+(?:(?:on\s+)?you ?tube\s+(?:for\s+)?(.+)|(.+?)\s+on\s+you ?tube)$/
@@ -174,7 +174,7 @@ export function registerMediaSearchCommands(resolveTarget: ResolveTarget): void 
         : `Searching Spotify for ${spoken(groups[1].trim())}`,
     run: async (groups, ctx) => {
       const q = groups[1].trim()
-      // §4's note asks for an explicit empty guard rather than trusting `(.+?)`.
+      // the note asks for an explicit empty guard rather than trusting `(.+?)`.
       if (q === '' || NOTHING_TO_PLAY.test(q)) {
         ctx.failed('Play what?')
         return

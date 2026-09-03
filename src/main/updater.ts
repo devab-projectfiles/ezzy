@@ -1,6 +1,6 @@
-/** Auto-update against GitHub Releases (PLAN.md §8 chunk F).
+/** Auto-update against GitHub Releases.
  *
- *  §9 is the reason this is in v1 rather than v2: "expect three embarrassing bugs in the first
+ *  Is the reason this is in v1 rather than v2: "expect three embarrassing bugs in the first
  *  48 hours after posting". Ezzy ships unsigned through Scoop and a raw installer, so there is
  *  no store to push a fix through — without this, a bug that gets past release stays on every
  *  machine that downloaded it.
@@ -18,8 +18,8 @@ import { log } from './verbose'
 import { setQuitting } from './windows'
 
 /** Long enough that the window list, the app index and the tray are all up first — an update
- *  check is the least urgent thing Ezzy does at startup (§7 gives the first panel the budget,
- *  and this must not spend any of it). */
+ *  check is the least urgent thing Ezzy does at startup: the first panel owns the
+ *  startup budget, and this must not spend any of it. */
 const FIRST_CHECK_MS = 10_000
 /** Ezzy is running whenever Windows is, so a session can last weeks. */
 const INTERVAL_MS = 6 * 60 * 60 * 1000
@@ -90,7 +90,7 @@ export function stopUpdater(): void {
   timer = null
 }
 
-/** The settings window's button. Also the answer to "did it work?" — §8 says to test an actual
+/** The settings window's button. Also the answer to "did it work?" — the plan says to test an actual
  *  update rather than assume, and this is what makes that testable without waiting six hours. */
 export function checkForUpdates(): void {
   if (!supported()) return
@@ -104,7 +104,7 @@ function check(): void {
 /** Restart into the update the user has already downloaded.
  *
  *  `setQuitting` first, for the same reason the tray's Quit does it: every window intercepts
- *  its own `close` and hides to the tray instead (§5, item 4), so without this the app would
+ *  its own `close` and hides to the tray instead, so without this the app would
  *  refuse to go and the installer would never run. */
 export function installUpdate(): void {
   if (status.kind !== 'ready') return

@@ -1,6 +1,6 @@
 @import './base.css';
 
-/* §6's search bar recipe, verbatim: 54px tall, 27px radius, fill 0.15, rim 0.42, and the
+/* the search bar recipe, verbatim: 54px tall, 27px radius, fill 0.15, rim 0.42, and the
    dual rim's dark contrast ring so the edge survives a white desktop.
 
    The window is transparent, so this radius is the real edge of the pill. */
@@ -41,7 +41,7 @@
   inset: 0;
   border-radius: inherit;
   pointer-events: none;
-  /* A shallower angle than the panel's — §6 gives the search bar its own sheen. */
+  /* A shallower angle than the panel's — the plan gives the search bar its own sheen. */
   background: linear-gradient(
     114deg,
     rgba(255, 255, 255, 0.18) 0%,
@@ -63,7 +63,7 @@
   color: var(--glyph-search);
 }
 
-/* §6: input text 15px white, placeholder at 66%. A bare field on the glass — no box, no
+/* Input text 15px white, placeholder at 66%. A bare field on the glass — no box, no
    fill and no focus ring, because the pill around it already is the field. */
 .searchbar__input {
   flex: 1 1 auto;
@@ -95,7 +95,7 @@
   background: rgba(255, 255, 255, 0.24);
 }
 
-/* The glyph is 19px per §6; the button around it is 28px so there is something to hit
+/* The glyph is 19px; the button around it is 28px so there is something to hit
    without the icon growing. Transparent until hovered — it sits on glass, and a control that
    is always outlined would read as a second field next to the input. */
 .searchbar__mic-button {
@@ -120,7 +120,7 @@
 }
 
 /* While it is listening the button holds the state, so it is obvious which click stops it —
-   the rim keeps the §6 pulse and the glyph stays still. */
+   the rim keeps the the plan pulse and the glyph stays still. */
 .searchbar__mic-button[aria-pressed='true'] {
   background: rgba(255, 255, 255, 0.16);
 }
@@ -132,7 +132,7 @@
   color: var(--glyph-mic);
 }
 
-/* §6: "while listening, pulse the RIM (1.6s), not the icon". The rim is the ::after ring
+/* While listening, pulse the RIM (1.6s), not the icon. The rim is the::after ring
    above, so the pulse is on that element and nothing else moves — a pulsing glyph reads as a
    spinner, and this is not a wait, it is an open microphone. */
 .searchbar.is-listening::after {

@@ -37,14 +37,14 @@ export function registerIpc(): void {
   ipcMain.on(IPC.setPillWidth, (_event, width: number) => setPillWidth(width))
   ipcMain.handle(IPC.getPillSide, () => currentPillSide())
   ipcMain.on(IPC.panelClose, () => hidePanel())
-  // §6: the panel is sized to its list, and only the renderer knows how tall that came out.
+  // The panel is sized to its list, and only the renderer knows how tall that came out.
   ipcMain.on(IPC.setPanelHeight, (_event, height: number) => setPanelHeight(height))
   // The panel shows the hotkey actually in force, which is not always the configured one.
   ipcMain.handle(IPC.getHotkey, () => activeHotkey() ?? getConfig().hotkey)
 
   ipcMain.handle(IPC.panelData, () => panelData())
   ipcMain.handle(IPC.focusWindow, (_event, id: number) => {
-    // Focus first, dismiss second (§7). The search bar is the foreground window at this
+    // Focus first, dismiss second. The search bar is the foreground window at this
     // point, which is what makes SetForegroundWindow legal for us — hiding it first would
     // hand the foreground back to the OS and put focus.ts back on its fallback path for no
     // reason.
@@ -85,14 +85,14 @@ export function registerIpc(): void {
   ipcMain.handle(IPC.getVoiceState, () => voiceState())
   ipcMain.on(IPC.voiceAudio, (_event, wav: ArrayBuffer) => receiveAudio(Buffer.from(wav)))
   ipcMain.on(IPC.voiceFailed, (_event, kind: VoiceFailure) => reportCaptureFailure(kind))
-  // §5: a microphone Windows has blocked must lead to the setting, not to a dead button.
+  // A microphone Windows has blocked must lead to the setting, not to a dead button.
   ipcMain.on(IPC.openMicSettings, () => void openMicrophoneSettings())
   // The mic glyph is a button now. Same machinery as the hotkey hold, different gesture —
   // see toggleListening for why a click cannot simply reuse press-and-release.
   ipcMain.on(IPC.toggleVoice, () => toggleListening())
 
   // ---------------------------------------------------------------- chunk F
-  // §1: Ezzy reads no gestures. Windows maps a three-finger tap to a shortcut, and this is
+  // Ezzy reads no gestures. Windows maps a three-finger tap to a shortcut, and this is
   // the page where that is done — which is the whole of Ezzy's gesture support.
   ipcMain.on(IPC.openTouchpadSettings, () => {
     void openShellTarget('ms-settings:devices-touchpad', 'touchpad settings')

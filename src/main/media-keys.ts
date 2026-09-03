@@ -1,6 +1,6 @@
-/** The media keys (PLAN.md §8 chunk E), sent as `keybd_event` with the VK_MEDIA_* codes.
+/** The media keys, sent as `keybd_event` with the VK_MEDIA_* codes.
  *
- *  There is no integration here and there is not meant to be — §1 lists per-app APIs as an
+ *  There is no integration here and there is not meant to be — the plan lists per-app APIs as an
  *  explicit non-goal. A media key is the OS-level thing every player already listens for:
  *  Windows hands it to whichever app owns the current media session, so "next" reaches
  *  Spotify, or a YouTube tab, or whatever was playing last, without Ezzy knowing any of them

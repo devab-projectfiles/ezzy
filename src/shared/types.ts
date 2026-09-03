@@ -9,16 +9,16 @@ export interface EzzyConfig {
   /** Electron accelerator string, e.g. 'Alt+Space'. */
   hotkey: string
   openAtLogin: boolean
-  /** Spoken confirmations (PLAN.md §8 chunk E) — on by default, and the one thing here a
+  /** Spoken confirmations — on by default, and the one thing here a
    *  user is likely to want off. Only the voice path speaks: someone who clicked a row is
    *  looking at the screen and does not need telling what they just did. */
   speech: boolean
-  /** Whether holding the hotkey listens at all (PLAN.md §8 chunk F, "voice on/off").
+  /** Whether holding the hotkey listens at all.
    *
    *  On by default, because voice is the reason people try the app. Off, a hold is just a
    *  long tap: no microphone is opened, no model is downloaded and whisper-server is stopped
    *  if it was running — which is the point of the switch, since the server holds ~300MB for
-   *  as long as the session lasts. The typed path is untouched either way (§7). */
+   *  as long as the session lasts. The typed path is untouched either way. */
   voice: boolean
   /** Whether holding the hotkey opens the panel, or leaves voice on the dot.
    *
@@ -28,7 +28,7 @@ export interface EzzyConfig {
    *  with the search bar reporting, so a command that misses leaves you in a field you can
    *  finish typing into.
    *
-   *  A blocked microphone opens the panel either way. §5 is explicit that it has to lead to
+   *  A blocked microphone opens the panel either way. Is explicit that it has to lead to
    *  the setting rather than to a dead button, and that button lives on the search bar. */
   voicePanel: boolean
   /** Dot position keyed by display id, so each monitor remembers its own spot. */
@@ -47,7 +47,7 @@ export const DEFAULT_CONFIG: EzzyConfig = {
   lastDisplayId: null
 }
 
-/** Window geometry (PLAN.md §6).
+/** Window geometry.
  *
  *  The glass circle is 56px and the hover pill opens to at most 212px. The dot window is
  *  created at the PILL size and never resized: resizing a transparent window on Windows
@@ -59,7 +59,7 @@ export const DEFAULT_CONFIG: EzzyConfig = {
  *  see setDotInteractive. DOT_SLACK is transparent margin the drop shadow can fall into. */
 export const DOT_VISUAL = 56
 export const PILL_VISUAL = 212
-/** The pill's other ceiling. §6 ends the hover-pill section with "later the same pill carries
+/** The pill's other ceiling. Ends the hover-pill section with "later the same pill carries
  *  state — a waveform while listening, 'didn't catch that' on a failed command. Keep it as one
  *  reusable component", and chunk E is that later: the pill is where a voice command reports
  *  itself once the panel has gone.
@@ -75,10 +75,10 @@ export const DOT_SLACK = 16
 export const DOT_WINDOW = DOT_VISUAL + DOT_SLACK * 2
 export const PILL_WINDOW = STATUS_VISUAL + DOT_SLACK * 2
 export const DOT_GLYPH_SIZE = 32
-/** §6: the search bar and the panel are two separate windows that show, hide and move as a
+/** The search bar and the panel are two separate windows that show, hide and move as a
  *  unit, 11px apart — not one window with a divider.
  *
- *  Both are `transparent: true`. §6 originally specified `backgroundMaterial: 'acrylic'`,
+ *  Both are `transparent: true`. Originally specified `backgroundMaterial: 'acrylic'`,
  *  but acrylic tints the surface with the Windows theme and on a dark theme that reads as a
  *  dark slab rather than glass. Transparency was chosen over frosting deliberately: the
  *  trade is that the desktop behind is clear rather than blurred, since CSS backdrop-filter
@@ -95,7 +95,7 @@ export const PANEL_GAP = 12
  *  its own. The renderer still measures it rather than computing it here, so panel.css stays
  *  the single source of the arithmetic — these two only bound what the renderer may ask for.
  *
- *  This is a deliberate departure from §6, which has the panel hug its content behind a
+ *  This is a deliberate departure, which has the panel hug its content behind a
  *  single scroller. Fixed sections are what keep the APPS header from sliding up the moment a
  *  window closes, and what lets an empty OPEN WINDOWS say so in place instead of vanishing. */
 export const PANEL_MIN_HEIGHT = 64
@@ -112,10 +112,10 @@ export const PANEL_HEADROOM = 2
 
 /** Which side of its window the pill is pinned to. The dot normally opens leftward, so the
  *  circle sits at the window's right edge; parked against the left of a display it mirrors
- *  and opens rightward instead (§6). */
+ *  and opens rightward instead. */
 export type PillDirection = 'left' | 'right'
 
-/** One switchable window, as the panel renders it (PLAN.md §6, row spec).
+/** One switchable window, as the panel renders it.
  *  `id` is the HWND. Window handles carry only 32 significant bits, so they survive the trip
  *  through IPC as ordinary numbers. */
 export interface EzzyWindow {
@@ -142,8 +142,8 @@ export interface EzzyApp {
 }
 
 /** Something the query names directly rather than something the index found: a URL or a
- *  path that exists on disk. Offered as its own row above the two sections (§8 chunk C,
- *  "shell.openPath / shell.openExternal fallback for paths and URLs"). */
+ *  path that exists on disk. Offered as its own row above the two sections — the
+ *  fallback for paths and URLs the launcher was always meant to have. */
 export interface DirectTarget {
   kind: 'url' | 'path'
   /** What the row shows as its title — the query as the user typed it. */
@@ -177,15 +177,15 @@ export type NavKey = 'up' | 'down' | 'enter'
  *  across IPC on every keystroke. */
 export const MAX_APP_ROWS = 12
 
-/** What the voice path is doing, as the search bar draws it (§6 puts the mic glyph and the
- *  listening pulse there). One value, not a set of flags: the states are mutually exclusive
+/** What the voice path is doing, as the search bar draws it — the mic glyph and the
+ *  listening pulse live there. One value, not a set of flags: the states are mutually exclusive
  *  and the renderer should never have to work out which of several booleans wins.
  *
  *  The transcript itself is not in here. Chunk E is what shows the user what was heard; chunk
  *  D only has to say what is happening and, when a command misses, why. */
 export type VoiceState =
   | { kind: 'idle' }
-  /** First run: the speech model is coming down (§3 — downloaded, not bundled). */
+  /** First run: the speech model is coming down. */
   | { kind: 'downloading'; percent: number }
   | { kind: 'listening' }
   /** Between the key coming up and the command running: transcribing, and possibly still
@@ -224,19 +224,19 @@ export type VoiceCapture =
  *  with, because the exception itself must not cross the bridge. */
 export type VoiceFailure = 'denied' | 'no-device' | 'failed'
 
-/** Everything the settings window draws (PLAN.md §8 chunk F). It is a fourth window and a
+/** Everything the settings window draws. It is a fourth window and a
  *  cold renderer, so it asks for all of this once on open rather than assembling it from
  *  four round trips. */
 export interface SettingsSnapshot {
   config: EzzyConfig
   /** The accelerator actually in force, which is not always `config.hotkey` — another app may
-   *  have owned it first (§5). Null when every candidate was taken. */
+   *  have owned it first. Null when every candidate was taken. */
   activeHotkey: string | null
   version: string
   /** False in dev. `openAtLogin` and the updater both do nothing outside a packaged build,
    *  and the window says so rather than offering controls that quietly no-op. */
   packaged: boolean
-  /** The log file §8 asks for, so the window can point at the file users attach to issues. */
+  /** The log file the plan asks for, so the window can point at the file users attach to issues. */
   logPath: string
 }
 
@@ -251,7 +251,7 @@ export interface SettingsResult {
   hotkeyError: string | null
 }
 
-/** Where the auto-updater is (PLAN.md §8 chunk F). Drawn by the settings window and reduced
+/** Where the auto-updater is. Drawn by the settings window and reduced
  *  to one line in the tray menu. */
 export type UpdateStatus =
   | { kind: 'idle' }
@@ -327,7 +327,7 @@ export interface EzzyApi {
   closePanel(): void
   getHotkey(): Promise<string>
   /** The cached window list and app index. Reads variables in the main process — no OS
-   *  enumeration happens here, which is what keeps the panel inside §7's 50ms budget. */
+   *  enumeration happens here, which is what keeps the panel inside the 50ms budget. */
   getPanelData(): Promise<PanelData>
   /** Fires while the panel is open, so a window that opens or is renamed behind it shows up
    *  without the user closing and reopening. Returns an unsubscribe function. */
@@ -341,7 +341,7 @@ export interface EzzyApi {
   onPanelShown(callback: (data: PanelData) => void): () => void
   /** Starts an installed app that is not running. Resolves false if Windows refused. */
   launchApp(id: string): Promise<boolean>
-  /** The panel hugs its content (§6 shows it sized to the list, not a fixed slab), so the
+  /** The panel hugs its content, so the
    *  renderer measures the rendered rows and the main process resizes the window to match. */
   setPanelHeight(height: number): void
   /** Reports what has been typed. The matching itself runs in the main process, which is
@@ -373,16 +373,16 @@ export interface EzzyApi {
   sendVoiceAudio(wav: ArrayBuffer): void
   /** Recording could not start. Sent instead of the audio, so main stops waiting for it. */
   reportVoiceFailure(kind: VoiceFailure): void
-  /** Opens Windows' microphone privacy page — §5: a blocked mic must lead somewhere, not to
+  /** Opens Windows' microphone privacy page — a blocked mic must lead somewhere, not to
    *  a dead button. */
   openMicSettings(): void
-  /** Windows' touchpad page, for the gesture mapping §1 asks users to set up themselves —
+  /** Windows' touchpad page, for the gesture mapping the plan asks users to set up themselves —
    *  Ezzy reads no gestures of its own. */
   openTouchpadSettings(): void
   /** The mic button on the search bar. Starts listening if it is not, sends what it has if it
    *  is — a click cannot be held down the way the hotkey is, so the same button ends it. */
   toggleVoice(): void
-  /** Something to say out loud. §5: `speechSynthesis` is a web API and does not exist in the
+  /** Something to say out loud. `speechSynthesis` is a web API and does not exist in the
    *  main process, so the sentence is decided there and spoken here. Only the dot's renderer
    *  subscribes — it is the one window that is always alive, and the confirmation for a
    *  command usually arrives after the panel has already gone. An empty string means stop
@@ -400,7 +400,7 @@ export interface EzzyApi {
    *  the state that was asked for, since Windows can refuse a hotkey. */
   setSettings(patch: Partial<EzzyConfig>): Promise<SettingsResult>
   closeSettings(): void
-  /** Opens the log file §8 asks for, in whatever the machine uses for .log. */
+  /** Opens the log file the plan asks for, in whatever the machine uses for.log. */
   openLogFile(): void
   /** A crash in a renderer, on its way to that same log file. The error object itself does
    *  not cross the bridge — only the page it happened on and what it said. */

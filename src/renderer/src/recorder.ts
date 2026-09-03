@@ -1,4 +1,4 @@
-/** The microphone half of push-to-talk (PLAN.md §8 chunk D).
+/** The microphone half of push-to-talk.
  *
  *  This runs in the **dot** window, which draws none of it. `getUserMedia` is a web API with no
  *  main-process equivalent, so recording has to happen in a renderer, and the dot is the only
@@ -53,8 +53,8 @@ const KEEP_WARM_MS = 20_000
 const PREROLL_MS = 500
 const PREROLL_BLOCKS = Math.ceil((PREROLL_MS / 1000) * (SAMPLE_RATE / BUFFER_FRAMES))
 
-/** Hands-free capture, for the mic button (§8 chunk D gave voice a key to hold; a click has
- *  no equivalent). The recorder decides when the sentence ended, from the signal it is already
+/** Hands-free capture, for the mic button. Voice was given a key to hold; a click has
+ *  no equivalent. The recorder decides when the sentence ended, from the signal it is already
  *  copying block by block — no analyser node, no library, no model.
  *
  *  The threshold is measured rather than assumed, because "loud" depends on the room, the
@@ -198,7 +198,7 @@ async function start(handsFree = false): Promise<void> {
   source.connect(processor)
   processor.connect(silence)
   silence.connect(context.destination)
-  // §7 asks for every stage to be measured. Opening the device is the one part of the voice
+  // Every stage is measured. Opening the device is the one part of the voice
   // path that happens while the user is still talking, so its cost is the cost of a clipped
   // first word. Forwarded to the main process's --verbose log by windows.ts.
   console.log(`microphone open in ${(performance.now() - startedAt).toFixed(0)}ms`)
@@ -384,7 +384,7 @@ function encodeWav(blocks: Float32Array[]): ArrayBuffer {
 /** The DOMException never crosses the bridge — only which of the three failures it was. */
 function classify(error: unknown): 'denied' | 'no-device' | 'failed' {
   const name = error instanceof DOMException ? error.name : ''
-  // §5: Windows Settings > Privacy > Microphone blocks this silently, and Chromium reports the
+  // Windows Settings > Privacy > Microphone blocks this silently, and Chromium reports the
   // block as an ordinary permission denial.
   if (name === 'NotAllowedError' || name === 'SecurityError') return 'denied'
   if (name === 'NotFoundError' || name === 'OverconstrainedError') return 'no-device'

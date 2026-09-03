@@ -1,7 +1,7 @@
-/** PLAN.md §5, item 5: Ezzy has to survive a restart to feel permanent.
+/** Ezzy has to survive a restart to feel permanent.
  *
  *  Its own file because two places set it — startup, and the settings window's startup toggle
- *  (§8 chunk F) — and because both need the same caveat. In dev this registers the Electron
+ *  — and because both need the same caveat. In dev this registers the Electron
  *  binary rather than Ezzy, so it is applied to packaged builds only, which is also the only
  *  place it can honestly be tested. */
 

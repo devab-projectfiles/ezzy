@@ -1,11 +1,11 @@
-/** The command registry (PLAN.md §4).
+/** The command registry.
  *
  *  Commands are **data, not `if/else`**. A handler never asks what the user said — it is
  *  handed the groups its own pattern captured, and the registry is what decides which handler
- *  that is. §4 calls this the single most important structural decision in the app: it is what
+ *  that is. It is the single most important structural decision in the app: it is what
  *  makes adding a command a small file rather than a refactor.
  *
- *  This file knows nothing about voice. It takes text, which is what §4 asks for — "tested
+ *  This file knows nothing about voice. It takes text, which is what the plan asks for — "tested
  *  against transcript or typed input" — and chunk D only feeds it the one source. */
 
 import { log } from '../verbose'
@@ -27,7 +27,7 @@ export interface Command {
   /** Tested against the normalised transcript. */
   match: RegExp
   run: (groups: RegExpMatchArray, ctx: CommandContext) => Promise<void>
-  /** For the spoken and visual confirmation (§4). */
+  /** For the spoken and visual confirmation. */
   describe: (groups: RegExpMatchArray) => string
 }
 
@@ -91,7 +91,7 @@ const NON_SPEECH = /\[[^\]]*\]|\([^)]*\)|\*[^*]*\*/g
 
 /** Reduce a raw transcript to the text the patterns are written against.
  *
- *  Pure and exported on purpose — §10 puts transcript normalisation in the layer that is
+ *  Pure and exported on purpose — the plan puts transcript normalisation in the layer that is
  *  actually testable, alongside command matching and fuzzy resolution. */
 export function normaliseTranscript(raw: string): string {
   let text = raw.toLowerCase().replace(NON_SPEECH, ' ')

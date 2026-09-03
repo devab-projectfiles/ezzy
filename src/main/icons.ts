@@ -1,4 +1,4 @@
-/** Icons for the panel's rows (PLAN.md §8 chunk C, "Extract icons").
+/** Icons for the panel's rows.
  *
  *  The shell already knows what every `.lnk` and every `.exe` looks like, and Electron
  *  exposes that through `app.getFileIcon` — so nothing here parses an ICO, an PE resource

@@ -1,14 +1,14 @@
-/** The v1 commands, registered as data (PLAN.md §4).
+/** The v1 commands, registered as data.
  *
- *  §4's `pause/play`, `next` and `previous` arrived with chunk E, which is where §8 puts the
- *  `VK_MEDIA_*` codes they need. They are the shape §4 promised: a pattern, one call, and a
+ *  the `pause/play`, `next` and `previous` arrived with chunk E, which is where the plan puts the
+ *  `VK_MEDIA_*` codes they need. They are the shape the plan promised: a pattern, one call, and a
  *  sentence to say afterwards.
  *
- *  `close X`, `close all windows` and the three power commands are not in §4's list at all.
- *  They were asked for after chunk D shipped, and they are exactly the shape §4 predicted: a
+ *  `close X`, `close all windows` and the three power commands are not in the list at all.
+ *  They were asked for after chunk D shipped, and they are exactly the shape the plan predicted: a
  *  pattern, a resolver and twenty lines.
  *
- *  **`switch to X` and `open X` do the same thing**, on purpose. §4 gives `open X` the ladder
+ *  **`switch to X` and `open X` do the same thing**, on purpose. The plan gives `open X` the ladder
  *  — live window, installed app, file path, URL — and stops `switch to X` at the first rung,
  *  which is defensible right up until someone says "switch to Spotify" with Spotify closed and
  *  is told it is not open, having watched "open Spotify" work a second earlier. The verbs are
@@ -85,7 +85,7 @@ const BARE_MAX_WORDS = 4
 
 /** What whisper writes when it is given a room rather than a sentence.
  *
- *  §5 warns that it invents confident text out of silence, and the empty-transcript check
+ *  Whisper invents confident text out of silence, and the empty-transcript check
  *  catches the obvious half of that. This is the other half, found in use: a click of the mic
  *  in a quiet room came back as "The", `bare-target` took it as a name, fuzzy matching found
  *  something close enough, and Ezzy opened an app nobody asked for. Twice.
@@ -336,7 +336,7 @@ export function registerBuiltinCommands(): void {
   })
 }
 
-/** §4's ladder: live window, installed app, file path, URL.
+/** the ladder: live window, installed app, file path, URL.
  *
  *  The two lists are searched in turn rather than ranked together, and that order is load
  *  bearing: measured, one combined ranking gave "open notepad" to the app index — an exact

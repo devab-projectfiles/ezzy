@@ -1,4 +1,4 @@
-/** The renderer half of PLAN.md §8 chunk F's "error boundary + a log file".
+/** The renderer half of the plan the "error boundary + a log file".
  *
  *  Ezzy's windows are frameless, transparent and have no console anyone will ever open, so a
  *  React error is normally invisible twice over: React unmounts the tree, and the window is

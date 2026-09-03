@@ -29,7 +29,7 @@ function Dot(): React.JSX.Element {
    *  not a hover the user asked for — so the pill stays shut until the cursor leaves. */
   const suppressed = useRef(false)
 
-  // §5: `speechSynthesis` is renderer-only, and this is the renderer that never goes away —
+  // `speechSynthesis` is renderer-only, and this is the renderer that never goes away —
   // a confirmation almost always arrives just after the panel has been dismissed. Nothing
   // about it is decided here; main/speech.ts sends the finished sentence.
   useEffect(() => {
@@ -41,7 +41,7 @@ function Dot(): React.JSX.Element {
     }
   }, [])
 
-  // §6, "the hover pill": "later the same pill carries state — a waveform while listening,
+  // the plan, "the hover pill": "later the same pill carries state — a waveform while listening,
   // 'didn't catch that' on a failed command. Keep it as one reusable component."
   //
   // So chunk E's visual feedback is this, and not a card of its own. The main process only

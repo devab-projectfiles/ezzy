@@ -1,14 +1,14 @@
 import { useEffect, useRef, useState } from 'react'
 import type { VoiceState } from '../../shared/types'
 
-/** §6's search bar: its own 420x54 glass window, fully rounded, 11px above the panel.
+/** the search bar: its own 420x54 glass window, fully rounded, 11px above the panel.
  *
  *  It is the only one of the three windows that takes focus (see windows.ts), which makes it
  *  the app's keyboard. The text goes to the main process, where the matching happens; the
  *  navigation keys are forwarded to the panel, which is unfocusable and so never sees a key
  *  event of its own. Nothing about the result list is known here.
  *
- *  It is also where voice reports itself (§6 puts the mic glyph and the listening pulse here).
+ *  It is also where voice reports itself.
  *  It does no recording — that is the dot window, which is always alive — and holds no state of
  *  its own about it: the main process sends one `VoiceState` and this draws it. */
 function SearchBar(): React.JSX.Element {
@@ -73,7 +73,7 @@ function SearchBar(): React.JSX.Element {
         }}
         onKeyDown={onKeyDown}
       />
-      {/* §5: a microphone Windows has blocked must lead to the setting that unblocks it. */}
+      {/* A microphone Windows has blocked must lead to the setting that unblocks it. */}
       {blocked && (
         <button type="button" className="searchbar__action" onClick={window.ezzy.openMicSettings}>
           Settings
@@ -133,7 +133,7 @@ function SearchBar(): React.JSX.Element {
   }
 }
 
-/** 18px, 72% white (§6). */
+/** 18px, 72% white. */
 function SearchGlyph(): React.JSX.Element {
   return (
     <svg className="searchbar__search" viewBox="0 0 18 18" aria-hidden="true">
@@ -165,7 +165,7 @@ function statusText(voice: VoiceState): string | null {
   }
 }
 
-/** 19px, 92% white (§6). While listening it is the rim that pulses and not this glyph, so the
+/** 19px, 92% white. While listening it is the rim that pulses and not this glyph, so the
  *  only thing that changes here is its weight. */
 function MicGlyph({ state }: { state: VoiceState['kind'] }): React.JSX.Element {
   return (

@@ -4,15 +4,15 @@ import { DEFAULT_CONFIG } from '../../shared/types'
 interface Props {
   /** What the config asks for. */
   hotkey: string
-  /** What Windows actually gave us, which is not always the same (§5). */
+  /** What Windows actually gave us, which is not always the same. */
   active: string | null
   error: string | null
   onChange: (hotkey: string) => void
 }
 
-/** The hotkey recorder (PLAN.md §8 chunk F).
+/** The hotkey recorder.
  *
- *  §5 requires the hotkey to be configurable from day one — Alt+Space is the Windows system
+ *  The hotkey has to be configurable from day one — Alt+Space is the Windows system
  *  menu and every launcher on the machine wants it — and until this window existed the only
  *  way to change it was to hand-edit config.json.
  *
@@ -63,7 +63,7 @@ function HotkeyField({ hotkey, active, error, onChange }: Props): React.JSX.Elem
             : 'Tap it for the panel, hold it to speak.'}
         </span>
       </span>
-      {/* Alt+Space cannot be recorded: it is the Windows system menu (§5), so pressing it over
+      {/* Alt+Space cannot be recorded: it is the Windows system menu, so pressing it over
           a framed window opens that menu and the field only ever sees the Space. Which would
           leave the default unreachable for anyone who changed away from it — hence a button
           rather than a keystroke. */}

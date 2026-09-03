@@ -1,6 +1,6 @@
 @import './base.css';
 
-/* §6's panel recipe: 420 wide, 24px radius, 10px 8px inner padding, fill 0.13, rim 0.36,
+/* the panel recipe: 420 wide, 24px radius, 10px 8px inner padding, fill 0.13, rim 0.36,
    plus the dual rim's dark contrast ring. The window is transparent, so this radius is the
    real edge of the surface and it is anti-aliased. */
 .panel {
@@ -44,7 +44,7 @@
   box-shadow:
     var(--glass-inner),
     inset 0 0 0 1px var(--rim-contrast-panel);
-  /* §6: 220ms entrance. It replays on every open because the panel is keyed by its open
+  /* A 220ms entrance. It replays on every open because the panel is keyed by its open
      count in Panel.tsx — the window is hidden and shown, never rebuilt, so without that
      key the animation would run exactly once in the app's lifetime. */
   animation: panel-in 220ms var(--ease-glass) both;
@@ -91,7 +91,7 @@
 
    `auto`, not `scroll`: a section with no overflow does not scroll at all, so spinning the
    wheel over four windows when four are open does nothing — which is the behaviour asked
-   for, and it comes free from the browser. §1 and §6 rule out CUSTOM scroll handling; two
+   for, and it comes free from the browser. And the plan rule out CUSTOM scroll handling; two
    native scrollers are still ordinary scroll events, and two-finger scroll works in each. */
 .panel__scroll {
   position: relative;
@@ -132,7 +132,7 @@
   background: var(--glass-sheen);
 }
 
-/* §6: 1px, 8px 14px margin. Separates the two sections without boxing either of them. */
+/* 1px, with an 8px 14px margin. Separates the two sections without boxing either of them. */
 .panel__divider {
   display: block;
   height: 1px;
@@ -140,7 +140,7 @@
   background: var(--divider);
 }
 
-/* §6's header, but on a fixed height rather than padding, so the panel's total height is a
+/* the header, but on a fixed height rather than padding, so the panel's total height is a
    clean multiple of known parts. 600 rather than the inherited 400: at 11px with 0.08em of
    tracking a regular weight reads as washed out next to the 14px titles below it. */
 .panel__section {
@@ -214,7 +214,7 @@
    by the section instead of floating over a header. */
 /* The selection is painted by the selected row itself. There is no overlay element.
 
-   §6 asks for one element that SLIDES between rows, and that is what this was. It produced a
+   the plan asks for one element that SLIDES between rows, and that is what this was. It produced a
    second, unfilled outline on an unrelated row, intermittently, and three attempts to explain
    it were wrong: it was not two React elements (instrumenting the DOM across a stress run and
    a live reproduction never found more than one), it was not stale hot-reload state (it
@@ -225,7 +225,7 @@
    something that can be drawn — no absolutely-positioned element, no measured geometry that
    can drift from the rows, no animated layer.
 
-   The cost is §6's slide, and it is a real loss. Worth restoring only once this is confirmed
+   The cost is the slide, and it is a real loss. Worth restoring only once this is confirmed
    quiet, and only in a form that cannot reintroduce a free-floating element. */
 .panel__row.is-selected {
   background: var(--row-selected);
@@ -264,7 +264,7 @@
   width: 19px;
   height: 19px;
   color: var(--icon);
-  /* §6: keeps the mark legible over bright desktop content. */
+  /* Keeps the mark legible over bright desktop content. */
   filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.45));
 }
 
@@ -322,7 +322,7 @@
   color: var(--text-faint);
 }
 
-/* §6: the hint column stays reserved even when empty, so titles do not shift sideways as
+/* The hint column stays reserved even when empty, so titles do not shift sideways as
    the selection moves. Future per-app actions land here. */
 .panel__hint {
   flex: 0 0 auto;

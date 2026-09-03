@@ -1,16 +1,16 @@
-/** Spoken confirmations (PLAN.md §8 chunk E).
+/** Spoken confirmations.
  *
- *  What gets said is decided here; the saying happens in the dot's renderer, because §5 is
+ *  What gets said is decided here; the saying happens in the dot's renderer, because the plan is
  *  explicit that `speechSynthesis` is a web API with no main-process equivalent and that
  *  trying to work around that is not worth the 0.5ms an IPC hop costs.
  *
  *  **Only voice commands speak.** Someone who clicked a row or pressed Enter is looking
  *  straight at the screen and has already seen the window come forward; narrating that would
- *  be noise. §8 puts the weight on the other case — "spoken matters here, because the user
+ *  be noise. The weight belongs on the other case — "spoken matters here, because the user
  *  isn't looking at the dot when a command misses" — so a failure is announced exactly as
  *  readily as a success.
  *
- *  §7's "act before you speak" is not enforced here, it is enforced by where this is called
+ *  the "act before you speak" is not enforced here, it is enforced by where this is called
  *  from: voice.ts speaks only once the command has already run. Speech is fire-and-forget and
  *  must never sit between the user finishing their sentence and the window appearing. */
 
@@ -18,7 +18,7 @@ import { getConfig } from './config'
 import { log } from './verbose'
 import { speakInDot } from './windows'
 
-/** §8 asks for varied phrasing. Varying the whole sentence would mean every command owning
+/** Varied phrasing was asked for. Varying the whole sentence would mean every command owning
  *  several ways to describe itself; varying only what comes in front of it costs nothing and
  *  is what actually grates when repeated — the same four words, in the same order, forty times
  *  an hour. The empty leads are in the pool deliberately and are the most common outcome: the
