@@ -22,7 +22,9 @@
  *
  *  **Order matters twice**, and only one of the two is in the feature note:
  *
- *  1. YouTube before Spotify, or `play (.+)` swallows "play X on youtube". The note says so.
+ *  1. Anything that NAMES a service before the bare `play (.+)`, or the catch-all swallows
+ *     "play X on youtube" and "play X on spotify". The note says so for YouTube; the same
+ *     applies to Spotify's own search verbs.
  *  2. These two go in the middle of the builtin set, not before it. `play/pause` must keep
  *     "play", "play the music" and "play pause"; `bare-target` must NOT get "play daft punk",
  *     which it would read as an app called that. builtin.ts registers this file at the one
@@ -55,23 +57,29 @@ export type ResolveTarget = (target: string, ctx: CommandContext, strict?: boole
 const YOUTUBE =
   /^(?:play|search|find|watch|look\s+up)\s+(?:(?:on\s+)?you ?tube\s+(?:for\s+)?(.+)|(.+?)\s+on\s+you ?tube)$/
 
-/** "play bohemian rhapsody", "play lofi on spotify".
+/** "search spotify for daft punk", "play lofi on spotify", "listen to miles davis on spotify".
+ *
+ *  The same two shapes as YOUTUBE, for the same reason: naming the service is the user saying
+ *  which one they mean, whichever way round they say it. Naming it is also what makes this
+ *  unambiguously a search — "play spotify" is the app, "play something on spotify" is a
+ *  search for something — so this command never consults the launcher the way `spotify-play`
+ *  below has to. */
+const SPOTIFY_SEARCH =
+  /^(?:play|search|find|look\s+up|listen\s+to)\s+(?:(?:on\s+)?spotify\s+(?:for\s+)?(.+)|(.+?)\s+on\s+spotify)$/
+
+/** "play bohemian rhapsody" — the catch-all, with no service named.
  *
  *  The lookahead is the whole reason `play/pause` survives this file. Registration order puts
  *  the media keys first, so this pattern never sees "play the music" — but it would see it if
  *  anyone ever moved the registration, and a catch-all that quietly ate the media command
  *  would be a bad way to find that out. Belt and braces, deliberately: the alternatives mirror
- *  PLAY_PAUSE's own tail in builtin.ts.
- *
- *  `on spotify` is captured rather than discarded, because saying it out loud is the user
- *  overriding the resolution below — "play spotify" means the app, "play X on spotify" always
- *  means the search. */
+ *  PLAY_PAUSE's own tail in builtin.ts. */
 const SPOTIFY =
-  /^play(?!(?:\s+(?:the|this|that))?(?:\s+(?:music|song|track|audio|video|media|playback|it))?$|\s*[/-]?\s*pause$)\s+(.+?)(?:\s+on\s+(spotify))?$/
+  /^play(?!(?:\s+(?:the|this|that))?(?:\s+(?:music|song|track|audio|video|media|playback|it))?$|\s*[/-]?\s*pause$)\s+(.+)$/
 
-/** "play on spotify" with nothing in between — the lazy capture takes the leftovers rather
- *  than matching the optional suffix, so the guard has to name them. */
-const NOTHING_TO_PLAY = /^on\s+(?:spotify|youtube)$/
+/** "play on spotify" with nothing in between. SPOTIFY_SEARCH refuses it — it has no query to
+ *  capture — so it reaches the catch-all, where `(.+)` happily takes the leftovers. */
+const NOTHING_TO_PLAY = /^on\s+(?:spotify|you ?tube)$/
 
 /** What the last `spotify-play` run actually did, so the confirmation can say the true one.
  *
@@ -107,6 +115,21 @@ export function registerMediaSearchCommands(resolveTarget: ResolveTarget): void 
     }
   })
 
+  // Explicitly Spotify, so it always searches: no launcher, no "did you mean the app".
+  register({
+    id: 'spotify-search',
+    match: SPOTIFY_SEARCH,
+    describe: (groups) => `Searching Spotify for ${spoken(query(groups))}`,
+    run: async (groups, ctx) => {
+      const q = query(groups)
+      if (q === '') {
+        ctx.failed('Search Spotify for what?')
+        return
+      }
+      await playOnSpotify(q, ctx)
+    }
+  })
+
   register({
     id: 'spotify-play',
     match: SPOTIFY,
@@ -132,7 +155,7 @@ export function registerMediaSearchCommands(resolveTarget: ResolveTarget): void 
       // Asked strictly, and combining the two lists rather than walking them in turn, because
       // this is a yes/no about whether the words name anything — not a choice of winner. The
       // ladder picks that, the same way it does for "open X".
-      if (groups[2] === undefined && bestMatch(q, listWindows(), indexedApps(), true)) {
+      if (bestMatch(q, listWindows(), indexedApps(), true)) {
         log(`media-search: "${q}" names something on this machine, opening it instead`)
         lastRun = 'opened'
         await resolveTarget(q, ctx, true)
@@ -172,7 +195,7 @@ async function playOnSpotify(query: string, ctx: CommandContext): Promise<void> 
   hidePanel()
 }
 
-/** Whichever half of YOUTUBE matched. */
+/** Whichever half of a two-shape pattern matched — YOUTUBE or SPOTIFY_SEARCH. */
 function query(groups: RegExpMatchArray): string {
   return (groups[1] ?? groups[2] ?? '').trim()
 }
