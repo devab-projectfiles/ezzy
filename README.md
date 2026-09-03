@@ -76,9 +76,27 @@ Hold the hotkey, speak, let go:
 | "close all windows" | Asks every open window to close |
 | "open github.com" | Opens the URL, or a path that exists |
 | "play" / "pause" / "next" / "previous" | Media keys, for whatever is playing |
+| "play daft punk" | Opens Spotify on those search results — see the note below |
+| "search spotify for daft punk" | The same, said the other way round |
+| "listen to miles davis on spotify" | The same again — naming Spotify always means a search |
+| "play rust tutorial on youtube" | YouTube results for that, in your default browser |
+| "search youtube for rust tutorial" | The same, said the other way round |
 | "sleep the pc" / "hibernate" / "shut down" | Exactly that, immediately and with no confirmation |
 
 A tap of the same key still opens the panel and never touches speech recognition.
+
+**"play X" finds it; you press play.** Ezzy puts Spotify on the results for what you named
+and stops there, and that is a limit rather than an oversight. Starting a *named* track needs
+a playable id (`spotify:track:…`), and turning "daft punk" into an id means the Spotify Web
+API — an explicit non-goal (see `PLAN.md` §1), and Premium-only for playback besides. The
+obvious shortcut, firing a play key after the search, was built and removed: a media key is
+not addressed to anything, so Windows hands it to whatever owns the current media session. It
+resumes — or pauses — the track that was already there, and never the artist you just asked
+for.
+
+"play spotify" still opens Spotify itself, and "play" on its own is still the media key. A
+name that matches something on this machine wins over a search for that name; naming the
+service ("… on spotify") always means the search.
 
 The speech model (`ggml-base.en.bin`, ~141MB) downloads the first time you hold the hotkey,
 with progress shown on the dot. Voice can be turned off entirely in Settings, and off means
