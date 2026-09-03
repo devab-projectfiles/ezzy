@@ -79,7 +79,20 @@ function SearchBar(): React.JSX.Element {
           Settings
         </button>
       )}
-      <MicGlyph state={voice.kind} />
+      {/* A button, not decoration: clicking it starts listening the way holding the hotkey
+          does, for anyone whose hands are already on the mouse. `keepFocus` below stops the
+          click moving focus off the input, so the arrow keys keep working through it. */}
+      <button
+        type="button"
+        className="searchbar__mic-button"
+        title={voice.kind === 'listening' ? 'Stop listening' : 'Listen'}
+        aria-label={voice.kind === 'listening' ? 'Stop listening' : 'Listen'}
+        aria-pressed={voice.kind === 'listening'}
+        tabIndex={-1}
+        onClick={window.ezzy.toggleVoice}
+      >
+        <MicGlyph state={voice.kind} />
+      </button>
       <span className="searchbar__sheen" aria-hidden="true" />
     </div>
   )
@@ -108,7 +121,11 @@ function SearchBar(): React.JSX.Element {
 
   /** Clicking the glass around the input must not move focus off it — the pill is where the
    *  keyboard lives while the panel is open, and a click landing on the padding would
-   *  otherwise leave the arrow keys going nowhere. */
+   *  otherwise leave the arrow keys going nowhere.
+   *
+   *  This runs on mousedown, which is before the click, so preventing the default keeps focus
+   *  in the input while the button's own `onClick` still fires. That is why the mic and the
+   *  settings button need nothing else to stay usable. */
   function keepFocus(event: React.MouseEvent<HTMLDivElement>): void {
     if (event.target === inputRef.current) return
     event.preventDefault()

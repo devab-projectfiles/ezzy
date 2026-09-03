@@ -71,6 +71,7 @@ const ezzy: EzzyApi = {
   sendVoiceAudio: (wav) => ipcRenderer.send(IPC.voiceAudio, wav),
   reportVoiceFailure: (kind) => ipcRenderer.send(IPC.voiceFailed, kind),
   openMicSettings: () => ipcRenderer.send(IPC.openMicSettings),
+  toggleVoice: () => ipcRenderer.send(IPC.toggleVoice),
   onSpeak: (callback) => {
     const handler = (_event: unknown, text: string): void => callback(text)
     ipcRenderer.on(IPC.speak, handler)

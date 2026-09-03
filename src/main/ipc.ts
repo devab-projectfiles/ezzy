@@ -17,7 +17,7 @@ import { focusWindow } from './focus'
 import { dropIfGone } from './window-tracker'
 import { panelData, setQuery } from './panel-data'
 import { launchApp, openDirect, openMicrophoneSettings } from './launcher'
-import { receiveAudio, reportCaptureFailure, voiceState } from './voice'
+import { receiveAudio, reportCaptureFailure, toggleListening, voiceState } from './voice'
 import { logRendererError, openLogFile } from './logger'
 import {
   applySettings,
@@ -87,6 +87,9 @@ export function registerIpc(): void {
   ipcMain.on(IPC.voiceFailed, (_event, kind: VoiceFailure) => reportCaptureFailure(kind))
   // §5: a microphone Windows has blocked must lead to the setting, not to a dead button.
   ipcMain.on(IPC.openMicSettings, () => void openMicrophoneSettings())
+  // The mic glyph is a button now. Same machinery as the hotkey hold, different gesture —
+  // see toggleListening for why a click cannot simply reuse press-and-release.
+  ipcMain.on(IPC.toggleVoice, () => toggleListening())
 
   // ---------------------------------------------------------------- chunk F
   ipcMain.on(IPC.openSettings, () => {

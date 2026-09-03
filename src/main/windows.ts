@@ -655,11 +655,26 @@ export function publishPanelData(data: PanelData): void {
   panelWindow.webContents.send(IPC.panelChanged, data)
 }
 
+/** Told when the panel goes away, whoever closed it. Voice needs this: a microphone opened
+ *  from the search bar's own button has no other end — the button that would stop it goes with
+ *  the panel. A listener rather than a call, because voice.ts imports this file and the
+ *  dependency cannot run both ways. */
+let panelHiddenListener: (() => void) | null = null
+
+export function onPanelHidden(listener: () => void): void {
+  panelHiddenListener = listener
+}
+
 export function hidePanel(): void {
+  const wasOpen = searchWindow?.isVisible() === true
   panelWindow?.hide()
   searchWindow?.hide()
   // So the next open starts on the full list rather than on whatever was last typed.
   clearQuery()
+  // Only when it was actually up: hidePanel is called defensively from several places, and a
+  // listener that fires on a panel that was already closed would cancel a voice session the
+  // user started from the hotkey a moment earlier.
+  if (wasOpen) panelHiddenListener?.()
 }
 
 /** Send one message to the panel window. The search bar is where the typing happens, so

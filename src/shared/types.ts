@@ -287,6 +287,7 @@ export const IPC = {
   voiceAudio: 'voice:audio',
   voiceFailed: 'voice:failed',
   openMicSettings: 'voice:mic-settings',
+  toggleVoice: 'voice:toggle',
   speak: 'speech:speak',
   openSettings: 'settings:open',
   getSettings: 'settings:get',
@@ -368,6 +369,9 @@ export interface EzzyApi {
   /** Opens Windows' microphone privacy page — §5: a blocked mic must lead somewhere, not to
    *  a dead button. */
   openMicSettings(): void
+  /** The mic button on the search bar. Starts listening if it is not, sends what it has if it
+   *  is — a click cannot be held down the way the hotkey is, so the same button ends it. */
+  toggleVoice(): void
   /** Something to say out loud. §5: `speechSynthesis` is a web API and does not exist in the
    *  main process, so the sentence is decided there and spoken here. Only the dot's renderer
    *  subscribes — it is the one window that is always alive, and the confirmation for a

@@ -95,6 +95,36 @@
   background: rgba(255, 255, 255, 0.24);
 }
 
+/* The glyph is 19px per §6; the button around it is 28px so there is something to hit
+   without the icon growing. Transparent until hovered — it sits on glass, and a control that
+   is always outlined would read as a second field next to the input. */
+.searchbar__mic-button {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  margin-right: -4px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: none;
+  cursor: pointer;
+  outline: none;
+  transition: background 140ms var(--ease-glass);
+}
+
+.searchbar__mic-button:hover {
+  background: rgba(255, 255, 255, 0.12);
+}
+
+/* While it is listening the button holds the state, so it is obvious which click stops it —
+   the rim keeps the §6 pulse and the glyph stays still. */
+.searchbar__mic-button[aria-pressed='true'] {
+  background: rgba(255, 255, 255, 0.16);
+}
+
 .searchbar__mic {
   flex: 0 0 auto;
   width: 19px;

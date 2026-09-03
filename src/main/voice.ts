@@ -30,7 +30,7 @@ import {
 import { log, since } from './verbose'
 import { ensureModel, hasModel, isDownloading } from './whisper-model'
 import { listWindows } from './window-tracker'
-import { hidePanel, sendCapture, sendVoiceState, showPanelForVoice } from './windows'
+import { hidePanel, onPanelHidden, sendCapture, sendVoiceState, showPanelForVoice } from './windows'
 
 let state: VoiceState = { kind: 'idle' }
 /** The microphone is open and buffering. Set on the press, before it is known whether this
@@ -38,6 +38,12 @@ let state: VoiceState = { kind: 'idle' }
 let armed = false
 /** The press became a hold, so what is being buffered is a command. */
 let capturing = false
+/** This session was started by the search bar's mic button rather than by holding the hotkey.
+ *  A held key ends itself when it comes up; a click has to be ended by something, and the two
+ *  things that can end it — a timeout and the panel closing — only apply to this case. */
+let fromButton = false
+/** Runs only while a button-started session is open. */
+let buttonTimer: ReturnType<typeof setTimeout> | null = null
 /** Resolves when the renderer hands the recording over, or when it says it cannot. */
 let pendingAudio: ((wav: Buffer | null) => void) | null = null
 /** A microphone failure from a press that never became a hold. Held rather than announced:
@@ -63,6 +69,11 @@ const ERROR_MS = 4_000
  *  corner of an eye and confirm what was heard, and no longer. */
 const DONE_MS = 2_600
 
+/** The same guard the hotkey has, for the gesture that cannot rely on a key coming back up: a
+ *  microphone opened by a click and then forgotten would record until the app quits. Sends
+ *  what it has rather than discarding it, which is what a released key would have done. */
+const MAX_BUTTON_MS = 30_000
+
 /** A WAV header is 44 bytes and 16kHz mono PCM is 32,000 bytes a second, so this is a quarter
  *  of a second of audio. Below it the hold was a slip, not a command — usually a tap that
  *  crossed the hold threshold — and it is worth saying "I didn't catch that" without paying
@@ -82,11 +93,56 @@ export function initVoice(): void {
     onHold: () => void beginListening(),
     onRelease: (held) => void (held ? finishListening() : cancelCapture())
   })
+  // The panel going away takes the mic button with it, so a session it started has to end
+  // here. Dismissing the panel is not "send it" — the user closed the thing they were talking
+  // to — so the recording is thrown away rather than transcribed.
+  onPanelHidden(() => {
+    if (!fromButton || !capturing) return
+    log('voice: panel closed while listening, dropping the recording')
+    endButtonSession()
+    cancelCapture()
+    setState({ kind: 'idle' })
+  })
   log(isVoiceInstalled() ? 'voice: whisper.cpp found' : 'voice: whisper.cpp is not installed')
 }
 
 export function voiceState(): VoiceState {
   return state
+}
+
+/** The search bar's mic button, which is a click rather than a hold.
+ *
+ *  Push-to-talk has a natural end — you let go. A click does not, so the same button ends the
+ *  utterance: first click opens the microphone, second sends what it heard. Everything after
+ *  that is the hotkey's own path, unchanged; this only replaces the gesture.
+ *
+ *  The microphone is opened here rather than pre-armed, so unlike the hotkey there is no head
+ *  start on `getUserMedia` — speak a beat after clicking, the way the button's own listening
+ *  state tells you to. */
+export function toggleListening(): void {
+  if (!getConfig().voice) {
+    // Silence is right for a hotkey hold, which the user may not have meant as one. A click on
+    // a microphone is unambiguous, so it gets an answer.
+    fail('Voice is off — turn it on in Settings')
+    return
+  }
+  if (capturing) {
+    void finishListening()
+    return
+  }
+  fromButton = true
+  buttonTimer = setTimeout(() => {
+    log(`voice: mic button held open for ${MAX_BUTTON_MS}ms, sending what there is`)
+    void finishListening()
+  }, MAX_BUTTON_MS)
+  void beginListening('mic-button')
+}
+
+/** Both ways a button session can end come through here, so the timer never outlives it. */
+function endButtonSession(): void {
+  fromButton = false
+  if (buttonTimer) clearTimeout(buttonTimer)
+  buttonTimer = null
 }
 
 /** Voice has just been switched off in settings (§8 chunk F).
@@ -162,7 +218,7 @@ function cancelCapture(): void {
   sendCapture('cancel')
 }
 
-async function beginListening(): Promise<void> {
+async function beginListening(source: 'hotkey' | 'mic-button' = 'hotkey'): Promise<void> {
   if (capturing) return
   // §8 chunk F's voice switch. Off, a hold is just a long tap — no microphone, no download, no
   // message. Saying "voice is off" here would be worse than silence: the user turned it off,
@@ -182,15 +238,20 @@ async function beginListening(): Promise<void> {
     return
   }
 
-  // Whether the panel comes up for this is the user's call (`voicePanel`). Off — the default
-  // — the dot's pill carries the whole exchange and nothing covers what you were reading. On,
-  // it is chunk D's behaviour: the hold may have arrived on a closed panel, or on one the
-  // press just closed, so it has to be brought back up for the search bar to report on.
-  if (getConfig().voicePanel) showPanelForVoice()
-  // Quiet mode has to CLOSE a panel rather than not open one: the press toggles it before
-  // anyone knows this is a hold, and that is deliberate — §7 gives the tap a 50ms budget from
-  // the press, so the panel cannot wait 350ms to find out what kind of press it was.
-  else hidePanel()
+  // None of this applies when the mic BUTTON started it: the panel is already open, the user
+  // is looking at it, and they clicked something inside it. Closing it under them — which is
+  // what quiet mode does to a hotkey hold — would take away the thing they just used.
+  if (source === 'hotkey') {
+    // Whether the panel comes up for this is the user's call (`voicePanel`). Off — the default
+    // — the dot's pill carries the whole exchange and nothing covers what you were reading. On,
+    // it is chunk D's behaviour: the hold may have arrived on a closed panel, or on one the
+    // press just closed, so it has to be brought back up for the search bar to report on.
+    if (getConfig().voicePanel) showPanelForVoice()
+    // Quiet mode has to CLOSE a panel rather than not open one: the press toggles it before
+    // anyone knows this is a hold, and that is deliberate — §7 gives the tap a 50ms budget from
+    // the press, so the panel cannot wait 350ms to find out what kind of press it was.
+    else hidePanel()
+  }
 
   if (!hasModel()) {
     void fetchModel()
@@ -211,8 +272,10 @@ async function beginListening(): Promise<void> {
 async function finishListening(): Promise<void> {
   if (!capturing) {
     cancelCapture()
+    endButtonSession()
     return
   }
+  endButtonSession()
   capturing = false
   armed = false
   const releasedAt = performance.now()
