@@ -45,9 +45,15 @@ export type ResolveTarget = (target: string, ctx: CommandContext, strict?: boole
 /** "play X on youtube", "search youtube for X", "find me youtube rust tutorial".
  *
  *  Two shapes, because people say it both ways round and the feature note's own table has one
- *  of each. Whichever alternative matched, the query is the group that is not undefined. */
+ *  of each. Whichever alternative matched, the query is the group that is not undefined.
+ *
+ *  `you ?tube` rather than `youtube`, because this is matched against a transcript: whisper
+ *  writes the brand as one word most of the time and as "You Tube" some of the time, and the
+ *  difference between those two is the difference between a search and "I didn't understand
+ *  that". §5's rule for app names — always fuzzy, never exact — applies to the one word in
+ *  this pattern that a human actually says out loud. */
 const YOUTUBE =
-  /^(?:play|search|find|watch|look\s+up)\s+(?:(?:on\s+)?youtube\s+(?:for\s+)?(.+)|(.+?)\s+on\s+youtube)$/
+  /^(?:play|search|find|watch|look\s+up)\s+(?:(?:on\s+)?you ?tube\s+(?:for\s+)?(.+)|(.+?)\s+on\s+you ?tube)$/
 
 /** "play bohemian rhapsody", "play lofi on spotify".
  *
