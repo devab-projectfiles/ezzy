@@ -11,3 +11,13 @@ resources/whisper/
 *.exe
 .env
 *.tsbuildinfo
+
+# The build spec and the working rules are kept out of the public repo deliberately. They
+# still live in the project root on a working copy — CLAUDE.md is what holds the rules in
+# force for anyone (or anything) editing this code, and the source comments cite PLAN.md by
+# section around 213 times. A clone will not have them, so those citations point at a
+# document you have to be given rather than one you can read here. That is the accepted
+# trade: the spec carries planning material that has no business on a public README.
+PLAN.md
+CLAUDE.md
+FEATURE-*.md
