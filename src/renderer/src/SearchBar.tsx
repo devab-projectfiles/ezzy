@@ -154,6 +154,8 @@ function statusText(voice: VoiceState): string | null {
   switch (voice.kind) {
     case 'downloading':
       return `Downloading the speech model… ${voice.percent}%`
+    case 'arming':
+      return 'Getting ready…'
     case 'listening':
       return 'Listening…'
     case 'thinking':

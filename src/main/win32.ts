@@ -40,6 +40,15 @@ export const SW_RESTORE = 9
  *  run its own close handler, prompt about unsaved work, and refuse. */
 export const WM_CLOSE = 0x0010
 
+/** The message a media key turns into once Windows has decided who it is for.
+ *
+ *  Sending it ourselves is how a play/pause reaches ONE named player instead of whoever
+ *  happens to own the machine's media session. `keybd_event` cannot do that — a media key is
+ *  addressed to nothing, which is the whole reason "play music" was resuming a browser video
+ *  while Spotify sat there paused. */
+export const WM_APPCOMMAND = 0x0319
+export const APPCOMMAND_MEDIA_PLAY_PAUSE = 14
+
 /** The WinEvents we subscribe to. Subscribe, never poll EnumWindows. */
 export const EVENT_SYSTEM_FOREGROUND = 0x0003
 export const EVENT_OBJECT_CREATE = 0x8000
@@ -292,6 +301,23 @@ export function showWindow(hwnd: Hwnd, command: number): boolean {
  *  behind its own dialog. The return value only says the message was queued.  */
 export function closeWindow(hwnd: Hwnd): boolean {
   return fn.PostMessageW(hwnd, WM_CLOSE, 0, 0)
+}
+
+/** Send one APPCOMMAND to one window.
+ *
+ *  `lParam` carries the command in its high word; the low word is the key/mouse flags, and
+ *  FAPPCOMMAND_KEY is zero, so the whole of it is the command shifted up. `wParam` is the
+ *  window the command came from, which by convention is the target itself.
+ *
+ *  Posted, not sent, for the same reason `closeWindow` is: SendMessage would block Ezzy's
+ *  message loop inside another application's window procedure. The return value therefore
+ *  only says the message was queued — whether the player acted on it is not knowable from
+ *  here, which is why the confirmations say what Ezzy asked for rather than what happened.
+ *
+ *  An application that does not handle it passes it to DefWindowProc, which walks it up to
+ *  the shell — so the worst case is the same routing a bare media key would have had. */
+export function postAppCommand(hwnd: Hwnd, command: number): boolean {
+  return fn.PostMessageW(hwnd, WM_APPCOMMAND, hwnd, command << 16)
 }
 
 export function attachThreadInput(attach: number, attachTo: number, join: boolean): boolean {

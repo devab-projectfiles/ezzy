@@ -189,6 +189,7 @@
 }
 
 .searchbar__mic--thinking,
+.searchbar__mic--arming,
 .searchbar__mic--downloading {
   color: var(--text-faint);
 }

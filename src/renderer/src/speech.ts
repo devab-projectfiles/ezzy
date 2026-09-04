@@ -26,6 +26,22 @@ const RATE = 1.08
 /** The confirmation is furniture, not the thing the user is doing. */
 const VOLUME = 0.85
 
+/** How long after the last word the room still counts as loud.
+ *
+ *  `onend` fires when the synthesiser has finished, which is a moment before the last of it
+ *  has left the speakers and travelled back to the microphone. Without a tail the final
+ *  syllable of a confirmation lands at the front of the next recording on its own.
+ *
+ *  Only ever applied to a sentence that finished by itself. One that was CUT OFF — which is
+ *  what every press of the hotkey does to it — needs no tail at all: `cancel` stops the audio
+ *  rather than letting it drain, and a tail there would be a quarter second of the user's own
+ *  first word thrown away to guard against silence. */
+const ECHO_TAIL_MS = 250
+
+/** When speech last stopped, so `isSpeaking` can hold the gate open for its tail. Zero means
+ *  nothing has ever been said, which the arithmetic below reads as long ago. */
+let endedAt = 0
+
 /** In preference order, matched against the voice name. The Windows 11 natural voices are
  *  much better than the legacy SAPI ones and are worth asking for by name; everything after
  *  is a fallback for a machine that does not have them. */
@@ -46,6 +62,8 @@ export function initSpeech(): () => void {
 export function speak(text: string): void {
   const synth = window.speechSynthesis
   const wasBusy = synth.speaking || synth.pending
+  // Dropping the reference before the cancelled utterance's own event arrives is what tells
+  // `release` below that this one was interrupted rather than finished — see ECHO_TAIL_MS.
   synth.cancel()
   speaking = null
   if (text.trim() === '') return
@@ -67,7 +85,11 @@ function say(text: string): void {
   // Guarded so a late event from an utterance that was already cancelled cannot drop the
   // reference to the one that replaced it.
   const release = (): void => {
-    if (speaking === utterance) speaking = null
+    // Not the current utterance any more: it was cancelled, and `speak` already let go of it.
+    // Nothing is still coming out of the speakers, so no tail is owed.
+    if (speaking !== utterance) return
+    endedAt = performance.now()
+    speaking = null
   }
   utterance.onend = release
   utterance.onerror = (event) => {
@@ -81,6 +103,27 @@ function say(text: string): void {
   utterance.onstart = () => console.debug(`speaking: "${text}"`)
   speaking = utterance
   window.speechSynthesis.speak(utterance)
+}
+
+/** Is Ezzy's own voice in the room right now?
+ *
+ *  Asked by the recorder, which lives in this same window, for every 64ms block it captures.
+ *  Echo cancellation is off — measured, it tripled the time the microphone takes to open, and
+ *  that time comes out of the user's first word — so anything Ezzy says while the device is
+ *  open is recorded along with the user. Whisper transcribes it perfectly well, and the
+ *  command it then fails to match is Ezzy's last sentence with the user's new one on the end.
+ *
+ *  The main process silences speech the instant the hotkey goes down, so what this actually
+ *  covers is the fraction of a second between that and the sound stopping — plus the pre-roll,
+ *  which is buffered while nothing has been pressed at all.
+ *
+ *  `tail` asks whether the moments just after the last word count too. The pre-roll asks for
+ *  it, because nothing there was meant to be recorded and a stale syllable costs nothing to
+ *  discard. A live recording does not, because every block it drops is a block of the user. */
+export function isSpeaking(tail = false): boolean {
+  const synth = window.speechSynthesis
+  if (synth.speaking || synth.pending) return true
+  return tail && performance.now() - endedAt < ECHO_TAIL_MS
 }
 
 /** Local voices only where there is a choice: a network voice adds latency to something that

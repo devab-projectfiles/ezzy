@@ -208,6 +208,10 @@ function statusFor(voice: VoiceState): { message: string; heard: string | null }
   switch (voice.kind) {
     case 'downloading':
       return { message: `Downloading speech… ${voice.percent}%`, heard: null }
+    // Not "Listening…". The microphone is still opening, and telling someone to talk into a
+    // device that is not capturing yet is how the first word went missing.
+    case 'arming':
+      return { message: 'Getting ready…', heard: null }
     case 'listening':
       return { message: 'Listening…', heard: null }
     case 'thinking':
@@ -245,6 +249,17 @@ function StateGlyph({ kind }: { kind: VoiceState['kind'] }): React.JSX.Element {
           <path d="M10 3.5v9" {...stroke} strokeLinecap="round" />
           <path d="M6.2 9 10 12.8 13.8 9" {...stroke} strokeLinecap="round" />
           <path d="M4.5 15.5h11" {...stroke} strokeLinecap="round" />
+        </svg>
+      )
+    case 'arming':
+      // The same three dots as `thinking`, flickering together rather than travelling — this
+      // is a wait to be interrupted rather than one to be sat out, and the difference in the
+      // animation is what the user reads before they read the words.
+      return (
+        <svg viewBox="0 0 20 20" className="pill__dots pill__dots--arming">
+          <circle cx="4.6" cy="10" r="1.5" fill="currentColor" />
+          <circle cx="10" cy="10" r="1.5" fill="currentColor" />
+          <circle cx="15.4" cy="10" r="1.5" fill="currentColor" />
         </svg>
       )
     case 'thinking':

@@ -18,6 +18,8 @@
  *  exactly while Ezzy has the microphone, because that indicator is the user's only real
  *  guarantee about an app like this one. */
 
+import { isSpeaking } from './speech'
+
 /** What whisper wants: 16kHz mono. The AudioContext resamples the device's own rate for us. */
 const SAMPLE_RATE = 16_000
 
@@ -49,7 +51,8 @@ const KEEP_WARM_MS = 20_000
  *  Measured, a warm 2000ms press captured 1792ms of itself without this and 2560ms with it.
  *
  *  Only ever filled while the device is already open for a command that just ran, and thrown
- *  away with everything else when it closes. */
+ *  away with everything else when it closes — and emptied outright while Ezzy is speaking,
+ *  since the half second before a press is exactly where its own confirmation would be. */
 const PREROLL_MS = 500
 const PREROLL_BLOCKS = Math.ceil((PREROLL_MS / 1000) * (SAMPLE_RATE / BUFFER_FRAMES))
 
@@ -96,6 +99,9 @@ let wanted = false
 /** Set when the session was started by the mic button, which has no release: the recorder ends
  *  it itself. Null for a held hotkey, which ends when the key comes up. */
 let autoStop: AutoStop | null = null
+/** Whether this session has already told the main process that audio is arriving. One message
+ *  per session, on the first block that is genuinely captured — see `announce`. */
+let announced = false
 
 interface AutoStop {
   startedAt: number
@@ -124,6 +130,7 @@ async function start(handsFree = false): Promise<void> {
     ? { startedAt: performance.now(), floor: [], threshold: MIN_SPEECH_RMS, heard: false, quiet: 0 }
     : null
   chunks = []
+  announced = false
   if (idleTimer) clearTimeout(idleTimer)
   idleTimer = null
 
@@ -133,6 +140,10 @@ async function start(handsFree = false): Promise<void> {
   if (context && processor && stream?.active) {
     chunks = preroll
     preroll = []
+    // Nothing to wait for: the graph never stopped, and the next block is at most 64ms away.
+    // Saying so now rather than on that block is what keeps a warm press from flashing
+    // "Getting ready..." for a frame before it says "Listening".
+    announce()
     return
   }
 
@@ -179,13 +190,29 @@ async function start(handsFree = false): Promise<void> {
   processor.onaudioprocess = (event) => {
     // Copied, not referenced: the event's buffer is reused for the next block.
     const block = new Float32Array(event.inputBuffer.getChannelData(0))
+    // Ezzy is talking, so this block is Ezzy. Dropped rather than recorded: with echo
+    // cancellation off the confirmation comes back in through the microphone, and a recording
+    // that opens with the tail of "Switching to Chrome" is transcribed as exactly that and
+    // then matched against the commands as one sentence with whatever the user said next.
+    //
+    // A dropped block is safe for everything downstream. A gap in the audio is a gap, and the
+    // hands-free timers below are driven by the clock rather than by the block count.
     if (wanted) {
+      // No tail here: the press has already cut the confirmation off, and waiting out a tail
+      // that has nothing left to play would spend the user's first word on it.
+      if (isSpeaking()) return
+      announce()
       chunks.push(block)
       if (autoStop && endOfUtterance(block, autoStop)) void stop(true)
       return
     }
     // Between commands, while the device is still open. Kept only long enough to cover the
-    // start of the next one.
+    // start of the next one — and only when the room is the user's. Everything held here was
+    // recorded before anything was pressed, so there is no cost to being strict about it.
+    if (isSpeaking(true)) {
+      preroll = []
+      return
+    }
     preroll.push(block)
     if (preroll.length > PREROLL_BLOCKS) preroll.shift()
   }
@@ -236,6 +263,18 @@ async function stop(send: boolean): Promise<void> {
   const wav = encodeWav(recorded)
   console.log(`recorded ${(((wav.byteLength - 44) / 2 / SAMPLE_RATE) * 1000).toFixed(0)}ms`)
   window.ezzy.sendVoiceAudio(wav)
+}
+
+/** Tell the main process the microphone is live, once per session.
+ *
+ *  Sent on a captured block rather than when `getUserMedia` resolves, because the promise is
+ *  only half of it: the AudioContext still has to be built, resumed and pulled, and a graph
+ *  that is not running looks exactly like a microphone that is not there. A block in hand is
+ *  the first moment "listening" is a true word. */
+function announce(): void {
+  if (announced) return
+  announced = true
+  window.ezzy.reportMicLive()
 }
 
 /** Leave the device open for a moment in case another command follows. */

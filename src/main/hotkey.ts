@@ -115,9 +115,14 @@ function tryRegister(accelerator: string): boolean {
  *  the repeats are dropped: the press is over when the key comes back up, not before. */
 function onHotkey(): void {
   if (holdPoll) return
+  // The microphone first, the panel second. Opening the audio device is the one thing on this
+  // path that is already costing the user words — a cold device takes 225-960ms and records
+  // nothing while it opens — and showing the panel is a window show, a bounds calculation and
+  // two IPC sends that would otherwise all happen in front of it. A tap notices no difference;
+  // a hold gets its head start back.
+  if (holdKey !== null) hold?.onPress()
   trigger()
   if (holdKey === null) return
-  hold?.onPress()
   watchTheKey(holdKey)
 }
 

@@ -17,7 +17,7 @@
 import { indexedApps } from '../app-index'
 import { focusWindow } from '../focus'
 import { launchApp, openDirect, resolveDirect } from '../launcher'
-import { nextTrack, playPause, previousTrack } from '../media-keys'
+import { nextTrack, playPause, playPauseIn, previousTrack } from '../media-keys'
 import { hibernateMachine, shutDownMachine, sleepMachine } from '../power'
 import { bestMatch, spokenVariants } from '../search'
 import { listWindows } from '../window-tracker'
@@ -25,6 +25,7 @@ import { closeWindow } from '../win32'
 import { hidePanel } from '../windows'
 import { log } from '../verbose'
 import { registerMediaSearchCommands } from './media-search'
+import { musicPlayerWindow, registerPlaybackCommands } from './playback'
 import { registerSystemCommands } from './system'
 import { CommandContext, register } from './registry'
 
@@ -58,9 +59,20 @@ const CLOSE_NAMED = /^(?:close|quit|kill)\s+(?:the\s+)?(.+?)(?:\s+window)?$/
  *  Anchored to the whole utterance and allowing only a handful of objects after the verb, so
  *  that "play spotify" and "start notion" fall through to OPEN rather than being answered by
  *  toggling whatever happens to be playing. That is the only reason these can sit above the
- *  verbs without shadowing them. */
+ *  verbs without shadowing them.
+ *
+ *  **"pose" is "pause".** Spoken in an Ethiopian accent the two are the same word, and whisper
+ *  writes down the one it hears — so "pose the music" arrived, matched nothing, and was
+ *  answered with "I didn't understand". This is not a mis-transcription to be corrected
+ *  upstream: it is a correct transcription of how the word is said here, and the command is
+ *  what has to accept it. Nothing on a Start Menu is called Pose, so the alternative costs
+ *  nothing. It is the one word normalisation could not fix either — rewriting "pose" globally
+ *  would break the day someone installs an app by that name. */
 const PLAY_PAUSE =
-  /^(?:(play|pause|resume|unpause)|play\s*[/-]?\s*pause|toggle)(?:\s+(?:the|this|that))?(?:\s+(?:music|song|track|audio|video|media|playback|it))?$/
+  /^(?:(play|pause|pose|resume|unpause)|play\s*[/-]?\s*pause|toggle)(?:\s+(?:the|this|that))?(?:\s+(?:music|song|track|audio|video|media|playback|it))?$/
+
+/** The verbs above that mean stop, "pose" among them. */
+const PAUSING = new Set(['pause', 'pose'])
 
 /** "next", "next track", "skip", "skip this song". */
 const NEXT_TRACK = /^(?:next|skip|forward)(?:\s+(?:the|this|that))?(?:\s+(?:track|song|one|it))?$/
@@ -146,6 +158,11 @@ const NOT_A_TARGET = new Set([
   'who'
 ])
 
+/** Which player the last `play-pause` was addressed to, so the confirmation can name it. Read
+ *  by `describe` immediately after the same command's `run`, one command at a time — the same
+ *  arrangement, and the same reasoning, as `lastRun` in media-search.ts. */
+let playPauseTarget: string | null = null
+
 export function registerBuiltinCommands(): void {
   // The three that cannot be undone, first in the list. Each matches a whole utterance and
   // nothing else, so they shadow nothing — while the other way round, "go to sleep" was being
@@ -195,10 +212,22 @@ export function registerBuiltinCommands(): void {
     // One key toggles both, so the verb the user chose is the only evidence of which one they
     // meant. Echoing it back is honest — Ezzy genuinely does not know whether anything was
     // playing — and it reads as an answer rather than as a shrug.
-    describe: (groups) =>
-      groups[1] === 'pause' ? 'Pausing' : groups[1] ? 'Playing' : 'Play/pause',
+    //
+    // The player IS named when there is one, and that is not decoration: the whole complaint
+    // this addresses was that the command reached the wrong application, so which one it
+    // reached is the useful half of the answer.
+    describe: (groups) => {
+      const verb = PAUSING.has(groups[1]) ? 'Pausing' : groups[1] ? 'Playing' : 'Play/pause'
+      return playPauseTarget === null ? verb : `${verb} ${playPauseTarget}`
+    },
     run: async () => {
-      playPause()
+      // A dedicated player if one is running, Spotify if not, and the bare media key only when
+      // neither is — which is where a browser video is picked up, and the only case in which
+      // Windows' own routing is still the right answer. See playback.ts.
+      const player = musicPlayerWindow()
+      playPauseTarget = player?.app ?? null
+      if (player) playPauseIn(player.id, player.app)
+      else playPause()
       hidePanel()
     }
   })
@@ -222,6 +251,16 @@ export function registerBuiltinCommands(): void {
       hidePanel()
     }
   })
+
+  // Naming a service — "play spotify", "pause youtube" — before anything that could read the
+  // name as something to search for or launch. `spotify-play` below would take "play spotify"
+  // as an app to open, which is what it used to mean and is no longer what is wanted while
+  // Spotify is already running; `spotify-search` would take "play the music on spotify" as a
+  // search for a band called Music. Both are cases of the registry having no fall-through:
+  // whoever matches first owns the utterance, so the more specific pattern has to be first.
+  //
+  // After `play-pause`, which matches only bare verbs and cannot see these.
+  registerPlaybackCommands(goTo)
 
   // FEATURE-media-search.md's two commands go HERE, and the position is the whole of their
   // integration. After the media keys, so "play", "play the music" and "play pause" still

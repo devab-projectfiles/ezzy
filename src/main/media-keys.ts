@@ -10,7 +10,7 @@
  *  `keybd_event` returns void: there is no failure to report. The confirmation therefore says
  *  what Ezzy did, not what happened to the music. */
 
-import { tapExtendedKey } from './win32'
+import { APPCOMMAND_MEDIA_PLAY_PAUSE, Hwnd, postAppCommand, tapExtendedKey } from './win32'
 import { log } from './verbose'
 
 const VK_MEDIA_NEXT_TRACK = 0xb0
@@ -22,6 +22,24 @@ const VK_MEDIA_PLAY_PAUSE = 0xb3
 export function playPause(): void {
   log('media: play/pause')
   tapExtendedKey(VK_MEDIA_PLAY_PAUSE)
+}
+
+/** Play/pause addressed to ONE window, rather than to the machine.
+ *
+ *  The bare media key above goes wherever Windows decides, which is whichever app most
+ *  recently owned the media session — so with Spotify paused and a video watched since, "play
+ *  music" resumed the video. WM_APPCOMMAND is the same command with a recipient on it: every
+ *  player handles it, because it is what a media key becomes after Windows has picked who it
+ *  is for.
+ *
+ *  Still a toggle, and still the only one worth sending. APPCOMMAND_MEDIA_PLAY and
+ *  APPCOMMAND_MEDIA_PAUSE exist and would say which was meant, but they are not honoured
+ *  everywhere the toggle is, and a "play" that silently does nothing is a worse answer than a
+ *  "play" that pauses something already playing. Ezzy cannot read what a player is doing, so
+ *  the confirmation echoes the user's verb rather than claiming to know. */
+export function playPauseIn(hwnd: Hwnd, name: string): void {
+  log(`media: play/pause -> ${name} (${hwnd})`)
+  postAppCommand(hwnd, APPCOMMAND_MEDIA_PLAY_PAUSE)
 }
 
 export function nextTrack(): void {

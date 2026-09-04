@@ -17,7 +17,13 @@ import { focusWindow } from './focus'
 import { dropIfGone } from './window-tracker'
 import { panelData, setQuery } from './panel-data'
 import { launchApp, openDirect, openMicrophoneSettings, openShellTarget } from './launcher'
-import { receiveAudio, reportCaptureFailure, toggleListening, voiceState } from './voice'
+import {
+  receiveAudio,
+  reportCaptureFailure,
+  reportMicLive,
+  toggleListening,
+  voiceState
+} from './voice'
 import { logRendererError, openLogFile } from './logger'
 import {
   applySettings,
@@ -83,6 +89,8 @@ export function registerIpc(): void {
   // halves of push-to-talk cross here. Neither renderer decides anything: the dot is told when
   // to record and hands back bytes, and the search bar is told what to display.
   ipcMain.handle(IPC.getVoiceState, () => voiceState())
+  // The device is open and audio is arriving. Only now is it honest to say "listening".
+  ipcMain.on(IPC.voiceReady, () => reportMicLive())
   ipcMain.on(IPC.voiceAudio, (_event, wav: ArrayBuffer) => receiveAudio(Buffer.from(wav)))
   ipcMain.on(IPC.voiceFailed, (_event, kind: VoiceFailure) => reportCaptureFailure(kind))
   // A microphone Windows has blocked must lead to the setting, not to a dead button.

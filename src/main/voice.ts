@@ -38,6 +38,16 @@ let state: VoiceState = { kind: 'idle' }
 let armed = false
 /** The press became a hold, so what is being buffered is a command. */
 let capturing = false
+/** Whether the recorder has reported that the microphone is actually delivering audio.
+ *
+ *  Reset at the start of every session and set by `reportMicLive`. A warm graph answers within
+ *  one 64ms block; a cold one takes 225-960ms to open the device, and none of that time
+ *  records anything. Which of the two happened is the difference between "Listening..." and
+ *  "Getting ready...", and the user starts talking on the strength of that word. */
+let micLive = false
+/** When the microphone was asked for, so the wait for it can be measured rather than guessed
+ *  at. This is the number the whole `arming` state exists because of. */
+let armedAt = 0
 /** This session was started by the search bar's mic button rather than by holding the hotkey.
  *  A held key ends itself when it comes up; a click has to be ended by something, and the two
  *  things that can end it — a timeout and the panel closing — only apply to this case. */
@@ -202,10 +212,22 @@ function fail(message: string, micBlocked = false): void {
 function armCapture(): void {
   if (armed || !getConfig().voice || !isVoiceInstalled() || !hasModel()) return
   armed = true
+  micLive = false
+  armedAt = performance.now()
+  // Silence the last confirmation HERE, on the press, rather than at the hold 350ms later.
+  //
+  // Echo cancellation is off — it tripled the time the device takes to open — so the
+  // microphone hears Ezzy's own voice out of the speakers, and the graph is still warm from
+  // the command that produced it. Hushing at the hold left those 350ms of Ezzy talking at the
+  // front of the recording, and whisper transcribed them faithfully: the end of its own last
+  // sentence, glued to the start of the user's new one, matched against as one command.
+  hush()
+  // Before the whisper server, because this is the message that opens the device and every
+  // millisecond in front of it comes out of the user's first word.
+  sendCapture('arm')
   // Started here rather than at launch and left running afterwards — the "model load is the
   // real latency". The first command of a session waits for it; the rest do not.
   startWhisperServer()
-  sendCapture('arm')
 }
 
 function cancelCapture(): void {
@@ -263,7 +285,9 @@ async function beginListening(source: 'hotkey' | 'mic-button' = 'hotkey'): Promi
     return
   }
   capturing = true
-  setState({ kind: 'listening' })
+  // "Listening" only if the device has already answered. Otherwise the surface says it is
+  // getting ready, and `reportMicLive` promotes it the moment audio starts arriving.
+  setState({ kind: micLive ? 'listening' : 'arming' })
 }
 
 async function finishListening(): Promise<void> {
@@ -316,7 +340,9 @@ async function listenHandsFree(): Promise<void> {
   startWhisperServer()
   armed = true
   capturing = true
-  setState({ kind: 'listening' })
+  micLive = false
+  armedAt = performance.now()
+  setState({ kind: 'arming' })
   sendCapture('listen')
 
   const wav = await audioFromRenderer(HANDS_FREE_TIMEOUT_MS)
@@ -326,7 +352,7 @@ async function listenHandsFree(): Promise<void> {
   capturing = false
   armed = false
   endButtonSession()
-  if (state.kind === 'listening') setState({ kind: 'thinking' })
+  if (state.kind === 'listening' || state.kind === 'arming') setState({ kind: 'thinking' })
   await transcribeAndRun(wav, finishedAt)
 }
 
@@ -397,6 +423,19 @@ function audioFromRenderer(timeoutMs = AUDIO_TIMEOUT_MS): Promise<Buffer | null>
       resolve(wav)
     }
   })
+}
+
+/** The dot's renderer has captured its first block: the device is open and audio is real.
+ *
+ *  This is the only signal either process has for that. `getUserMedia` resolving is not it —
+ *  the graph still has to be built and pulled — so the recorder waits for a block rather than
+ *  for a promise. */
+export function reportMicLive(): void {
+  micLive = true
+  // The one measurement this whole state exists for: everything before it is a word the user
+  // said into a device that was not there yet.
+  since('voice: microphone live', armedAt)
+  if (capturing && state.kind === 'arming') setState({ kind: 'listening' })
 }
 
 /** The dot's renderer has finished recording. */
@@ -484,7 +523,12 @@ function whisperPrompt(): string {
   const examples = [
     `Switch to ${names[0] ?? 'Chrome'}.`,
     `Open ${names[1] ?? 'Notepad'}.`,
-    'Close this window.'
+    'Close this window.',
+    // The media verbs earn their place: "pause" is the one command word that comes back as a
+    // different English word rather than as a mangled one, and a prompt that has just used it
+    // in a sentence is the cheapest way to make whisper prefer it.
+    'Pause the music.',
+    'Play music.'
   ].join(' ')
   return `${examples} Apps: ${list}.`
 }

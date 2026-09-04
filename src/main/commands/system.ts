@@ -93,6 +93,15 @@ const OPEN_SETTINGS = new RegExp(
   `^(?:open|show|show me|go to|take me to|launch)\\s+(?:the\\s+)?(?:settings\\s+)?(${SETTINGS_NAMES})(?:\\s+(?:settings?|page|panel))?$`
 )
 
+/** "connect to wifi", "connect wi-fi", "join a network", "connect me to the internet".
+ *
+ *  A request to connect that names no network. It has to be its own pattern and it has to come
+ *  first, because WIFI_CONNECT's `(.+?)` happily takes "wifi" as the name of a network and
+ *  answers a perfectly reasonable request with "I don't have a saved network called wifi" —
+ *  which is true, and useless. The answer to "connect to wifi" is the list. */
+const WIFI_LIST =
+  /^(?:connect|reconnect|join)(?:\s+(?:to|me\s+to))?\s+(?:the\s+|a\s+|my\s+)?(?:wifi|wi\s?-?\s?fi|wireless|internet|network|networks)$/
+
 /** "connect to home", "connect to the office wifi", "join AAU-SFA-Student". */
 const WIFI_CONNECT =
   /^(?:connect|reconnect|join)(?:\s+(?:to|me\s+to))?\s+(?:the\s+)?(.+?)(?:\s+(?:wifi|wi-fi|network))?$/
@@ -109,6 +118,26 @@ export function registerSystemCommands(): void {
       // namespace target. openMicrophoneSettings has done this since chunk D.
       if (!(await openShellTarget(uri, `${page} settings`))) {
         ctx.failed(`I couldn’t open ${page} settings`)
+        return
+      }
+      hidePanel()
+    }
+  })
+
+  // Before `wifi-connect`, which would read "wifi" as the name of a network to look for. The
+  // registry has no fall-through, so the pattern that means something more specific has to be
+  // registered ahead of the one that would swallow it.
+  register({
+    id: 'wifi-list',
+    match: WIFI_LIST,
+    describe: () => 'Here are the networks',
+    run: async (_groups, ctx) => {
+      // The saved names go in the log rather than into the sentence: the flyout this opens is
+      // already showing them, along with the ones in range, which is more than Ezzy knows.
+      const saved = await savedProfiles()
+      log(`wifi: showing the network list (${saved.length} saved)`)
+      if (!(await openShellTarget(SETTINGS_PAGES.networks, 'the network list'))) {
+        ctx.failed('I couldn’t open the network list')
         return
       }
       hidePanel()

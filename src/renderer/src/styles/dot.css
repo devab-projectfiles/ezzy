@@ -212,6 +212,7 @@
 }
 
 .pill--thinking .pill__glyph,
+.pill--arming .pill__glyph,
 .pill--downloading .pill__glyph {
   color: var(--text-faint);
 }
@@ -257,13 +258,36 @@
   }
 }
 
+/* Arming: the same three dots, flickering in unison and faster. The travelling version above
+   reads as a queue being worked through, which is what `thinking` is; this one is a device
+   coming up, and it has to be distinguishable at a glance from across the desk because it is
+   the signal for when to start talking. */
+.pill__dots--arming circle,
+.pill__dots--arming circle:nth-child(2),
+.pill__dots--arming circle:nth-child(3) {
+  animation: pill-flicker 0.5s steps(1, end) infinite;
+  animation-delay: 0s;
+}
+
+@keyframes pill-flicker {
+  0% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.28;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .pill--listening {
     animation: none;
     border-color: rgba(255, 255, 255, 0.95);
   }
 
-  .pill__dots circle {
+  .pill__dots circle,
+  .pill__dots--arming circle,
+  .pill__dots--arming circle:nth-child(2),
+  .pill__dots--arming circle:nth-child(3) {
     animation: none;
     opacity: 0.8;
   }

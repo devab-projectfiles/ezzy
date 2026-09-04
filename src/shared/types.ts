@@ -187,6 +187,15 @@ export type VoiceState =
   | { kind: 'idle' }
   /** First run: the speech model is coming down. */
   | { kind: 'downloading'; percent: number }
+  /** The hold was recognised but the microphone is not capturing yet.
+   *
+   *  Opening the audio device costs 225-960ms on a cold graph, and nothing said during it is
+   *  recorded — it is not quiet or garbled, it never existed. Before this state the surface
+   *  said "Listening..." from the moment of the hold, which is an instruction to start
+   *  talking into a device that is not there, and that is where a clipped first word came
+   *  from. So the two moments are drawn apart: this one waits, and `listening` means the
+   *  microphone is genuinely delivering audio. */
+  | { kind: 'arming' }
   | { kind: 'listening' }
   /** Between the key coming up and the command running: transcribing, and possibly still
    *  waiting for whisper-server to finish loading the model. */
@@ -290,6 +299,7 @@ export const IPC = {
   voiceState: 'voice:state',
   getVoiceState: 'voice:get-state',
   voiceCapture: 'voice:capture',
+  voiceReady: 'voice:ready',
   voiceAudio: 'voice:audio',
   voiceFailed: 'voice:failed',
   openMicSettings: 'voice:mic-settings',
@@ -368,6 +378,10 @@ export interface EzzyApi {
    *  search bar only exists while the panel is open, which is not long enough to hold a
    *  microphone open across a command. */
   onVoiceCapture(callback: (capture: VoiceCapture) => void): () => void
+  /** The microphone is now delivering audio for this session. Sent once per session, on the
+   *  first block that is actually captured, which is the only moment either process can
+   *  honestly call it listening. Everything before it is `arming`. */
+  reportMicLive(): void
   /** The recorded utterance as a 16kHz mono WAV. The main process POSTs it to whisper-server;
    *  the bytes never touch the network beyond localhost. */
   sendVoiceAudio(wav: ArrayBuffer): void
