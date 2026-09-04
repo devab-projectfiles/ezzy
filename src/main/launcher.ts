@@ -8,8 +8,10 @@
 
 import { execFile } from 'child_process'
 import { statSync } from 'fs'
+import { readdir } from 'fs/promises'
 import { homedir } from 'os'
-import { isAbsolute, normalize } from 'path'
+import { dirname, isAbsolute, join, normalize } from 'path'
+import { shell } from 'electron'
 import { DirectTarget } from '../shared/types'
 import { findApp } from './app-index'
 import { log } from './verbose'
@@ -94,6 +96,105 @@ export async function openMicrophoneSettings(): Promise<boolean> {
  *  table in this codebase, with nothing of the user's in it. */
 export async function openShellTarget(uri: string, label: string): Promise<boolean> {
   return handOff(uri, label)
+}
+
+/** Open a URL inside an installed browser app window rather than as a tab.
+
+ *
+ *  Windows has no idea these exist: a Chrome or Edge "app" is a shortcut in the Start Menu
+ *  that launches the browser with `--app-id=…`, so the browser owns the decision about where
+ *  a link opens. It is supposed to make that decision itself — an installed app with "open
+ *  supported links in this app" enabled captures its own URLs — and on this machine it does
+ *  not, with the setting on. Chrome never recorded the app under `web_apps.web_app_ids`, which
+ *  is where that preference lives, so there is nothing for it to act on.
+ *
+ *  So Ezzy asks for the app window directly. `--app=<url>` opens one frameless window on
+ *  exactly that URL, in the profile the shortcut names, which is the same profile the user is
+ *  signed into.
+ *
+ *  Returns false when no such app is installed, which is the signal to open a tab as before.
+ *  Chrome-family only — `--app=` is a Chromium flag, and a Firefox default browser simply has
+ *  no app windows to open. */
+export async function openUrlInWebApp(
+  appName: string,
+  url: string,
+  label: string
+): Promise<boolean> {
+  const app = await findWebApp(appName)
+  if (app === null) return false
+  const args = app.profile === null ? [] : [`--profile-directory=${app.profile}`]
+  args.push(`--app=${url}`)
+  return new Promise((resolve) => {
+    const child = execFile(app.exe, args, { windowsHide: true, env: shellEnvironment() })
+    child.once('error', (err) => {
+      console.error(`[ezzy] could not open ${label} in its app window:`, err)
+      resolve(false)
+    })
+    child.once('spawn', () => {
+      log(`opened ${label} in the ${appName} app window`)
+      resolve(true)
+    })
+  })
+}
+
+interface WebApp {
+  /** chrome.exe, resolved from the shortcut's own launcher. */
+  exe: string
+  /** The browser profile the app was installed under, or null when it did not say. */
+  profile: string | null
+}
+
+/** Looked up once. Installing or removing a browser app mid-session is not a thing worth
+ *  scanning the Start Menu for on every command. */
+const webApps = new Map<string, WebApp | null>()
+
+/** The Start Menu shortcut a browser writes when a site is installed as an app.
+ *
+ *  Read with `shell.readShortcutLink` rather than by parsing the binary .lnk — Electron has
+ *  it, it is Windows-only, and this whole file already is. */
+async function findWebApp(appName: string): Promise<WebApp | null> {
+  const cached = webApps.get(appName)
+  if (cached !== undefined) return cached
+
+  const roots = [
+    join(process.env['APPDATA'] ?? '', 'Microsoft\\Windows\\Start Menu\\Programs\\Chrome Apps'),
+    join(process.env['APPDATA'] ?? '', 'Microsoft\\Windows\\Start Menu\\Programs')
+  ]
+  let found: WebApp | null = null
+
+  for (const root of roots) {
+    let entries: string[] = []
+    try {
+      entries = await readdir(root)
+    } catch {
+      continue
+    }
+    for (const entry of entries) {
+      if (!entry.toLowerCase().endsWith('.lnk')) continue
+      if (!entry.slice(0, -4).toLowerCase().includes(appName.toLowerCase())) continue
+      try {
+        const link = shell.readShortcutLink(join(root, entry))
+        // `--app-id=` is what separates an installed web app from an ordinary browser
+        // shortcut. Without it this is just a link to the browser itself.
+        if (!link.args?.includes('--app-id=')) continue
+        const profile = /--profile-directory="?([^"\s]+)"?/.exec(link.args ?? '')
+        found = {
+          // The shortcut points at chrome_proxy.exe, which exists to give the app its own
+          // taskbar identity. The flags go to the browser beside it.
+          exe: join(dirname(link.target), 'chrome.exe'),
+          profile: profile ? profile[1] : null
+        }
+        break
+      } catch {
+        // A shortcut that cannot be read is one we do not use.
+      }
+    }
+    if (found) break
+  }
+
+  if (found === null) log(`no installed web app found for "${appName}"`)
+  webApps.set(appName, found)
+  return found
 }
 
 /** Open a URI through the handler its scheme is registered to — `spotify:search:…`, or a

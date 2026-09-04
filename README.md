@@ -100,7 +100,13 @@ results page and opens that video, which starts it playing. Say **search** (or "
 up") and it opens the results list and plays nothing — which is also the faster of the two,
 since finding the first video is what costs the extra second.
 
-Spotify only ever shows results, whatever verb you use, and that is not a preference either. Spotify's search page carries no track
+Spotify only ever shows results, whatever verb you use, and that is not a preference either.
+
+**If you have the YouTube app installed**, Ezzy opens the search or the video in that app's own
+window rather than as a browser tab. It finds the app from the shortcut the browser installs and
+asks for the app window directly, because Chrome's own "open supported links in this app" did not
+route these links even with the setting on. No app installed, or a non-Chromium default browser:
+you get a tab, exactly as before. Spotify's search page carries no track
 ids at all — they arrive later over an authenticated call — so there is nothing to open, and
 "play daft punk" puts Spotify on the results for you to pick from.
 

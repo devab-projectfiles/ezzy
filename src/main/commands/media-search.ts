@@ -31,7 +31,7 @@
  *     point that satisfies both — see the call site there. */
 
 import { indexedApps } from '../app-index'
-import { openProtocolUri } from '../launcher'
+import { openProtocolUri, openUrlInWebApp } from '../launcher'
 import { bestMatch } from '../search'
 import { log } from '../verbose'
 import { topVideoId } from '../youtube'
@@ -137,8 +137,16 @@ export function registerMediaSearchCommands(resolveTarget: ResolveTarget): void 
           ? `https://www.youtube.com/results?search_query=${encodeURIComponent(q)}`
           : `https://www.youtube.com/watch?v=${id}`
 
-      // Through the browser's own registered handler, not Explorer: Explorer drops any URL
-      // carrying a query string, and both of these are query strings. See `openProtocolUri`.
+      // The installed YouTube app first, if there is one. It is supposed to claim its own
+      // links and does not on this machine, with the setting on, so Ezzy asks for the app
+      // window rather than hoping the browser routes a tab into it.
+      if (await openUrlInWebApp('YouTube', url, `YouTube for ${q}`)) {
+        hidePanel()
+        return
+      }
+
+      // Otherwise a tab, through the browser's own registered handler rather than Explorer:
+      // Explorer drops any URL carrying a query string, and both of these are query strings.
       if (!(await openProtocolUri('https', url, `YouTube for ${q}`))) {
         ctx.failed('I couldn’t open YouTube')
         return
