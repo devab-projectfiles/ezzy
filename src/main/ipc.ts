@@ -91,7 +91,9 @@ export function registerIpc(): void {
   ipcMain.handle(IPC.getVoiceState, () => voiceState())
   // The device is open and audio is arriving. Only now is it honest to say "listening".
   ipcMain.on(IPC.voiceReady, () => reportMicLive())
-  ipcMain.on(IPC.voiceAudio, (_event, wav: ArrayBuffer) => receiveAudio(Buffer.from(wav)))
+  ipcMain.on(IPC.voiceAudio, (_event, wav: ArrayBuffer, spoke: boolean) =>
+    receiveAudio(Buffer.from(wav), spoke)
+  )
   ipcMain.on(IPC.voiceFailed, (_event, kind: VoiceFailure) => reportCaptureFailure(kind))
   // A microphone Windows has blocked must lead to the setting, not to a dead button.
   ipcMain.on(IPC.openMicSettings, () => void openMicrophoneSettings())

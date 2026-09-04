@@ -17,7 +17,7 @@
 import { indexedApps } from '../app-index'
 import { focusWindow } from '../focus'
 import { launchApp, openDirect, resolveDirect } from '../launcher'
-import { nextTrack, playPause, playPauseIn, previousTrack } from '../media-keys'
+import { nextTrack, playPause, previousTrack } from '../media-keys'
 import { hibernateMachine, shutDownMachine, sleepMachine } from '../power'
 import { bestMatch, spokenVariants } from '../search'
 import { listWindows } from '../window-tracker'
@@ -25,7 +25,7 @@ import { closeWindow } from '../win32'
 import { hidePanel } from '../windows'
 import { log } from '../verbose'
 import { registerMediaSearchCommands } from './media-search'
-import { musicPlayerWindow, registerPlaybackCommands } from './playback'
+import { mediaToPlayer, registerPlaybackCommands } from './playback'
 import { registerSystemCommands } from './system'
 import { CommandContext, register } from './registry'
 
@@ -162,6 +162,8 @@ const NOT_A_TARGET = new Set([
  *  by `describe` immediately after the same command's `run`, one command at a time — the same
  *  arrangement, and the same reasoning, as `lastRun` in media-search.ts. */
 let playPauseTarget: string | null = null
+/** The same, for `next-track` and `previous-track`. */
+let skipTarget: string | null = null
 
 export function registerBuiltinCommands(): void {
   // The three that cannot be undone, first in the list. Each matches a whole utterance and
@@ -224,20 +226,22 @@ export function registerBuiltinCommands(): void {
       // A dedicated player if one is running, Spotify if not, and the bare media key only when
       // neither is — which is where a browser video is picked up, and the only case in which
       // Windows' own routing is still the right answer. See playback.ts.
-      const player = musicPlayerWindow()
-      playPauseTarget = player?.app ?? null
-      if (player) playPauseIn(player.id, player.app)
-      else playPause()
+      playPauseTarget = mediaToPlayer('play-pause')
+      if (playPauseTarget === null) playPause()
       hidePanel()
     }
   })
 
+  // Skipping picks its recipient exactly the way play/pause does, and it has to: a "next" that
+  // went to a different application than the "play" a moment earlier would be worse than
+  // either behaviour on its own. Say "next song on youtube" to override the choice.
   register({
     id: 'next-track',
     match: NEXT_TRACK,
-    describe: () => 'Next track',
+    describe: () => (skipTarget === null ? 'Next track' : `Next track on ${skipTarget}`),
     run: async () => {
-      nextTrack()
+      skipTarget = mediaToPlayer('next')
+      if (skipTarget === null) nextTrack()
       hidePanel()
     }
   })
@@ -245,9 +249,10 @@ export function registerBuiltinCommands(): void {
   register({
     id: 'previous-track',
     match: PREVIOUS_TRACK,
-    describe: () => 'Previous track',
+    describe: () => (skipTarget === null ? 'Previous track' : `Previous track on ${skipTarget}`),
     run: async () => {
-      previousTrack()
+      skipTarget = mediaToPlayer('previous')
+      if (skipTarget === null) previousTrack()
       hidePanel()
     }
   })

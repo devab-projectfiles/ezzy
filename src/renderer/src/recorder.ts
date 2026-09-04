@@ -70,6 +70,16 @@ const FLOOR_MULTIPLE = 3.5
  *  up is exactly what whisper invents sentences out of — see `SILENCE` in `gainFor`. */
 const MIN_SPEECH_RMS = 0.012
 
+/** How many blocks have to clear MIN_SPEECH_RMS before a recording counts as somebody
+ *  talking. Four of them is ~256ms of sound — longer than a click, a chair or a door, shorter
+ *  than any word anyone says.
+ *
+ *  They do not have to be consecutive, deliberately: a command is louder in some places than
+ *  others, and the question being asked is "was there a voice in here at all", not "was there
+ *  a continuous one". Erring towards yes is right — the cost of a wrong yes is one wasted
+ *  transcription, and the cost of a wrong no is a command that was given and ignored. */
+const SPEECH_BLOCKS = 4
+
 /** How much quiet ends a sentence. Long enough to survive the pause between words and before
  *  a name — "switch to … Antigravity" — and short enough that the command does not sit there
  *  after the user has plainly finished. */
@@ -257,12 +267,19 @@ async function stop(send: boolean): Promise<void> {
   } else {
     keepWarm()
   }
-  // Sent even when it is a fraction of a second long: the main process is waiting for exactly
-  // one answer per hold, and it is the one that decides whether that was enough audio to be a
-  // command. Silence answered with silence is a clearer failure than a timeout.
+  // Whether anybody was talking is decided HERE, and it has to be: this is the last place the
+  // real levels exist. `encodeWav` scales a quiet recording up to fill the range, so by the
+  // time the main process has the bytes, a silent room and a spoken sentence are the same
+  // height — and whisper will write a confident sentence over either of them.
+  const spoke = hasSpeech(recorded)
+
+  // Sent even when it is a fraction of a second long, and sent even when nothing was said:
+  // the main process is waiting for exactly one answer per hold, and it is the one that turns
+  // any of this into something the user is told.
   const wav = encodeWav(recorded)
-  console.log(`recorded ${(((wav.byteLength - 44) / 2 / SAMPLE_RATE) * 1000).toFixed(0)}ms`)
-  window.ezzy.sendVoiceAudio(wav)
+  const ms = (((wav.byteLength - 44) / 2 / SAMPLE_RATE) * 1000).toFixed(0)
+  console.log(`recorded ${ms}ms${spoke ? '' : ' (no speech in it)'}`)
+  window.ezzy.sendVoiceAudio(wav, spoke)
 }
 
 /** Tell the main process the microphone is live, once per session.
@@ -350,6 +367,20 @@ function endOfUtterance(block: Float32Array, session: AutoStop): boolean {
   if (quietMs < TRAILING_SILENCE_MS) return false
   console.log(`hands-free: ${quietMs.toFixed(0)}ms of quiet after speech, sending`)
   return true
+}
+
+/** Was anybody talking during this recording?
+ *
+ *  Measured before `encodeWav`'s gain, against the same threshold the hands-free recorder uses
+ *  to decide that somebody has started speaking — it is the same question asked at the end
+ *  rather than as it goes along, so the two cannot disagree about what counts as a voice. */
+function hasSpeech(blocks: Float32Array[]): boolean {
+  let loud = 0
+  for (const block of blocks) {
+    if (rms(block) < MIN_SPEECH_RMS) continue
+    if (++loud >= SPEECH_BLOCKS) return true
+  }
+  return false
 }
 
 function rms(block: Float32Array): number {

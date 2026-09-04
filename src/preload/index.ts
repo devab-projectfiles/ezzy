@@ -69,7 +69,7 @@ const ezzy: EzzyApi = {
     return () => void ipcRenderer.removeListener(IPC.voiceCapture, handler)
   },
   reportMicLive: () => ipcRenderer.send(IPC.voiceReady),
-  sendVoiceAudio: (wav) => ipcRenderer.send(IPC.voiceAudio, wav),
+  sendVoiceAudio: (wav, spoke) => ipcRenderer.send(IPC.voiceAudio, wav, spoke),
   reportVoiceFailure: (kind) => ipcRenderer.send(IPC.voiceFailed, kind),
   openMicSettings: () => ipcRenderer.send(IPC.openMicSettings),
   toggleVoice: () => ipcRenderer.send(IPC.toggleVoice),

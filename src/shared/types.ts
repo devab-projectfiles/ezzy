@@ -383,8 +383,12 @@ export interface EzzyApi {
    *  honestly call it listening. Everything before it is `arming`. */
   reportMicLive(): void
   /** The recorded utterance as a 16kHz mono WAV. The main process POSTs it to whisper-server;
-   *  the bytes never touch the network beyond localhost. */
-  sendVoiceAudio(wav: ArrayBuffer): void
+   *  the bytes never touch the network beyond localhost.
+   *
+   *  `spoke` is the recorder's answer to "was anybody talking?", measured from the signal
+   *  before any gain was applied to it. It rides along with the audio rather than arriving on
+   *  a channel of its own, so the main process still gets exactly one answer per hold. */
+  sendVoiceAudio(wav: ArrayBuffer, spoke: boolean): void
   /** Recording could not start. Sent instead of the audio, so main stops waiting for it. */
   reportVoiceFailure(kind: VoiceFailure): void
   /** Opens Windows' microphone privacy page — a blocked mic must lead somewhere, not to

@@ -16,7 +16,7 @@ import { app } from 'electron'
 import { VoiceFailure, VoiceState } from '../shared/types'
 import { indexedApps } from './app-index'
 import { registerBuiltinCommands } from './commands/builtin'
-import { normaliseTranscript, runCommand } from './commands/registry'
+import { isSilenceArtefact, normaliseTranscript, runCommand } from './commands/registry'
 import { getConfig } from './config'
 import { activeHotkey, watchHold } from './hotkey'
 import { hush, speak } from './speech'
@@ -55,8 +55,18 @@ let fromButton = false
 /** The ceiling on a hands-free recording lives in the recorder now (MAX_UTTERANCE_MS): it is
  *  the half that can see the microphone, so it is the half that can tell a long sentence from
  *  a forgotten one. */
+/** What the renderer hands back for one hold: the audio, and whether anybody was talking
+ *  during it. The second half is measured from the signal — see `hasSpeech` in the recorder —
+ *  because the transcript cannot answer it. Whisper never returns nothing; handed an empty
+ *  room it invents a confident sentence out of the room tone, and "Subs by
+ *  www.zeoranger.co.uk" then goes through the commands as if it had been said. */
+interface Recording {
+  wav: Buffer
+  spoke: boolean
+}
+
 /** Resolves when the renderer hands the recording over, or when it says it cannot. */
-let pendingAudio: ((wav: Buffer | null) => void) | null = null
+let pendingAudio: ((recording: Recording | null) => void) | null = null
 /** A microphone failure from a press that never became a hold. Held rather than announced:
  *  the user was opening the panel, not asking to speak. The next hold reports it instead of
  *  waiting four seconds for audio that cannot come. */
@@ -90,6 +100,14 @@ const DONE_MS = 2_600
  *  crossed the hold threshold — and it is worth saying "I didn't catch that" without paying
  *  for a transcription first. */
 const MIN_AUDIO_BYTES = 44 + 8_000
+
+/** What is said when the microphone was open and nothing was said into it.
+ *
+ *  Deliberately not "I didn't catch that", which means "you spoke and I failed you" and
+ *  invites the user to repeat themselves louder. Nothing was spoken, so the answer says so and
+ *  says what to do instead. Kept inside the width the pill can draw — it clips rather than
+ *  wraps, and the longest sentence it has ever had to hold is 37 characters. */
+const NOTHING_HEARD = 'I didn’t hear anything — say a command'
 
 /** Whisper's prompt is capped at a couple of hundred tokens, and it has to leave room for the
  *  command phrasings that go in front of the names — those are what bias it towards hearing a
@@ -345,7 +363,7 @@ async function listenHandsFree(): Promise<void> {
   setState({ kind: 'arming' })
   sendCapture('listen')
 
-  const wav = await audioFromRenderer(HANDS_FREE_TIMEOUT_MS)
+  const recording = await audioFromRenderer(HANDS_FREE_TIMEOUT_MS)
   // The recorder decides when the sentence ended, so this is the first moment the main process
   // knows it has — which is exactly when "listening" becomes "thinking".
   const finishedAt = performance.now()
@@ -353,17 +371,27 @@ async function listenHandsFree(): Promise<void> {
   armed = false
   endButtonSession()
   if (state.kind === 'listening' || state.kind === 'arming') setState({ kind: 'thinking' })
-  await transcribeAndRun(wav, finishedAt)
+  await transcribeAndRun(recording, finishedAt)
 }
 
 /** Everything both gestures do once there is a recording: transcribe it and run what it says. */
-async function transcribeAndRun(wav: Buffer | null, releasedAt: number): Promise<void> {
+async function transcribeAndRun(recording: Recording | null, releasedAt: number): Promise<void> {
   // A capture failure reports itself through `reportCaptureFailure`, which has already put a
   // more specific message on screen than anything that could be said here.
-  if (!wav || wav.length < MIN_AUDIO_BYTES) {
+  if (!recording || recording.wav.length < MIN_AUDIO_BYTES) {
     if (state.kind === 'thinking') fail('I didn’t catch that')
     return
   }
+
+  // Nobody spoke. Answered here rather than after transcribing, because transcribing silence
+  // does not produce silence — it produces a sentence, and a sentence gets acted on. This is
+  // also the cheapest possible answer: the recording is never sent anywhere.
+  if (!recording.spoke) {
+    log('voice: the recording holds no speech')
+    fail(NOTHING_HEARD)
+    return
+  }
+  const wav = recording.wav
 
   // The server may still be loading the model, which on the first command of a session is the
   // longest part of the wait. Waiting is right: the alternative is telling the user their
@@ -383,6 +411,16 @@ async function transcribeAndRun(wav: Buffer | null, releasedAt: number): Promise
   log(`voice: heard "${raw.trim()}" -> "${text}"`)
   if (text === '') {
     fail('I didn’t catch that')
+    return
+  }
+  // The signal test above catches most of it. This catches the rest: a cough, a chair or a
+  // door is enough audio to look like speech, and what whisper writes over it is one of a
+  // small set of sentences from the subtitle tracks it was trained on. `heard` is left unset
+  // for these on purpose — quoting the invention back would present it as something the user
+  // might have said.
+  if (isSilenceArtefact(text)) {
+    log(`voice: "${text}" is what whisper writes over a room, not a command`)
+    fail(NOTHING_HEARD)
     return
   }
   // The normalised form, not the raw one: it is what the commands were matched against, so it
@@ -410,17 +448,17 @@ async function transcribeAndRun(wav: Buffer | null, releasedAt: number): Promise
 }
 
 /** The recording, or null if it never arrived. */
-function audioFromRenderer(timeoutMs = AUDIO_TIMEOUT_MS): Promise<Buffer | null> {
+function audioFromRenderer(timeoutMs = AUDIO_TIMEOUT_MS): Promise<Recording | null> {
   return new Promise((resolve) => {
     const timer = setTimeout(() => {
       pendingAudio = null
       console.error('[ezzy] the recorder never sent any audio')
       resolve(null)
     }, timeoutMs)
-    pendingAudio = (wav) => {
+    pendingAudio = (recording) => {
       clearTimeout(timer)
       pendingAudio = null
-      resolve(wav)
+      resolve(recording)
     }
   })
 }
@@ -439,11 +477,11 @@ export function reportMicLive(): void {
 }
 
 /** The dot's renderer has finished recording. */
-export function receiveAudio(wav: Buffer): void {
-  log(`voice: ${(wav.length / 1024).toFixed(0)}KB of audio`)
+export function receiveAudio(wav: Buffer, spoke: boolean): void {
+  log(`voice: ${(wav.length / 1024).toFixed(0)}KB of audio${spoke ? '' : ', no speech in it'}`)
   // The device answered, so whatever went wrong last time is over.
   armFailure = null
-  pendingAudio?.(wav)
+  pendingAudio?.({ wav, spoke })
 }
 
 /** The dot's renderer could not record at all. A blocked microphone has to lead somewhere,

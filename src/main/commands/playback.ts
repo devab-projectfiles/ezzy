@@ -21,7 +21,7 @@
  *  one exception being a named service with no window at all, which falls back to the
  *  launcher rather than failing at a user who plainly wants that app in front of them. */
 
-import { playPauseIn } from '../media-keys'
+import { MediaAction, mediaIn } from '../media-keys'
 import { log } from '../verbose'
 import { EzzyWindow } from '../../shared/types'
 import { listWindows } from '../window-tracker'
@@ -88,6 +88,18 @@ const PLAYBACK =
 /** Which verbs mean stop. The rest mean start; there is no third case. */
 const PAUSE_VERB = new Set(['pause', 'pose', 'stop'])
 
+/** "next song on spotify", "skip this on youtube", "previous track on spotify".
+ *
+ *  Only the "on <service>" shape. "next spotify" is not something anyone says, and a pattern
+ *  that accepted it would be one more way for a bare "next" to be misread. Without a service
+ *  named, `next-track` in builtin.ts handles it and picks the player the same way "play music"
+ *  does — so the two halves of skipping behave alike. */
+const SKIP_IN =
+  /^(next|skip|forward|previous|prev|back|last|go\s+back)(?:\s+(?:the|this|that))?(?:\s+(?:track|song|one|video|episode))?\s+on\s+(spotify|you ?tube)$/
+
+/** Which of those go backwards. */
+const BACK_VERB = new Set(['previous', 'prev', 'back', 'last', 'go back'])
+
 /** What the last run did, so the confirmation can say the true one. The registry calls
  *  `describe` immediately after the same command's `run` resolves, one command at a time, so
  *  it cannot be read out of order — the same arrangement, and the same reasoning, as
@@ -108,7 +120,7 @@ export function registerPlaybackCommands(resolveTarget: ResolveTarget): void {
       const target = service === 'youtube' ? youtubeWindow() : windowForApp(SPOTIFY)
       if (target) {
         lastRun = 'controlled'
-        playPauseIn(target.id, target.app)
+        mediaIn(target.id, target.app, 'play-pause')
         hidePanel()
         return
       }
@@ -128,11 +140,42 @@ export function registerPlaybackCommands(resolveTarget: ResolveTarget): void {
       await resolveTarget(service, ctx, true)
     }
   })
+
+  // Skipping a track in a named service. Unlike the command above this one never falls back to
+  // the launcher: "next song on spotify" with Spotify closed is not a request to start it, it
+  // is a request about music that is not playing.
+  register({
+    id: 'playback-skip-in',
+    match: SKIP_IN,
+    describe: (groups) =>
+      `${BACK_VERB.has(groups[1]) ? 'Previous' : 'Next'} track on ${DISPLAY[serviceOf(groups, 2)]}`,
+    run: async (groups, ctx) => {
+      const service = serviceOf(groups, 2)
+      const target = service === 'youtube' ? youtubeWindow() : windowForApp(SPOTIFY)
+      if (!target) {
+        ctx.failed(`${DISPLAY[service]} isn’t open`)
+        return
+      }
+      mediaIn(target.id, target.app, BACK_VERB.has(groups[1]) ? 'previous' : 'next')
+      hidePanel()
+    }
+  })
 }
 
-/** Whichever half of the two-shape pattern matched. */
-function serviceOf(groups: RegExpMatchArray): Service {
-  const named = groups[2] ?? groups[3] ?? ''
+/** Play/pause, next or previous, aimed at whatever "play music" would have picked — a
+ *  dedicated player, then Spotify, and null when neither is running and the bare media key
+ *  should have it after all. Returns what it did to, so the confirmation can name it. */
+export function mediaToPlayer(action: MediaAction): string | null {
+  const player = musicPlayerWindow()
+  if (!player) return null
+  mediaIn(player.id, player.app, action)
+  return player.app
+}
+
+/** The service one of these patterns named. PLAYBACK has two shapes and so two groups it
+ *  could be in; SKIP_IN has one. `first` says where to start looking. */
+function serviceOf(groups: RegExpMatchArray, first = 2): Service {
+  const named = groups[first] ?? groups[first + 1] ?? ''
   return /you ?tube/.test(named) ? 'youtube' : 'spotify'
 }
 

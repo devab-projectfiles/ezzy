@@ -48,6 +48,8 @@ export const WM_CLOSE = 0x0010
  *  while Spotify sat there paused. */
 export const WM_APPCOMMAND = 0x0319
 export const APPCOMMAND_MEDIA_PLAY_PAUSE = 14
+export const APPCOMMAND_MEDIA_NEXTTRACK = 11
+export const APPCOMMAND_MEDIA_PREVIOUSTRACK = 12
 
 /** The WinEvents we subscribe to. Subscribe, never poll EnumWindows. */
 export const EVENT_SYSTEM_FOREGROUND = 0x0003

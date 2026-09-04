@@ -89,6 +89,41 @@ const ADDRESSED = /^(?:hey\s+)?(?:ezzy|easy|izzy|essie|eddy)\b[\s,]*/
  *  "*coughs*". `--suppress-nst` removes most of them; this removes the rest. */
 const NON_SPEECH = /\[[^\]]*\]|\([^)]*\)|\*[^*]*\*/g
 
+/** What whisper writes when it is given a room instead of a sentence.
+ *
+ *  It never returns nothing. Handed silence or a cough it produces a fluent, confidently
+ *  punctuated sentence, and the sentences are not random — they are the boilerplate from the
+ *  subtitle tracks it was trained on. "Subs by www.zeoranger.co.uk" and "Thanks for watching!"
+ *  are the two this machine produces most.
+ *
+ *  The real defence is the signal test in the recorder, which never sends a silent recording
+ *  at all. This is the second line, for the case where a chair or a door was loud enough to
+ *  pass for speech: without it, `bare-target` reads the invention as a name and answers with
+ *  "I couldn't find Subs By Www.zeoranger.co.uk", which is a report about something the user
+ *  never said.
+ *
+ *  Anchored at the start, and every entry is a phrase no launcher command begins with. The
+ *  cost of a wrong entry here is a command that cannot be given, so the list stays short and
+ *  stays literal rather than growing a fuzzy match.
+ *
+ *  Pure and exported for the same reason as `normaliseTranscript`: it is a rule about text,
+ *  and it belongs in the layer that can be tested without a microphone. */
+const SILENCE_ARTEFACTS = [
+  /^subs (?:by|created by)\b/,
+  /^subtitles? (?:by|provided by)\b/,
+  /^(?:thanks|thank you)(?: (?:so|very) much)? for watching\b/,
+  /^(?:please )?(?:like (?:and )?)?subscribe(?: to (?:my|our|the) channel)?$/,
+  /^click the bell\b/,
+  /^(?:for more information|more videos)\b/,
+  /^amara\.org\b/,
+  /^www\.[^ ]*$/,
+  /^¡?gracias por ver\b/
+]
+
+export function isSilenceArtefact(text: string): boolean {
+  return SILENCE_ARTEFACTS.some((pattern) => pattern.test(text))
+}
+
 /** Reduce a raw transcript to the text the patterns are written against.
  *
  *  Pure and exported on purpose — the plan puts transcript normalisation in the layer that is
