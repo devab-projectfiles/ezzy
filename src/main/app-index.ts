@@ -65,6 +65,28 @@ const NOISE_SUFFIX =
  *  this pattern had removed it from the index. */
 const NOISE_EXACT = /^(help|support|administrative tools|windows tools|command prompt|run)$/i
 
+/** The name a shortcut is actually for, when its filename carries more than that.
+ *
+ *  A browser writes an installed web app's shortcut from the page's `<title>`, and a title is
+ *  a sentence: "Skool: Discover Communities or Create Your Own". The colon cannot go in a
+ *  filename, so what lands on disk is "Skool  Discover Communities or Create Your Own" — the
+ *  whole tagline, as the application's name, with a double space where the colon was.
+ *
+ *  That is wrong twice. The panel draws it as the row, and a spoken name is matched against
+ *  it — and nothing anyone says resembles a 46-character sentence, so the app could not be
+ *  reached by voice at all. Measured: "open skool" found it only because the sentence happens
+ *  to *start* with the word; "open school", which is what whisper writes for it, found
+ *  nothing.
+ *
+ *  Cutting at the double space is narrow on purpose. It is not a rule about long names — it is
+ *  a rule about a gap that no keyboard produces and no installer intends, which is the
+ *  signature of a character the filesystem refused. Measured against both Start Menu trees on
+ *  this machine: one name of 140 changes, and it is that one. */
+function brandOf(name: string): string {
+  const brand = name.split(/\s{2,}/)[0].trim()
+  return brand === '' ? name.trim() : brand
+}
+
 function isNoise(name: string): boolean {
   return NOISE_PREFIX.test(name) || NOISE_SUFFIX.test(name) || NOISE_EXACT.test(name)
 }
@@ -223,7 +245,7 @@ async function collect(
       continue
     }
     if (extname(entry.name).toLowerCase() !== '.lnk') continue
-    const name = basename(entry.name, extname(entry.name))
+    const name = brandOf(basename(entry.name, extname(entry.name)))
     if (isNoise(name)) continue
     if (isUninstaller(full)) continue
     // Both Start Menu trees carry the same shortcuts for machine-wide installs; first wins.
@@ -295,7 +317,10 @@ async function collectStartApps(): Promise<IndexedApp[]> {
     const rows: IndexedApp[] = []
     const seen = new Set<string>()
     for (const row of parsed as StartAppRow[]) {
-      const name = typeof row?.Name === 'string' ? row.Name.trim() : ''
+      // Through `brandOf` for the same reason the shortcut scan is: this list carries the
+      // same web apps under the same page-title names, and without it the two sources
+      // disagree about what one app is called and both end up in the index.
+      const name = typeof row?.Name === 'string' ? brandOf(row.Name) : ''
       const appId = typeof row?.AppID === 'string' ? row.AppID.trim() : ''
       if (name === '' || appId === '' || isNoise(name)) continue
       // Get-StartApps lists desktop apps too, with a shortcut path as the AppID. Those are

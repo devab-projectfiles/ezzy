@@ -75,8 +75,17 @@ const MIN_SPEECH_RMS = 0.012
  *  Lower than MIN_SPEECH_RMS on purpose, and the two are not in disagreement — they answer
  *  different questions. That one decides when to STOP recording and can afford to be
  *  conservative, because being wrong costs a moment of extra microphone. This one decides
- *  whether the user is answered at all, and being wrong costs them a command they gave. */
-const AUDIBLE_RMS = 0.005
+ *  whether the user is answered at all, and being wrong costs them a command they gave.
+ *
+ *  Set from measurement, twice. At 0.005 a real "open Skool" — quietly spoken, two words —
+ *  cleared it in 3 blocks of 44 and was refused for want of a fourth. This machine's room sits
+ *  at 0.0008, so the relative test is doing the work either way and this only has to sit above
+ *  a room and below a murmur.
+ *
+ *  It errs low deliberately. A wrong yes costs one transcription that the silence-artefact
+ *  list then refuses; a wrong no costs the user a command they actually gave, and tells them
+ *  they said nothing when they did. Those are not the same price. */
+const AUDIBLE_RMS = 0.003
 
 /** How far above the room a block has to be to be a voice rather than the room getting on
  *  with itself. The same multiple the hands-free floor uses, for the same reason: "loud"
@@ -410,9 +419,14 @@ function hasSpeech(blocks: Float32Array[]): boolean {
   const threshold = Math.max(room * SPEECH_OVER_ROOM, AUDIBLE_RMS)
   let loud = 0
   for (const level of levels) if (level >= threshold) loud++
+  // The spread, not just the verdict. Tuning this from one number per recording is what made
+  // it take two passes; a room and a murmur differ in how MANY blocks are loud, and that is
+  // only visible as a distribution. Anyone changing the constants above should read these.
+  const over = (at: number): number => levels.filter((level) => level >= at).length
   console.log(
     `speech test: room ${room.toFixed(4)}, loudest ${sorted[sorted.length - 1].toFixed(4)}, ` +
-      `needs ${threshold.toFixed(4)}, ${loud}/${levels.length} blocks over it`
+      `needs ${threshold.toFixed(4)}, ${loud}/${levels.length} over it ` +
+      `[>.002 ${over(0.002)}, >.005 ${over(0.005)}, >.01 ${over(0.01)}, >.02 ${over(0.02)}]`
   )
   return loud >= SPEECH_BLOCKS
 }

@@ -148,6 +148,14 @@ const NOT_A_TARGET = new Set([
   'bye',
   'hi',
   'hello',
+  // Two words that are not names, found by running the matcher over this machine's real index
+  // rather than by imagining them. A bare "click" resolves to the Clock app, and a bare "go"
+  // resolves to Google Chrome because "go" begins "Google" — both would have opened something
+  // from a press with nothing said into it. "click" is the word left over when whisper only
+  // gets the first of "Click the bell to see more of the video" out; `isSilenceArtefact`
+  // catches that sentence whole, and this catches the fragment.
+  'click',
+  'go',
   'thanks',
   'thank you',
   'what',
