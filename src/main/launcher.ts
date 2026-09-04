@@ -7,7 +7,7 @@
  *  All three go through Explorer, and that is the whole design of this file. See `handOff`. */
 
 import { execFile } from 'child_process'
-import { statSync } from 'fs'
+import { existsSync, statSync } from 'fs'
 import { readdir } from 'fs/promises'
 import { homedir } from 'os'
 import { dirname, isAbsolute, join, normalize } from 'path'
@@ -142,11 +142,21 @@ interface WebApp {
   exe: string
   /** The browser profile the app was installed under, or null when it did not say. */
   profile: string | null
+  /** The shortcut this came from. Kept so the answer can be re-checked rather than trusted. */
+  shortcut: string
 }
 
-/** Looked up once. Installing or removing a browser app mid-session is not a thing worth
- *  scanning the Start Menu for on every command. */
-const webApps = new Map<string, WebApp | null>()
+/** Remembered between commands, but never trusted on its own.
+ *
+ *  The first version cached the lookup for the life of the process and that was wrong in a way
+ *  a user found immediately: they uninstalled the app, asked for a search, and still got an app
+ *  window. `--app=<url>` is not "launch the installed app" — it opens app mode for ANY url —
+ *  so a stale entry does not fail, it silently keeps working for an app that is gone.
+ *
+ *  So the cache holds the shortcut it came from and that file is checked on every use. A miss
+ *  is not cached at all: a scan is two directory reads, and caching "no app" would mean
+ *  installing one had no effect until Ezzy restarted. */
+const webApps = new Map<string, WebApp>()
 
 /** The Start Menu shortcut a browser writes when a site is installed as an app.
  *
@@ -154,7 +164,13 @@ const webApps = new Map<string, WebApp | null>()
  *  it, it is Windows-only, and this whole file already is. */
 async function findWebApp(appName: string): Promise<WebApp | null> {
   const cached = webApps.get(appName)
-  if (cached !== undefined) return cached
+  // One `stat` against the shortcut, which is what uninstalling removes. Microseconds, and it
+  // is the difference between "this app is installed" and "it was, once".
+  if (cached && existsSync(cached.shortcut)) return cached
+  if (cached) {
+    log(`the ${appName} app is gone; its shortcut no longer exists`)
+    webApps.delete(appName)
+  }
 
   const roots = [
     join(process.env['APPDATA'] ?? '', 'Microsoft\\Windows\\Start Menu\\Programs\\Chrome Apps'),
@@ -182,7 +198,8 @@ async function findWebApp(appName: string): Promise<WebApp | null> {
           // The shortcut points at chrome_proxy.exe, which exists to give the app its own
           // taskbar identity. The flags go to the browser beside it.
           exe: join(dirname(link.target), 'chrome.exe'),
-          profile: profile ? profile[1] : null
+          profile: profile ? profile[1] : null,
+          shortcut: join(root, entry)
         }
         break
       } catch {
@@ -192,7 +209,10 @@ async function findWebApp(appName: string): Promise<WebApp | null> {
     if (found) break
   }
 
-  if (found === null) log(`no installed web app found for "${appName}"`)
+  if (found === null) {
+    log(`no installed web app found for "${appName}"`)
+    return null
+  }
   webApps.set(appName, found)
   return found
 }
