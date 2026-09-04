@@ -70,7 +70,29 @@ const FLOOR_MULTIPLE = 3.5
  *  up is exactly what whisper invents sentences out of — see `SILENCE` in `gainFor`. */
 const MIN_SPEECH_RMS = 0.012
 
-/** How many blocks have to clear MIN_SPEECH_RMS before a recording counts as somebody
+/** The quietest a block can be and still be somebody talking.
+ *
+ *  Lower than MIN_SPEECH_RMS on purpose, and the two are not in disagreement — they answer
+ *  different questions. That one decides when to STOP recording and can afford to be
+ *  conservative, because being wrong costs a moment of extra microphone. This one decides
+ *  whether the user is answered at all, and being wrong costs them a command they gave. */
+const AUDIBLE_RMS = 0.005
+
+/** How far above the room a block has to be to be a voice rather than the room getting on
+ *  with itself. The same multiple the hands-free floor uses, for the same reason: "loud"
+ *  depends on the room, the microphone and Chromium's gain control, and a fixed number either
+ *  misses a quiet voice or hears a fan as talking. */
+const SPEECH_OVER_ROOM = 3.5
+
+/** Which slice of a recording is taken to be the room.
+ *
+ *  The quiet fifth, not the average. A push-to-talk hold can be mostly speech — the user
+ *  presses, talks, releases — and an average would then BE the speaker's voice, which nothing
+ *  can rise 3.5x above, so every command would come back as silence. A low percentile is the
+ *  room whether or not anyone was talking over it. */
+const ROOM_PERCENTILE = 0.2
+
+/** How many blocks have to clear the threshold before a recording counts as somebody
  *  talking. Four of them is ~256ms of sound — longer than a click, a chair or a door, shorter
  *  than any word anyone says.
  *
@@ -276,7 +298,7 @@ async function stop(send: boolean): Promise<void> {
   // Sent even when it is a fraction of a second long, and sent even when nothing was said:
   // the main process is waiting for exactly one answer per hold, and it is the one that turns
   // any of this into something the user is told.
-  const wav = encodeWav(recorded)
+  const wav = encodeWav(recorded, spoke)
   const ms = (((wav.byteLength - 44) / 2 / SAMPLE_RATE) * 1000).toFixed(0)
   console.log(`recorded ${ms}ms${spoke ? '' : ' (no speech in it)'}`)
   window.ezzy.sendVoiceAudio(wav, spoke)
@@ -371,16 +393,28 @@ function endOfUtterance(block: Float32Array, session: AutoStop): boolean {
 
 /** Was anybody talking during this recording?
  *
- *  Measured before `encodeWav`'s gain, against the same threshold the hands-free recorder uses
- *  to decide that somebody has started speaking — it is the same question asked at the end
- *  rather than as it goes along, so the two cannot disagree about what counts as a voice. */
+ *  Measured before `encodeWav`'s gain, while the levels are still the ones the room actually
+ *  produced. Relative to that room rather than against a fixed number, because a fixed number
+ *  is a rule about how loudly the user is required to speak — and the whole complaint this
+ *  answers was having to raise your voice to be heard. A quiet voice in a quiet room clears
+ *  3.5x its room easily; the absolute floor underneath is only there so that a silent room
+ *  cannot clear a multiple of its own silence.
+ *
+ *  Logged in full, because the next time a real command is called silence this line is the
+ *  only thing that can say which half of the test refused it. */
 function hasSpeech(blocks: Float32Array[]): boolean {
+  if (blocks.length === 0) return false
+  const levels = blocks.map(rms)
+  const sorted = [...levels].sort((a, b) => a - b)
+  const room = sorted[Math.floor(sorted.length * ROOM_PERCENTILE)] ?? 0
+  const threshold = Math.max(room * SPEECH_OVER_ROOM, AUDIBLE_RMS)
   let loud = 0
-  for (const block of blocks) {
-    if (rms(block) < MIN_SPEECH_RMS) continue
-    if (++loud >= SPEECH_BLOCKS) return true
-  }
-  return false
+  for (const level of levels) if (level >= threshold) loud++
+  console.log(
+    `speech test: room ${room.toFixed(4)}, loudest ${sorted[sorted.length - 1].toFixed(4)}, ` +
+      `needs ${threshold.toFixed(4)}, ${loud}/${levels.length} blocks over it`
+  )
+  return loud >= SPEECH_BLOCKS
 }
 
 function rms(block: Float32Array): number {
@@ -392,15 +426,22 @@ function rms(block: Float32Array): number {
 /** Quiet recordings transcribe badly, and a laptop's built-in microphone two feet from the
  *  speaker's mouth is quiet. Chromium's gain control helps but is conservative.
  *
- *  Bounded at both ends. Nothing louder than HEADROOM is touched, so a normal recording passes
- *  through untouched; nothing quieter than SILENCE is touched either, because scaling a
- *  near-empty buffer up by 8x turns room tone into something whisper will happily invent
- *  sentences out of. */
+ *  This matters more than it looks, because the WAV is 16-bit. A voice peaking at 0.015 uses
+ *  about 490 of the 32,767 values available to it — nine bits of the sixteen — and the rest is
+ *  thrown away at encode time. Scaling it up first is not cosmetic; it is the difference
+ *  between handing whisper the recording and handing it a coarse copy of the recording. It
+ *  does not improve the signal-to-noise ratio, which is why it is not a substitute for
+ *  speaking up, but it stops the encoder making things worse.
+ *
+ *  The SILENCE floor exists because scaling a near-empty buffer up is exactly what whisper
+ *  invents sentences out of — but it only applies when nothing was said. A recording the
+ *  speech test has already vouched for is amplified however quiet it is, and that is the whole
+ *  point: a quiet voice used to be left at nine bits precisely because it was quiet. */
 const HEADROOM = 0.9
 const SILENCE = 0.02
-const MAX_GAIN = 8
+const MAX_GAIN = 20
 
-function gainFor(blocks: Float32Array[]): number {
+function gainFor(blocks: Float32Array[], spoke: boolean): number {
   let peak = 0
   for (const block of blocks) {
     for (const sample of block) {
@@ -408,15 +449,16 @@ function gainFor(blocks: Float32Array[]): number {
       if (level > peak) peak = level
     }
   }
-  if (peak >= HEADROOM || peak <= SILENCE) return 1
+  if (peak >= HEADROOM) return 1
+  if (!spoke && peak <= SILENCE) return 1
   return Math.min(HEADROOM / peak, MAX_GAIN)
 }
 
 /** 16-bit PCM, mono, in a canonical 44-byte WAV. */
-function encodeWav(blocks: Float32Array[]): ArrayBuffer {
+function encodeWav(blocks: Float32Array[], spoke: boolean): ArrayBuffer {
   let frames = 0
   for (const block of blocks) frames += block.length
-  const gain = gainFor(blocks)
+  const gain = gainFor(blocks, spoke)
 
   const buffer = new ArrayBuffer(44 + frames * 2)
   const view = new DataView(buffer)

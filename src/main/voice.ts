@@ -113,7 +113,13 @@ const NOTHING_HEARD = 'I didn’t hear anything — say a command'
  *  command phrasings that go in front of the names — those are what bias it towards hearing a
  *  command at all. Forty names covers everything anyone switches to by voice. */
 const PROMPT_NAMES = 40
-const PROMPT_MAX_CHARS = 400
+/** Trimmed from 400 to make room for the command sentences below.
+ *
+ *  The trade is deliberate and evidence-led: on the failures that prompted this, the app names
+ *  were already coming through — "Spotify" was transcribed correctly every time — and the
+ *  COMMAND around them was not. Eighty characters of extra app names were buying nothing next
+ *  to four sentences that name the thing actually being got wrong. */
+const PROMPT_MAX_CHARS = 320
 
 export function initVoice(): void {
   registerBuiltinCommands()
@@ -558,15 +564,25 @@ function whisperPrompt(): string {
   // prompt is prior *text* and whisper conditions on it as language. Giving it "Switch to
   // Antigravity." makes both the verb and the name likelier, and the verb matters as much as
   // the name — a command whose verb was misheard is a command that does not run.
+  // Whole sentences in the shapes the commands are written in — see below. The media ones are
+  // here because of a measured failure and they are the most valuable lines in the list: asked
+  // quietly for "next track on Spotify", whisper returned "Make a scene on Spotify", "Make a
+  // sound in this Spotify" and "Low Bangs, Spotify" on three consecutive attempts. Every one
+  // of those is fluent English, which is what a model does when it cannot hear well enough and
+  // falls back on guessing what a sentence probably was. The prompt is where that guess is
+  // biased, so a failure of this exact shape is the one thing a prompt can genuinely fix.
   const examples = [
     `Switch to ${names[0] ?? 'Chrome'}.`,
     `Open ${names[1] ?? 'Notepad'}.`,
     'Close this window.',
-    // The media verbs earn their place: "pause" is the one command word that comes back as a
-    // different English word rather than as a mangled one, and a prompt that has just used it
-    // in a sentence is the cheapest way to make whisper prefer it.
+    // "pause" also comes back as "pose", which the commands accept — but it is cheaper to have
+    // whisper write the word than to keep collecting the spellings it writes instead.
     'Pause the music.',
-    'Play music.'
+    'Play music.',
+    'Next track on Spotify.',
+    'Previous track on Spotify.',
+    'Skip this song.',
+    'Play YouTube.'
   ].join(' ')
   return `${examples} Apps: ${list}.`
 }

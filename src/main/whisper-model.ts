@@ -18,14 +18,33 @@ import { mkdir, open, rename, rm } from 'fs/promises'
 import { dirname, join } from 'path'
 import { log, since } from './verbose'
 
-/** `base`, English-only. Small enough to download in under a minute on a normal line and
- *  accurate enough for "switch to chrome", which is the whole vocabulary this needs. */
-const MODEL_FILE = 'ggml-base.en.bin'
+/** `small`, English-only, quantised to 5 bits.
+ *
+ *  This was `base.en` (141MB), and base was not good enough for the person using it. The
+ *  failure was specific and worth recording: asked quietly for "next track on Spotify" it
+ *  returned "Make a scene on Spotify" — fluent, grammatical, and nothing to do with what was
+ *  said. That is the signature of a model whose acoustic side has run out of capacity and
+ *  whose language side is filling the gap by guessing. A model that genuinely could not hear
+ *  returns noise; one that is guessing returns confident English.
+ *
+ *  `small` has roughly three times base's capacity and leans on the guess much less,
+ *  particularly on quiet and accented speech, which is what this is for. The q5_1 quantisation
+ *  is what makes that affordable: 181MB against the 465MB of the full `small.en`, for a
+ *  difference in accuracy far smaller than the difference between small and base.
+ *
+ *  It costs latency, and that is the real price rather than the disk: measured on this machine
+ *  base transcribed a 2.5s command in 625ms, and small is a few times that. */
+const MODEL_FILE = 'ggml-small.en-q5_1.bin'
 const MODEL_URL = `https://huggingface.co/ggerganov/whisper.cpp/resolve/main/${MODEL_FILE}`
 
 /** What the file should weigh, from the release it is pinned to. Only used as a floor: a
  *  truncated download is the failure this catches, and it is the common one. */
-const MODEL_MIN_BYTES = 140_000_000
+const MODEL_MIN_BYTES = 170_000_000
+
+/** Models this app used to ship and no longer does. Left on disk they are dead weight — 141MB
+ *  of it for anyone upgrading from base — and nothing else will ever delete them, since they
+ *  live in Ezzy's own userData. Removed only after the replacement has been verified. */
+const SUPERSEDED = ['ggml-base.en.bin', 'ggml-tiny.en.bin']
 
 /** ggml's magic number, as the four bytes it is written as on a little-endian machine.
  *  Checked because HuggingFace answers an outage with an HTML error page and a 200, and a
@@ -161,7 +180,29 @@ async function download(onProgress: (progress: DownloadProgress) => void): Promi
   }
   await rename(partial, target)
   since(`speech model downloaded to ${target}`, startedAt)
+  await removeSuperseded()
   return true
+}
+
+/** Delete the models this app used to use, now that its replacement is on disk and verified.
+ *
+ *  Deliberately a fixed list rather than "every ggml file that is not the current one": the
+ *  models directory is Ezzy's, but a rule that deletes whatever it does not recognise is one
+ *  bad edit away from deleting the model in use. Failure is ignored — a file that will not
+ *  delete is wasted disk, not a broken install, and saying so would be alarming out of all
+ *  proportion. */
+async function removeSuperseded(): Promise<void> {
+  for (const file of SUPERSEDED) {
+    if (file === MODEL_FILE) continue
+    const path = join(dirname(modelPath()), file)
+    try {
+      if (!existsSync(path)) continue
+      await rm(path, { force: true })
+      log(`removed the superseded speech model ${file}`)
+    } catch (err) {
+      console.error(`[ezzy] could not remove the old speech model ${file}:`, err)
+    }
+  }
 }
 
 /** A complete ggml model, rather than an error page with a 200 on it. */

@@ -43,12 +43,22 @@ const READY_POLL_MS = 120
  *
  *  Whisper always pads its input to 30s and encodes all of it, which is why a 1.3s command
  *  costs the same as a paragraph. `audio_ctx` shortens that window, and it is the single
- *  biggest lever on the voice budget — measured here on base.en, 8 threads, over four
- *  utterances: the full 1500 frames took 1061-1090ms and 512 took 426-439ms, for identical
- *  transcripts. 512 frames is a bit over 10 seconds of audio, which no spoken command comes
- *  near; anything longer is sent at full context rather than quietly truncated. */
-const SHORT_AUDIO_CTX = 512
-const SHORT_AUDIO_SECONDS = 9.5
+ *  biggest lever on the voice budget — measured on base.en, 8 threads, over four utterances:
+ *  the full 1500 frames took 1061-1090ms and 512 took 426-439ms, for identical transcripts.
+ *
+ *  Re-measured on small.en-q5_1, which is three times the model and made the encoder worth
+ *  another look. Four runs of the same 2.3s command against the running server: 512 frames
+ *  averaged 1450ms and 384 averaged 1235ms, transcripts identical. 256 was no better than 384
+ *  and less consistent, and 192 was *twice as slow* as either — whatever fast path the encoder
+ *  takes, it stops taking it somewhere below 256. So 384, which is where the curve flattens
+ *  rather than where it turns back up.
+ *
+ *  The two numbers move together: 384 frames is a bit under 8 seconds of audio, so the cutoff
+ *  drops with it. Anything longer is sent at full context — slower, and correct — rather than
+ *  quietly truncated, which is the part that must not change. No spoken command comes near
+ *  seven seconds; the recorder's own ceiling is fifteen. */
+const SHORT_AUDIO_CTX = 384
+const SHORT_AUDIO_SECONDS = 7
 
 /** A transcription that has not come back by now is not coming back. Budgets 1200ms for
  *  the whole voice path, so this is a stuck-process guard rather than a deadline. */
@@ -279,6 +289,11 @@ function multipart(boundary: string, wav: Buffer, prompt: string, seconds: numbe
     // audio_ctx below — the encoder is the expensive half and beams only touch the decoder —
     // which is a small price for the case it exists to fix: a word the greedy path commits to
     // early and then cannot back out of.
+    //
+    // Still true on the larger model, and worth restating because the obvious way to claw back
+    // its latency is to reach for this first: measured over the same utterance, beam 5 took
+    // 1935-1966ms and greedy took 1831-1863ms. A hundred milliseconds. The encoder is where
+    // the time goes, which is why `audio_ctx` is the lever and this is not.
     ['beam_size', '5'],
     ['prompt', prompt]
   ]
