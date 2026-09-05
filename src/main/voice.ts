@@ -109,9 +109,13 @@ const MIN_AUDIO_BYTES = 44 + 8_000
  *  wraps, and the longest sentence it has ever had to hold is 37 characters. */
 const NOTHING_HEARD = 'I didn’t hear anything — say a command'
 
-/** Whisper's prompt is capped at a couple of hundred tokens, and it has to leave room for the
- *  command phrasings that go in front of the names — those are what bias it towards hearing a
- *  command at all. Forty names covers everything anyone switches to by voice. */
+/** Whisper's prompt is capped by the model, not by us: the decoder's text context is 448
+ *  tokens and whisper.cpp will carry at most half of that as prior text. Everything below is
+ *  about spending ~200 tokens well, and the command phrasings in `examples` have first call on
+ *  them — those are what bias it towards hearing a command at all.
+ *
+ *  So this cannot hold a machine's whole Start Menu, and the question is never "how do we fit
+ *  140 names" but "which forty are worth a token". */
 const PROMPT_NAMES = 40
 /** Trimmed from 400 to make room for the command sentences below.
  *
@@ -407,7 +411,12 @@ async function transcribeAndRun(recording: Recording | null, releasedAt: number)
     return
   }
 
-  const raw = await transcribe(wav, whisperPrompt())
+  // Logged in full, because it is the only way to see what whisper was actually told. The app
+  // index reached this in alphabetical order for a long time, which silently truncated it at
+  // D and left the names most in need of help out — invisible, because nothing ever printed it.
+  const prompt = whisperPrompt()
+  log(`voice: prompt "${prompt}"`)
+  const raw = await transcribe(wav, prompt)
   if (raw === null) {
     fail('I couldn’t transcribe that')
     return
@@ -555,7 +564,24 @@ function whisperPrompt(): string {
     names.push(name.trim())
   }
   for (const window of listWindows()) add(window.app)
-  for (const entry of indexedApps()) add(entry.name)
+  // Shortest first, and that is not a tie-break — it is the whole selection rule.
+  //
+  // The index is alphabetical, and taking it in that order meant the list ran out of budget at
+  // D. Measured on this machine: 26 of 140 names got in, they were "Application Stack
+  // Builder", "Character Map", "Computer Management" and "Control Panel", and everything from
+  // Discord onwards — Spotify, Skool, YouTube, Telegram, Notion — was never mentioned to
+  // whisper at all. That is why "open Skool" came back as "school": the one name that needed
+  // the help was the one name that could not fit.
+  //
+  // Short names are what people say out loud; long ones are system utilities nobody dictates.
+  // Sorting by length fits 42 names instead of 26 and reaches every application on this
+  // machine anyone would actually ask for. The names it pushes out are the long ones — "Visual
+  // Studio Code", "Google Chrome" — and those are covered by the window list above whenever
+  // they are open, which is when anyone asks for them by name.
+  const byLength = [...indexedApps()].sort(
+    (one, two) => one.name.length - two.name.length || one.name.localeCompare(two.name)
+  )
+  for (const entry of byLength) add(entry.name)
 
   let list = names.join(', ')
   if (list.length > PROMPT_MAX_CHARS) list = list.slice(0, list.lastIndexOf(', ', PROMPT_MAX_CHARS))
