@@ -69,10 +69,15 @@ const CLOSE_NAMED = /^(?:close|quit|kill)\s+(?:the\s+)?(.+?)(?:\s+window)?$/
  *  nothing. It is the one word normalisation could not fix either — rewriting "pose" globally
  *  would break the day someone installs an app by that name. */
 const PLAY_PAUSE =
-  /^(?:(play|pause|pose|resume|unpause)|play\s*[/-]?\s*pause|toggle)(?:\s+(?:the|this|that))?(?:\s+(?:music|song|track|audio|video|media|playback|it))?$/
+  /^(?:(play|pause|pose|resume|unpause|stop)|play\s*[/-]?\s*pause|toggle)(?:\s+(?:the|this|that))?(?:\s+(?:music|song|track|audio|video|media|playback|it))?$/
 
-/** The verbs above that mean stop, "pose" among them. */
-const PAUSING = new Set(['pause', 'pose'])
+/** The verbs above that mean stop, "pose" among them.
+ *
+ *  "stop" is here because it was missing and nothing said so: "stop the music" matched no
+ *  media command, fell all the way through to `bare-target`, and was answered with "I couldn't
+ *  find Stop The Music". It is the same word `playback.ts` already accepts in "stop spotify",
+ *  so the two halves of stopping now agree. */
+const PAUSING = new Set(['pause', 'pose', 'stop'])
 
 /** "next", "next track", "skip", "skip this song". */
 const NEXT_TRACK = /^(?:next|skip|forward)(?:\s+(?:the|this|that))?(?:\s+(?:track|song|one|it))?$/
