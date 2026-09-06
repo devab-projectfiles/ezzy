@@ -92,20 +92,34 @@
      that has stopped being see-through and a film that lets a bright wallpaper's shapes
      through the rows. The dot runs higher for the reason below.
 
-     The values are matched to the reference rather than judged by eye. Cluely runs on this
-     machine, so its overlay was screen-grabbed and its surface sampled: over the editor
-     backdrop of rgb(25, 26, 27) it composites to rgb(42, 43, 44)-rgb(44, 45, 46). Solving
-     `composite = alpha x fill + (1 - alpha) x backdrop` for a target of 44 gives 48 at the
-     panel's alpha, 48 at the search bar's and 46 at the dot's higher one — which is what
-     these are. Anyone retuning them should re-measure the same way rather than nudging the
-     numbers: the composite is what the eye sees, and it is not the fill. */
-  --glass-fill-panel: rgba(48, 48, 48, 0.82);
-  --glass-fill-search: rgba(48, 48, 48, 0.84);
+     The values are matched to the reference rather than judged by eye, and the measurement
+     was got wrong once first, which is worth recording because the mistake is easy to repeat.
+     Cluely runs on this machine, so its overlay was screen-grabbed and sampled — but the
+     first pass sampled a region that was mostly the editor BEHIND Cluely and took the most
+     common dark colour to be Cluely's own. It was the backdrop. That produced a surface twice
+     as light as the reference, and it looked it.
+
+     Sampled properly, at points known to be inside Cluely's panel and away from its text: its
+     surface reads rgb(22, 21, 26) to rgb(23, 22, 26) over an editor backdrop of
+     rgb(18, 19, 20). Near-black, not mid-grey. Solving
+     `composite = alpha x fill + (1 - alpha) x backdrop` for a target of 23 gives 24 at every
+     one of the three alphas.
+
+     Two rules for anyone retuning these. Sample a point you can SEE is inside the surface,
+     never the most common colour in a region — the backdrop usually wins that vote. And solve
+     for the composite rather than nudging the fill: the composite is what the eye sees, and
+     over a dark backdrop it is not close to the fill.
+
+     Darkening also improves the case the alpha was chosen for. Dark glass over a bright
+     desktop hides more of it, not less, so a wallpaper reads through this less than it did
+     through the lighter grey it replaces. */
+  --glass-fill-panel: rgba(24, 24, 24, 0.82);
+  --glass-fill-search: rgba(24, 24, 24, 0.84);
   /* The dot carries the most opacity of the three. It is 56px of surface sitting on top of
      whatever the user parked it over, usually body text, and dark glass cannot mute dark
      content — at the panel's alpha, black text behind the dot stayed legible straight
      through the mark. */
-  --glass-fill-dot: rgba(46, 46, 46, 0.9);
+  --glass-fill-dot: rgba(24, 24, 24, 0.9);
 
   /* The inner white glow, kept at zero.
      It was a 26px inset ring at 11% white, and it is the layer that read as "white" over the
