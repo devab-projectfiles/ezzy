@@ -79,18 +79,30 @@
      that used to exist for bright backdrops was unnecessary.
 
      Ramped rather than flat because a single flat alpha reads as a plastic sheet; the
-     lighter top-left corner is what sells a pane catching light. */
+     lighter top-left corner is what sells a pane catching light.
+
+     **Neutral grey, not slate.** These stops used to carry a blue cast — rgba(72, 80, 104)
+     down to rgba(26, 30, 42) — which read as a colour rather than as glass, and tinted every
+     surface the app has. They are now grey.
+
+     Only the hue changed. Each stop keeps its own alpha untouched, and its grey was chosen to
+     have the SAME perceived brightness as the slate it replaces, by luminance
+     (0.2126R + 0.7152G + 0.0722B): rgba(72, 80, 104) computes to 80, so it became
+     rgba(80, 80, 80). Neutralising by averaging the channels instead would have lightened
+     every stop, because blue contributes almost nothing to how bright a colour looks and
+     averaging hands it the same weight as green. The ramp, the alphas and the angle are all
+     as they were — this is a change of colour and nothing else. */
   --glass-fill-panel: linear-gradient(
     148deg,
-    rgba(72, 80, 104, 0.76) 0%,
-    rgba(42, 47, 63, 0.8) 44%,
-    rgba(26, 30, 42, 0.84) 100%
+    rgba(80, 80, 80, 0.76) 0%,
+    rgba(47, 47, 47, 0.8) 44%,
+    rgba(30, 30, 30, 0.84) 100%
   );
   --glass-fill-search: linear-gradient(
     148deg,
-    rgba(76, 84, 108, 0.78) 0%,
-    rgba(44, 49, 65, 0.82) 52%,
-    rgba(28, 32, 44, 0.86) 100%
+    rgba(84, 84, 84, 0.78) 0%,
+    rgba(49, 49, 49, 0.82) 52%,
+    rgba(32, 32, 32, 0.86) 100%
   );
   /* The dot carries the most opacity of the three. It is 56px of surface sitting on top of
      whatever the user parked it over, usually body text, and dark glass cannot mute dark
@@ -98,8 +110,8 @@
      through the mark. */
   --glass-fill-dot: linear-gradient(
     148deg,
-    rgba(74, 82, 106, 0.84) 0%,
-    rgba(34, 39, 53, 0.88) 100%
+    rgba(82, 82, 82, 0.84) 0%,
+    rgba(39, 39, 39, 0.88) 100%
   );
 
   /* Step 02 of the tutorial, scaled down rather than copied.
