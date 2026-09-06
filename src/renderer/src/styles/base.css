@@ -114,25 +114,28 @@
      desktop hides more of it, not less, so a wallpaper reads through this less than it did
      through the lighter grey it replaces.
 
-     **24 was the measured match; 16 is what actually looks right, and that is not a
-     contradiction.** Solved from two backdrops, Cluely's surface is fill 23.7 at alpha 0.79
-     and this one was 24 at 0.82 — the same surface to within a percent, and it still read as
-     the lighter of the two side by side. The reason is what sits ON the surface rather than
-     the surface: Cluely's panel is small and largely empty, while this one is twice the size
-     and carries a column of full-colour application icons, white titles and chips. The same
-     grey under more light reads lighter.
+     **Compare the DOT, not the panel.** Tuning this against Cluely's panel gives the wrong
+     answer twice over, and it did: the panel is covered in full-colour application icons,
+     white titles and chips, so the same grey reads lighter there than on an empty surface. A
+     fill of 16 was set on that reasoning and overshot badly — measured against Cluely's
+     toolbar pill over the same wallpaper, its pill read 63 and this dot read 29, less than
+     half as bright.
 
-     So the fill is set below the reference on purpose, to land in the same place perceptually.
-     Anyone comparing the two with a colour picker will find this darker than Cluely and should
-     leave it alone. The alphas are untouched, so how much of the desktop comes through has not
-     changed — only how dark the surface itself is. */
-  --glass-fill-panel: rgba(16, 16, 16, 0.82);
-  --glass-fill-search: rgba(16, 16, 16, 0.84);
-  /* The dot carries the most opacity of the three. It is 56px of surface sitting on top of
-     whatever the user parked it over, usually body text, and dark glass cannot mute dark
-     content — at the panel's alpha, black text behind the dot stayed legible straight
-     through the mark. */
-  --glass-fill-dot: rgba(16, 16, 16, 0.9);
+     The dot and Cluely's toolbar pill are the fair pair: both are small, both are empty, and
+     both sit over the same band of desktop. Solved from them, Cluely is fill ~25 at alpha
+     ~0.79, which agrees with the ~23.7 the panels gave. So 24 was right all along and the
+     reference's alpha is 0.79, not the 0.82-0.90 that was here.
+
+     One alpha for all three now, at 0.80. The dot used to run at 0.90 to stop black text
+     behind it reading through the mark; matching the reference costs a little of that, and
+     the dot is the surface the eye actually compares. */
+  --glass-fill-panel: rgba(24, 24, 24, 0.8);
+  --glass-fill-search: rgba(24, 24, 24, 0.8);
+  /* The dot used to carry more opacity than the other two, because it is 56px of surface
+     sitting over whatever it was parked on — usually body text — and at the panel's alpha
+     black text behind it stayed legible through the mark. It now matches them, because it is
+     the surface that gets compared to the reference and it was losing that comparison. */
+  --glass-fill-dot: rgba(24, 24, 24, 0.8);
 
   /* The inner white glow, kept at zero.
      It was a 26px inset ring at 11% white, and it is the layer that read as "white" over the
