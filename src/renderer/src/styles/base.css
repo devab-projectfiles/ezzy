@@ -78,51 +78,42 @@
      bright case costs nothing in the dark one — which is precisely why the second token set
      that used to exist for bright backdrops was unnecessary.
 
-     Ramped rather than flat because a single flat alpha reads as a plastic sheet; the
-     lighter top-left corner is what sells a pane catching light.
+     **One flat neutral grey, and that is the whole recipe.**
 
-     **Neutral grey, not slate.** These stops used to carry a blue cast — rgba(72, 80, 104)
-     down to rgba(26, 30, 42) — which read as a colour rather than as glass, and tinted every
-     surface the app has. They are now grey.
+     This was a blue-slate gradient under a stack of white layers — a ramp from rgba(72, 80,
+     104) to rgba(26, 30, 42), an inner glow, a diagonal sheen, a top specular and a rim at
+     50% white. Every one of those varies across the face, so the surface had no single
+     colour: it was lighter in two corners, glowing at every edge, and blue. Asked for a pure
+     colour, all of it comes off.
 
-     Only the hue changed. Each stop keeps its own alpha untouched, and its grey was chosen to
-     have the SAME perceived brightness as the slate it replaces, by luminance
-     (0.2126R + 0.7152G + 0.0722B): rgba(72, 80, 104) computes to 80, so it became
-     rgba(80, 80, 80). Neutralising by averaging the channels instead would have lightened
-     every stop, because blue contributes almost nothing to how bright a colour looks and
-     averaging hands it the same weight as green. The ramp, the alphas and the angle are all
-     as they were — this is a change of colour and nothing else. */
-  --glass-fill-panel: linear-gradient(
-    148deg,
-    rgba(80, 80, 80, 0.76) 0%,
-    rgba(47, 47, 47, 0.8) 44%,
-    rgba(30, 30, 30, 0.84) 100%
-  );
-  --glass-fill-search: linear-gradient(
-    148deg,
-    rgba(84, 84, 84, 0.78) 0%,
-    rgba(49, 49, 49, 0.82) 52%,
-    rgba(32, 32, 32, 0.86) 100%
-  );
+     What is left is one value per surface. No ramp, so the face is the same colour corner to
+     corner; no white overlays, so what you see is the fill and the desktop behind it and
+     nothing else. The alphas are the settled ones and stay: ~0.82 is the point between a slab
+     that has stopped being see-through and a film that lets a bright wallpaper's shapes
+     through the rows. The dot runs higher for the reason below.
+
+     The values are matched to the reference rather than judged by eye. Cluely runs on this
+     machine, so its overlay was screen-grabbed and its surface sampled: over the editor
+     backdrop of rgb(25, 26, 27) it composites to rgb(42, 43, 44)-rgb(44, 45, 46). Solving
+     `composite = alpha x fill + (1 - alpha) x backdrop` for a target of 44 gives 48 at the
+     panel's alpha, 48 at the search bar's and 46 at the dot's higher one — which is what
+     these are. Anyone retuning them should re-measure the same way rather than nudging the
+     numbers: the composite is what the eye sees, and it is not the fill. */
+  --glass-fill-panel: rgba(48, 48, 48, 0.82);
+  --glass-fill-search: rgba(48, 48, 48, 0.84);
   /* The dot carries the most opacity of the three. It is 56px of surface sitting on top of
      whatever the user parked it over, usually body text, and dark glass cannot mute dark
      content — at the panel's alpha, black text behind the dot stayed legible straight
      through the mark. */
-  --glass-fill-dot: linear-gradient(
-    148deg,
-    rgba(82, 82, 82, 0.84) 0%,
-    rgba(39, 39, 39, 0.88) 100%
-  );
+  --glass-fill-dot: rgba(46, 46, 46, 0.9);
 
-  /* Step 02 of the tutorial, scaled down rather than copied.
-     Verbatim it is three white inner shadows at 20% with 12-15px blur and 1-2px spread. That
-     reads as a subtle edge glow on the tutorial's ~500px card, but this panel is 248px tall,
-     so the same blur reaches from both edges across most of the surface — and three of them
-     compound with the fill, the sheen and the top highlight. Stacked, that was landing near
-     50-60% white at the edges, which is the milky look the material is supposed to avoid.
-     One soft ring at a third of the alpha gives the same thick-pane cue without washing the
-     surface out. */
-  --glass-inner: inset 0 0 26px 0 rgba(255, 255, 255, 0.11);
+  /* The inner white glow, kept at zero.
+     It was a 26px inset ring at 11% white, and it is the layer that read as "white" over the
+     surface: on a panel this size the blur reaches in from every edge across most of the
+     face, so what should have been an edge cue was a wash. Held as a transparent shadow
+     rather than deleted, because it sits inside a comma-separated box-shadow list where
+     `none` is not a legal entry. */
+  --glass-inner: inset 0 0 0 0 rgba(255, 255, 255, 0);
 
   /* The bright hairline that reads as the cut edge of a pane of glass. On dark glass this is
      the primary shape cue, so it runs brighter than the original value.
@@ -140,31 +131,30 @@
      stacked on the top border to make a 3px band, and at the rounded corners a 1px vertical
      offset smears into a widening bright arc. The sheen gradient still carries the
      light-from-above cue without touching the edge. */
-  --glass-rim: rgba(255, 255, 255, 0.5);
-  --glass-rim-search: rgba(255, 255, 255, 0.55);
-  --glass-rim-bright: rgba(255, 255, 255, 0.5);
+  --glass-rim: rgba(255, 255, 255, 0.12);
+  --glass-rim-search: rgba(255, 255, 255, 0.13);
+  --glass-rim-bright: rgba(255, 255, 255, 0.16);
   /* the top-edge specular. Only the dot still uses it — the panel and the search bar
      dropped it because it was half of why their edge read differently top to bottom. */
-  --glass-highlight: rgba(255, 255, 255, 0.4);
-  --chip-rim: rgba(255, 255, 255, 0.26);
+  --glass-highlight: rgba(255, 255, 255, 0.08);
+  --chip-rim: rgba(255, 255, 255, 0.16);
 
   /* The dual rim. A dark ring inboard of the light one so the edge keeps contrast against
      a bright desktop. Deliberately not varied by what is behind it: it costs nothing on a dark
      desktop and is what holds the edge on a bright one.
      The dot no longer uses one — on a 56px circle the ring reads as a grey halo rather than
      as an edge, which is why only the two large surfaces keep it. */
-  --rim-contrast-panel: rgba(4, 6, 12, 0.5);
+  --rim-contrast-panel: rgba(0, 0, 0, 0.45);
 
-  /* The diagonal light band that makes glass read as thick rather than as a film. Kept faint
-     on purpose — it lands in the same corners as the inner ring, so anything stronger adds
-     straight on top of it. */
+  /* The diagonal light band, kept at zero.
+     It ran to 18% white in two corners, which is the other half of what read as white over
+     the surface — and a band that changes across the face is the opposite of a flat colour.
+     Left as a transparent gradient rather than deleted, so the elements that paint it keep a
+     valid background and nothing in the layout moves. */
   --glass-sheen: linear-gradient(
     122deg,
-    rgba(255, 255, 255, 0.18) 0%,
-    rgba(255, 255, 255, 0.04) 26%,
-    rgba(255, 255, 255, 0) 52%,
-    rgba(255, 255, 255, 0.05) 76%,
-    rgba(255, 255, 255, 0.14) 100%
+    rgba(255, 255, 255, 0) 0%,
+    rgba(255, 255, 255, 0) 100%
   );
 
   /* Much lighter than the white-glass version needed: the dark fill is now doing the work of
@@ -184,8 +174,8 @@
   /* On dark glass the selected row reads by getting LIGHTER, with its own hairline — the
      reference cards do exactly this for their inner tiles. the "more opaque, not darker"
      rule was about light glass; inverted here for the same reason. */
-  --row-selected: rgba(255, 255, 255, 0.16);
-  --row-selected-rim: rgba(255, 255, 255, 0.3);
+  --row-selected: rgba(255, 255, 255, 0.09);
+  --row-selected-rim: rgba(255, 255, 255, 0.14);
 
   --divider: rgba(255, 255, 255, 0.12);
 }
