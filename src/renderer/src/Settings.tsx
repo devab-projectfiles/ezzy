@@ -124,7 +124,13 @@ function Settings(): React.JSX.Element {
         <h1 className="settings__title">
           {searching ? `Results for “${query.trim()}”` : titleOf(page)}
         </h1>
-        {!searching && page === 'commands' && <Commands commands={commands} />}
+        {!searching && page === 'commands' && (
+          <Commands
+            commands={commands}
+            phrases={snapshot.config.phrases}
+            onChange={(phrases) => void change({ phrases })}
+          />
+        )}
         {searching && nothing && <p className="settings__empty">Nothing here matches that.</p>}
         {page === 'commands' && !searching
           ? null
@@ -388,7 +394,13 @@ const GROUPS: Array<[CommandInfo['group'], string, string]> = [
  *  There is exactly one list of commands in this app and this draws it, so a command cannot
  *  be added without appearing here and cannot be removed and left behind. The examples are
  *  the command's own, and the first of them is the phrasing its pattern is written around. */
-function Commands({ commands }: { commands: CommandInfo[] }): React.JSX.Element {
+interface CommandsProps {
+  commands: CommandInfo[]
+  phrases: Record<string, string[]>
+  onChange: (phrases: Record<string, string[]>) => void
+}
+
+function Commands({ commands, phrases, onChange }: CommandsProps): React.JSX.Element {
   if (commands.length === 0) {
     return <p className="settings__empty">Loading…</p>
   }
@@ -402,23 +414,110 @@ function Commands({ commands }: { commands: CommandInfo[] }): React.JSX.Element 
             <h2 className="settings__heading">{heading}</h2>
             <p className="settings__blurb">{blurb}</p>
             {mine.map((command) => (
-              <div key={command.id} className="settings__command">
-                <span className="settings__name">{command.title}</span>
-                <p className="settings__detail">{command.summary}</p>
-                <ul className="settings__examples">
-                  {command.examples.map((example) => (
-                    <li key={example} className="settings__example">
-                      “{example}”
-                    </li>
-                  ))}
-                </ul>
-              </div>
+              <Command
+                key={command.id}
+                command={command}
+                mine={phrases[command.id] ?? []}
+                onChange={(list) => onChange({ ...phrases, [command.id]: list })}
+              />
             ))}
           </section>
         )
       })}
     </>
   )
+}
+
+/** One command, with the wordings the user has added to it.
+ *
+ *  A phrase is checked by the main process before it is saved — it is the only half that knows
+ *  what the patterns already understand — so the reason a phrase is refused appears under the
+ *  field rather than the phrase being quietly dropped. */
+function Command({
+  command,
+  mine,
+  onChange
+}: {
+  command: CommandInfo
+  mine: string[]
+  onChange: (phrases: string[]) => void
+}): React.JSX.Element {
+  const [adding, setAdding] = useState(false)
+  const [draft, setDraft] = useState('')
+  const [problem, setProblem] = useState<string | null>(null)
+
+  return (
+    <div className="settings__command">
+      <span className="settings__name">{command.title}</span>
+      <p className="settings__detail">{command.summary}</p>
+      <ul className="settings__examples">
+        {command.examples.map((example) => (
+          <li key={example} className="settings__example">
+            “{example}”
+          </li>
+        ))}
+        {mine.map((phrase) => (
+          <li key={phrase} className="settings__example settings__example--mine">
+            “{phrase}”
+            <button
+              type="button"
+              className="settings__remove"
+              aria-label={`Remove ${phrase}`}
+              onClick={() => onChange(mine.filter((entry) => entry !== phrase))}
+            >
+              ×
+            </button>
+          </li>
+        ))}
+        {adding ? (
+          <li className="settings__example settings__example--adding">
+            <input
+              className="settings__phrase-input"
+              autoFocus
+              placeholder="say it your way"
+              value={draft}
+              onChange={(event) => {
+                setDraft(event.target.value)
+                setProblem(null)
+              }}
+              onKeyDown={(event) => {
+                if (event.key === 'Escape') stop()
+                if (event.key === 'Enter') void add()
+              }}
+            />
+            <button type="button" className="settings__remove" onClick={() => void add()}>
+              Add
+            </button>
+          </li>
+        ) : (
+          <li>
+            <button type="button" className="settings__add" onClick={() => setAdding(true)}>
+              + Add a phrase
+            </button>
+          </li>
+        )}
+      </ul>
+      {problem && <p className="settings__error settings__error--phrase">{problem}</p>}
+    </div>
+  )
+
+  function stop(): void {
+    setAdding(false)
+    setDraft('')
+    setProblem(null)
+  }
+
+  async function add(): Promise<void> {
+    const phrase = draft.trim()
+    if (phrase === '') return stop()
+    const reason = await window.ezzy.checkPhrase(phrase)
+    if (reason !== null) {
+      setProblem(reason)
+      return
+    }
+    onChange([...mine, phrase])
+    stop()
+  }
 }
 
 interface SwitchProps {

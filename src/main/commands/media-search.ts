@@ -110,6 +110,7 @@ export function registerMediaSearchCommands(resolveTarget: ResolveTarget): void 
   // names where to look is the one that meant it.
   register({
     id: 'youtube-search',
+    takesTarget: true,
     title: 'YouTube',
     group: 'media',
     summary:
@@ -167,6 +168,7 @@ export function registerMediaSearchCommands(resolveTarget: ResolveTarget): void 
   // Explicitly Spotify, so it always searches: no launcher, no "did you mean the app".
   register({
     id: 'spotify-search',
+    takesTarget: true,
     title: 'Spotify search',
     group: 'media',
     summary:
@@ -190,6 +192,7 @@ export function registerMediaSearchCommands(resolveTarget: ResolveTarget): void 
 
   register({
     id: 'spotify-play',
+    takesTarget: true,
     title: 'Play something',
     group: 'media',
     summary:

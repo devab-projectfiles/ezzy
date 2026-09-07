@@ -16,7 +16,13 @@ import { app } from 'electron'
 import { VoiceFailure, VoiceState } from '../shared/types'
 import { indexedApps } from './app-index'
 import { registerBuiltinCommands } from './commands/builtin'
-import { isSilenceArtefact, normaliseTranscript, runCommand } from './commands/registry'
+import {
+  isSilenceArtefact,
+  normaliseTranscript,
+  runCommand,
+  setCustomPhrases,
+  verifyExamples
+} from './commands/registry'
 import { getConfig } from './config'
 import { activeHotkey, watchHold } from './hotkey'
 import { hush, speak } from './speech'
@@ -127,6 +133,11 @@ const PROMPT_MAX_CHARS = 320
 
 export function initVoice(): void {
   registerBuiltinCommands()
+  // After the commands exist and before anything can be said: the phrases name command ids,
+  // and `verifyExamples` checks the canonical each one rewrites to is still a phrasing its
+  // own command accepts.
+  verifyExamples()
+  setCustomPhrases(getConfig().phrases)
   watchHold({
     onPress: () => armCapture(),
     onHold: () => void beginListening(),

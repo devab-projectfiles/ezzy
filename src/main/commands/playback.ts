@@ -109,6 +109,7 @@ let lastRun: 'controlled' | 'opened' = 'controlled'
 export function registerPlaybackCommands(resolveTarget: ResolveTarget): void {
   register({
     id: 'playback-in',
+    takesTarget: false,
     title: 'Play or pause one app',
     group: 'media',
     summary:
@@ -156,6 +157,7 @@ export function registerPlaybackCommands(resolveTarget: ResolveTarget): void {
   // is a request about music that is not playing.
   register({
     id: 'playback-skip-in',
+    takesTarget: false,
     title: 'Skip in one app',
     group: 'media',
     summary:

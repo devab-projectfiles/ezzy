@@ -46,6 +46,12 @@ export interface Command {
   examples: string[]
   /** Which part of the list it belongs under. */
   group: CommandGroup
+  /** Whether the pattern captures free text the user supplies — an app name, a search, a
+   *  network. The distinction is the one CLAUDE.md draws between naming what you accept and
+   *  taking `(.+)`, and it is what makes a custom phrase possible at all: a command with a
+   *  closed vocabulary genuinely owns the words it matches, while an open one merely matches
+   *  the SHAPE of a phrase and would go on to look it up and most likely fail. */
+  takesTarget: boolean
 }
 
 export type CommandGroup = 'media' | 'windows' | 'system'
@@ -58,6 +64,9 @@ export interface CommandOutcome {
 }
 
 const commands: Command[] = []
+
+/** A user's own wording, normalised, mapped to the canonical phrase it stands for. */
+let phrases = new Map<string, string>()
 
 export function register(command: Command): void {
   commands.push(command)
@@ -80,10 +89,76 @@ export function commandCatalogue(): CommandInfo[] {
   }))
 }
 
+/** Adopt the user's own wordings.
+ *
+ *  Rebuilt wholesale rather than merged, so removing a phrase in settings actually removes it.
+ *  A phrase whose command no longer exists is dropped on the floor: the config outlives any
+ *  particular set of commands, and a stale id is not worth an error anybody can act on.
+ *
+ *  The canonical each one rewrites to is the command's own first example, which is why that
+ *  field is documented as having to be a phrasing its pattern matches — `verifyExamples`
+ *  below is what makes sure it stayed one. */
+export function setCustomPhrases(map: Record<string, string[]>): void {
+  const next = new Map<string, string>()
+  for (const [id, list] of Object.entries(map)) {
+    const command = commands.find((entry) => entry.id === id)
+    if (!command) continue
+    for (const phrase of list) {
+      const key = normaliseTranscript(phrase)
+      if (key !== '') next.set(key, command.examples[0])
+    }
+  }
+  phrases = next
+  log(`phrases: ${phrases.size} custom wordings`)
+}
+
+/** Why `phrase` cannot be added, or null when it can.
+ *
+ *  The one that matters is the second: a phrase some command already understands would be
+ *  quietly rewritten into a different command, and the user would have taken a working
+ *  command away from themselves with no way to see they had done it. */
+export function phraseProblem(phrase: string): string | null {
+  const text = normaliseTranscript(phrase)
+  if (text === '') return 'That is not something Ezzy can hear.'
+  // Only a closed-vocabulary command can genuinely own a phrase. Testing against all of them
+  // refuses almost everything anyone would want to add: `bare-target` matches nearly any short
+  // phrase and `close X` takes anything after the verb, so "quiet please" and "shut it" both
+  // came back as already understood when neither does anything today but fail.
+  const taken = commands.find((command) => !command.takesTarget && command.match.test(text))
+  if (taken) return `Ezzy already understands that — it means “${taken.title}”.`
+  if (phrases.has(text)) return 'You have already added that phrase.'
+  return null
+}
+
+/** Every command's first example has to be matched by that command's own pattern, because it
+ *  is what custom phrases rewrite to — a canonical that its own command would not accept
+ *  turns a user's phrase into "I didn't understand".
+ *
+ *  Checked at startup and only logged: it is a mistake in the source rather than anything a
+ *  user did, and the app is still usable for every command that is fine. */
+export function verifyExamples(): void {
+  for (const command of commands) {
+    const canonical = normaliseTranscript(command.examples[0] ?? '')
+    if (canonical !== '' && command.match.test(canonical)) continue
+    console.error(
+      `[ezzy] ${command.id}: its first example "${command.examples[0]}" is not matched by its own pattern`
+    )
+  }
+}
+
 /** Run whatever `text` names. Returns null when no command claims it, which the caller
  *  reports differently from a command that ran and failed: "I don't know how to do that" is
  *  not the same answer as "I don't see Figma open". */
 export async function runCommand(text: string): Promise<CommandOutcome | null> {
+  // A user's own wording, swapped for the phrasing the patterns are written around. Done here
+  // rather than in `normaliseTranscript` because it is a preference rather than a fact about
+  // speech, and because everything below it — the order, the shadowing, the fall-through that
+  // does not exist — then carries on working exactly as it did.
+  const canonical = phrases.get(text)
+  if (canonical !== undefined) {
+    log(`phrase: "${text}" -> "${canonical}"`)
+    text = canonical
+  }
   for (const command of commands) {
     const groups = command.match.exec(text)
     if (!groups) continue

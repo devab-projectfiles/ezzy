@@ -1,6 +1,6 @@
 import { ipcMain } from 'electron'
 import { EzzyConfig, IPC, NavKey, VoiceFailure } from '../shared/types'
-import { commandCatalogue } from './commands/registry'
+import { commandCatalogue, phraseProblem, setCustomPhrases } from './commands/registry'
 import { getConfig } from './config'
 import {
   sendAppearance,
@@ -122,10 +122,14 @@ export function registerIpc(): void {
   ipcMain.handle(IPC.getSettings, () => settingsSnapshot())
   ipcMain.handle(IPC.getAppearance, () => getConfig().appearance)
   ipcMain.handle(IPC.getCommands, () => commandCatalogue())
+  ipcMain.handle(IPC.checkPhrase, (_event, phrase: string) => phraseProblem(phrase))
   ipcMain.handle(IPC.setSettings, (_event, patch: Partial<EzzyConfig>) => {
     const result = applySettings(patch)
     // Every window paints itself from the same tokens, so all of them hear about it — the
     // settings window included, since the person changing it is looking at one.
+    // The registry keeps its own copy so `runCommand` stays a pure function of its text and
+    // the registered set; this is what keeps the two in step.
+    if (patch.phrases !== undefined) setCustomPhrases(result.snapshot.config.phrases)
     if (patch.appearance !== undefined) {
       sendAppearance(result.snapshot.config.appearance)
       sendAppearanceToSettings(result.snapshot.config.appearance)

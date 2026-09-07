@@ -109,6 +109,7 @@ const WIFI_CONNECT =
 export function registerSystemCommands(): void {
   register({
     id: 'open-settings',
+    takesTarget: false,
     title: 'Windows settings pages',
     group: 'system',
     summary:
@@ -134,6 +135,7 @@ export function registerSystemCommands(): void {
   // registered ahead of the one that would swallow it.
   register({
     id: 'wifi-list',
+    takesTarget: false,
     title: 'Show the networks',
     group: 'system',
     summary: 'Opens the list of networks in range, for when you want to pick one yourself.',
@@ -155,6 +157,7 @@ export function registerSystemCommands(): void {
 
   register({
     id: 'wifi-connect',
+    takesTarget: true,
     title: 'Join a network',
     group: 'system',
     summary:

@@ -39,6 +39,14 @@ export interface EzzyConfig {
    *  A blocked microphone opens the panel either way. Is explicit that it has to lead to
    *  the setting rather than to a dead button, and that button lives on the search bar. */
   voicePanel: boolean
+  /** Extra wordings for commands, as command id -> the things you say.
+   *
+   *  A phrase is rewritten to that command's canonical example BEFORE anything is matched, so
+   *  it can never change which pattern wins or what order they are tried in. That is the whole
+   *  reason it works this way rather than by letting a pattern be edited: the registry has no
+   *  fall-through and its order is load-bearing, so an edited pattern can silently kill every
+   *  command below it, while a rewrite cannot reach the patterns at all. */
+  phrases: Record<string, string[]>
   /** The surface treatment. Purely how the windows are painted — no size, position or
    *  behaviour changes with it. */
   appearance: Appearance
@@ -55,6 +63,7 @@ export const DEFAULT_CONFIG: EzzyConfig = {
   voice: true,
   voicePanel: false,
   appearance: 'flat',
+  phrases: {},
   dotPositions: {},
   lastDisplayId: null
 }
@@ -310,6 +319,7 @@ export const IPC = {
   getHotkey: 'app:get-hotkey',
   getAppearance: 'app:get-appearance',
   getCommands: 'app:get-commands',
+  checkPhrase: 'app:check-phrase',
   appearance: 'app:appearance',
   panelData: 'panel:data',
   panelChanged: 'panel:changed',
@@ -364,6 +374,9 @@ export interface EzzyApi {
   getHotkey(): Promise<string>
   /** Everything Ezzy understands, for the settings window to list. */
   getCommands(): Promise<CommandInfo[]>
+  /** Why this phrase cannot be added, or null when it can. Asked before saving, so the reason
+   *  can be shown next to the field rather than the phrase failing silently later. */
+  checkPhrase(phrase: string): Promise<string | null>
   /** The surface treatment as of now. Every window asks on load, because each is its own
    *  document and none of them shares a stylesheet at runtime. */
   getAppearance(): Promise<Appearance>

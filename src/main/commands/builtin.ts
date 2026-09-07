@@ -184,6 +184,7 @@ export function registerBuiltinCommands(): void {
   // read by `switch to` as a request to switch to something called "sleep".
   register({
     id: 'sleep',
+    takesTarget: false,
     title: 'Sleep',
     group: 'system',
     summary: 'Puts the machine to sleep. Applications still get their usual chance to object.',
@@ -199,6 +200,7 @@ export function registerBuiltinCommands(): void {
 
   register({
     id: 'hibernate',
+    takesTarget: false,
     title: 'Hibernate',
     group: 'system',
     summary: 'Hibernates the machine rather than sleeping it.',
@@ -213,6 +215,7 @@ export function registerBuiltinCommands(): void {
 
   register({
     id: 'shut-down',
+    takesTarget: false,
     title: 'Shut down',
     group: 'system',
     summary: 'Shuts Windows down.',
@@ -235,6 +238,7 @@ export function registerBuiltinCommands(): void {
   // so the confirmation says what Ezzy did, not what the music did.
   register({
     id: 'play-pause',
+    takesTarget: false,
     title: 'Play or pause',
     group: 'media',
     summary:
@@ -267,6 +271,7 @@ export function registerBuiltinCommands(): void {
   // either behaviour on its own. Say "next song on youtube" to override the choice.
   register({
     id: 'next-track',
+    takesTarget: false,
     title: 'Next track',
     group: 'media',
     summary:
@@ -283,6 +288,7 @@ export function registerBuiltinCommands(): void {
 
   register({
     id: 'previous-track',
+    takesTarget: false,
     title: 'Previous track',
     group: 'media',
     summary: 'Goes back a track, using the same ladder as play or pause.',
@@ -325,6 +331,7 @@ export function registerBuiltinCommands(): void {
 
   register({
     id: 'switch-to',
+    takesTarget: true,
     title: 'Switch to a window',
     group: 'windows',
     summary:
@@ -337,6 +344,7 @@ export function registerBuiltinCommands(): void {
 
   register({
     id: 'open',
+    takesTarget: true,
     title: 'Open an app',
     group: 'windows',
     summary:
@@ -349,6 +357,7 @@ export function registerBuiltinCommands(): void {
 
   register({
     id: 'close-all',
+    takesTarget: false,
     title: 'Close everything',
     group: 'windows',
     summary:
@@ -380,6 +389,7 @@ export function registerBuiltinCommands(): void {
   // "this" — and after CLOSE_ALL, which it would read as "close the window".
   register({
     id: 'close-this',
+    takesTarget: false,
     title: 'Close this window',
     group: 'windows',
     summary: 'Closes the window in front, the same way its title bar X does.',
@@ -400,6 +410,7 @@ export function registerBuiltinCommands(): void {
 
   register({
     id: 'close-named',
+    takesTarget: true,
     title: 'Close a window',
     group: 'windows',
     summary: 'Closes a window you name.',
@@ -422,6 +433,7 @@ export function registerBuiltinCommands(): void {
   // Last: every pattern with a verb in it gets first refusal.
   register({
     id: 'bare-target',
+    takesTarget: true,
     title: 'A name on its own',
     group: 'windows',
     summary:

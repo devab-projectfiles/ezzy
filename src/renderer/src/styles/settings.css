@@ -276,6 +276,74 @@ body {
   color: var(--text-dim);
 }
 
+/* A phrase the user added, told apart from the built-in examples by being tinted rather than
+   by a label: they sit in the same row and do the same thing, and the only difference worth
+   drawing is which of them you can take away again. */
+.settings__example--mine {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border-color: rgba(124, 92, 255, 0.5);
+  background: rgba(124, 92, 255, 0.16);
+  color: var(--text-strong);
+}
+
+.settings__example--adding {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 6px 2px 10px;
+  border-color: var(--settings-accent);
+}
+
+.settings__phrase-input {
+  width: 190px;
+  border: 0;
+  background: none;
+  color: var(--text-strong);
+  font: inherit;
+  font-size: 12.5px;
+}
+
+.settings__phrase-input:focus {
+  outline: none;
+}
+
+.settings__phrase-input::placeholder {
+  color: var(--text-faint);
+}
+
+.settings__remove,
+.settings__add {
+  padding: 2px 8px;
+  border: 0;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--text-dim);
+  font: inherit;
+  font-size: 12px;
+  line-height: 1.4;
+  cursor: pointer;
+}
+
+.settings__add {
+  border: 1px dashed var(--settings-row-rim);
+  background: none;
+  color: var(--text-faint);
+  padding: 4px 10px;
+}
+
+.settings__remove:hover,
+.settings__add:hover {
+  background: rgba(255, 255, 255, 0.18);
+  color: var(--text-strong);
+}
+
+.settings__error--phrase {
+  margin: 8px 0 0;
+  text-align: left;
+}
+
 .settings__toggle {
   display: flex;
   cursor: pointer;
