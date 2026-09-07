@@ -53,16 +53,14 @@ function HotkeyField({ hotkey, active, error, onChange }: Props): React.JSX.Elem
   const message = warning ?? error
   const fallenBack = active !== null && active !== hotkey
 
+  // The control only. The row around it — its name and its description — belongs to the
+  // settings list, which declares every setting as data so the search can filter them; a
+  // component that drew its own row would be findable on its page and invisible to the search.
   return (
-    <div className="settings__row settings__row--hotkey">
-      <span className="settings__label">
-        <span className="settings__name">Open Ezzy</span>
-        <span className="settings__detail">
-          {recording
-            ? 'Press the keys you want, or Escape to cancel.'
-            : 'Tap it for the panel, hold it to speak.'}
-        </span>
-      </span>
+    <>
+      {recording && (
+        <span className="settings__hint">Press the keys you want, or Escape to cancel.</span>
+      )}
       {/* Alt+Space cannot be recorded: it is the Windows system menu, so pressing it over
           a framed window opens that menu and the field only ever sees the Space. Which would
           leave the default unreachable for anyone who changed away from it — hence a button
@@ -98,7 +96,7 @@ function HotkeyField({ hotkey, active, error, onChange }: Props): React.JSX.Elem
       {!message && fallenBack && (
         <p className="settings__error">{`In use by another app — Ezzy is on ${active} for now.`}</p>
       )}
-    </div>
+    </>
   )
 }
 

@@ -80,8 +80,9 @@ function SearchBar(): React.JSX.Element {
         </button>
       )}
       {/* A button, not decoration: clicking it starts listening the way holding the hotkey
-          does, for anyone whose hands are already on the mouse. `keepFocus` below stops the
+          does, for anyone whose hands are already on the mouse. `keepFocus` below stbops the
           click moving focus off the input, so the arrow keys keep working through it. */}
+
       <button
         type="button"
         className="searchbar__mic-button"

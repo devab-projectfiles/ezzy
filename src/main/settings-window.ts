@@ -23,12 +23,20 @@ import { onUpdateStatus } from './updater'
 import { releaseVoice } from './voice'
 import { loadRenderer, webPreferences } from './windows'
 
-/** Sized to the content rather than resizable: it is one column of eight rows, and there is
- *  nothing in it that benefits from being dragged wider. The height is measured against what
- *  the page actually lays out — the window cannot be resized, so anything that does not fit
- *  becomes a scrollbar on a form with nine controls in it. */
-const WIDTH = 460
-const HEIGHT = 760
+/** Two panes now — a nav and a page of settings — so it is sized and behaves like a window
+ *  someone works in rather than a form that happened to fit.
+ *
+ *  It was 460x760 and fixed, which was right when the whole of it was one column of nine
+ *  controls. A nav down the left cannot live in 460, and the content pane is the half that
+ *  benefits from being dragged wider — the log path alone is longer than the old window.
+ *
+ *  The minimum is where the layout stops working rather than a round number: below about 720
+ *  the 236px nav starts eating the control column, and rows whose control is a button begin
+ *  wrapping under their own label. */
+const WIDTH = 980
+const HEIGHT = 680
+const MIN_WIDTH = 720
+const MIN_HEIGHT = 520
 
 let win: BrowserWindow | null = null
 let stopWatchingUpdates: (() => void) | null = null
@@ -50,9 +58,11 @@ export function openSettingsWindow(): void {
     useContentSize: true,
     title: 'Ezzy',
     icon,
+    minWidth: MIN_WIDTH,
+    minHeight: MIN_HEIGHT,
     show: false,
-    resizable: false,
-    maximizable: false,
+    resizable: true,
+    maximizable: true,
     fullscreenable: false,
     // nativeTheme is pinned to dark in index.ts, so the system frame comes out dark and the
     // page does not have to fake a title bar to match it.

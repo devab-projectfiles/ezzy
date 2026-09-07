@@ -12,6 +12,7 @@
    settings does not feel like leaving the app. */
 :root {
   --settings-bg: #14161c;
+  --settings-nav: #101218;
   --settings-row: rgba(255, 255, 255, 0.05);
   --settings-row-rim: rgba(255, 255, 255, 0.08);
   --settings-accent: #7c5cff;
@@ -26,27 +27,133 @@ body {
   cursor: auto;
 }
 
+/* Two panes: a nav down the left and one page of rows on the right, which is the shape of
+   the settings this is modelled on. The nav is a fixed column and the content scrolls on its
+   own, so a long page never moves the nav and the window can be dragged to any size without
+   the two ever disagreeing about who scrolls. */
 .settings {
-  display: flex;
-  flex-direction: column;
-  gap: 18px;
+  display: grid;
+  grid-template-columns: 236px 1fr;
   height: 100%;
-  padding: 20px 22px;
-  overflow-y: auto;
   font-size: 14px;
 }
 
 .settings--broken {
+  display: flex;
   align-items: center;
   justify-content: center;
   text-align: center;
   color: var(--text-dim);
 }
 
-.settings__header {
+/* ------------------------------------------------------------------------ the nav */
+
+.settings__nav {
   display: flex;
-  align-items: baseline;
+  flex-direction: column;
+  gap: 2px;
+  padding: 16px 12px;
+  overflow-y: auto;
+  background: var(--settings-nav);
+  border-right: 1px solid var(--settings-row-rim);
+}
+
+.settings__search {
+  position: relative;
+  display: flex;
+  align-items: center;
+  margin-bottom: 14px;
+}
+
+.settings__search-icon {
+  position: absolute;
+  left: 10px;
+  width: 15px;
+  height: 15px;
+  color: var(--text-faint);
+  pointer-events: none;
+}
+
+.settings__search-input {
+  width: 100%;
+  padding: 9px 10px 9px 32px;
+  border: 1px solid var(--settings-row-rim);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text-strong);
+  font: inherit;
+  font-size: 13px;
+}
+
+.settings__search-input::placeholder {
+  color: var(--text-faint);
+}
+
+.settings__search-input:focus {
+  outline: none;
+  border-color: var(--settings-accent);
+}
+
+.settings__nav-label {
+  padding: 4px 10px 6px;
+  font-size: 12px;
+  color: var(--text-faint);
+}
+
+.settings__nav-item,
+.settings__nav-foot {
+  display: flex;
+  align-items: center;
   gap: 10px;
+  padding: 9px 10px;
+  border: 0;
+  border-radius: 9px;
+  background: none;
+  color: var(--text-dim);
+  font: inherit;
+  font-size: 14px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.settings__nav-item svg,
+.settings__nav-foot svg {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  color: var(--text-faint);
+}
+
+.settings__nav-item:hover,
+.settings__nav-foot:hover {
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text-strong);
+}
+
+.settings__nav-item.is-current {
+  background: var(--settings-row);
+  box-shadow: inset 0 0 0 1px var(--settings-row-rim);
+  color: var(--text-strong);
+}
+
+.settings__nav-item.is-current svg {
+  color: var(--text-strong);
+}
+
+/* Pinned to the bottom of the nav, the way the reference keeps its last item there. */
+.settings__nav-foot {
+  margin-top: auto;
+  font-size: 13px;
+}
+
+/* -------------------------------------------------------------------- the content */
+
+.settings__content {
+  display: flex;
+  flex-direction: column;
+  gap: 26px;
+  padding: 26px 34px 40px;
+  overflow-y: auto;
 }
 
 .settings__title {
@@ -56,47 +163,39 @@ body {
   color: var(--text-strong);
 }
 
-.settings__version {
-  font-size: 12px;
+.settings__empty {
+  margin: 0;
   color: var(--text-faint);
 }
 
 .settings__section {
   display: flex;
   flex-direction: column;
-  gap: 8px;
 }
 
-/* Matches the panel's section headers: 11px, wide tracking, uppercase in the markup. */
+/* A heading and then rows divided by hairlines rather than a stack of cards: at this width a
+   card per setting reads as a list of buttons, and the reference draws plain rows. */
 .settings__heading {
-  margin: 0;
-  padding: 0 2px;
-  font-size: 11px;
+  margin: 0 0 6px;
+  font-size: 15px;
   font-weight: 600;
-  letter-spacing: 0.08em;
-  color: var(--text-faint);
+  letter-spacing: 0;
+  color: var(--text-strong);
 }
 
 .settings__row {
   display: flex;
   align-items: center;
-  gap: 14px;
-  padding: 11px 14px;
-  border-radius: 12px;
-  background: var(--settings-row);
-  box-shadow: inset 0 0 0 1px var(--settings-row-rim);
+  gap: 24px;
+  padding: 16px 2px;
+  border-bottom: 1px solid var(--settings-row-rim);
 }
 
-.settings__row--hotkey {
-  flex-wrap: wrap;
-}
-
-.settings__row--toggle {
-  cursor: pointer;
+.settings__section .settings__row:last-child {
+  border-bottom: 0;
 }
 
 .settings__row.is-disabled {
-  cursor: default;
   opacity: 0.45;
 }
 
@@ -104,7 +203,7 @@ body {
   display: flex;
   flex: 1;
   flex-direction: column;
-  gap: 3px;
+  gap: 4px;
   min-width: 0;
 }
 
@@ -115,8 +214,27 @@ body {
 
 .settings__detail {
   font-size: 12px;
-  line-height: 1.35;
+  line-height: 1.4;
   color: var(--text-faint);
+  /* The log path is the long one, and it is worth reading in full rather than trailing off. */
+  overflow-wrap: anywhere;
+}
+
+/* The control column. Everything in it is right-aligned against the window's edge, which is
+   what makes a column of mixed switches and buttons look like one column. */
+.settings__control {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  flex-wrap: wrap;
+  max-width: 320px;
+}
+
+.settings__toggle {
+  display: flex;
+  cursor: pointer;
 }
 
 /* The hotkey recorder, drawn as the chip the plan puts the shortcut in on the hover pill — same
@@ -160,12 +278,21 @@ body {
   color: var(--text-dim);
 }
 
+/* Shown beside the recorder while it is listening for a shortcut. */
+.settings__hint {
+  flex-basis: 100%;
+  font-size: 12px;
+  color: var(--text-faint);
+  text-align: right;
+}
+
 .settings__error {
   flex-basis: 100%;
   margin: 0;
   font-size: 12px;
   line-height: 1.35;
   color: #ffb4a2;
+  text-align: right;
 }
 
 /* A real checkbox, moved off screen rather than hidden: it keeps the keyboard and the label
@@ -234,38 +361,4 @@ body {
 .settings__button:disabled {
   opacity: 0.45;
   cursor: default;
-}
-
-.settings__footer {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  margin-top: auto;
-  padding-top: 4px;
-}
-
-.settings__link {
-  flex: none;
-  padding: 0;
-  border: 0;
-  background: none;
-  color: var(--text-dim);
-  font: inherit;
-  font-size: 12px;
-  text-decoration: underline;
-  cursor: pointer;
-}
-
-.settings__link:hover {
-  color: var(--text-strong);
-}
-
-.settings__path {
-  flex: 1;
-  overflow: hidden;
-  font-size: 11px;
-  color: var(--text-faint);
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  direction: rtl;
 }
