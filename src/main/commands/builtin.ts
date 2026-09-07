@@ -17,7 +17,7 @@
 import { indexedApps } from '../app-index'
 import { focusWindow } from '../focus'
 import { launchApp, openDirect, resolveDirect } from '../launcher'
-import { nextTrack, playPause, previousTrack } from '../media-keys'
+import { mediaIn, nextTrack, playPause, previousTrack } from '../media-keys'
 import { hibernateMachine, shutDownMachine, sleepMachine } from '../power'
 import { bestMatch, spokenVariants } from '../search'
 import { listWindows } from '../window-tracker'
@@ -25,7 +25,7 @@ import { closeWindow } from '../win32'
 import { hidePanel } from '../windows'
 import { log } from '../verbose'
 import { registerMediaSearchCommands } from './media-search'
-import { mediaToPlayer, registerPlaybackCommands } from './playback'
+import { mediaToPlayer, musicPlayerWindow, playOrPause, registerPlaybackCommands } from './playback'
 import { registerSystemCommands } from './system'
 import { CommandContext, register } from './registry'
 
@@ -171,10 +171,24 @@ const NOT_A_TARGET = new Set([
   'who'
 ])
 
-/** Which player the last `play-pause` was addressed to, so the confirmation can name it. Read
- *  by `describe` immediately after the same command's `run`, one command at a time — the same
- *  arrangement, and the same reasoning, as `lastRun` in media-search.ts. */
-let playPauseTarget: string | null = null
+/** Exactly what the last `play-pause` did, in the words to say back. Read by `describe`
+ *  immediately after the same command's `run`, one command at a time — the same arrangement,
+ *  and the same reasoning, as `lastRun` in media-search.ts.
+ *
+ *  It holds the whole sentence rather than a target, because what happened is no longer a
+ *  function of the words that were said: "play music" can now come back as "Playing Spotify"
+ *  or as "Spotify is already playing", and only `run` knows which. */
+let playPauseSaid = 'Play/pause'
+
+/** Which half of the toggle a verb asks for, or null when it genuinely means either.
+ *
+ *  "toggle" and "play/pause" are the only two that mean either, and PLAY_PAUSE captures no
+ *  group for them — so an absent verb is exactly the case where a toggle is the honest thing
+ *  to send. */
+function wantedHalf(verb: string | undefined): 'play' | 'pause' | null {
+  if (verb === undefined) return null
+  return PAUSING.has(verb) ? 'pause' : 'play'
+}
 /** The same, for `next-track` and `previous-track`. */
 let skipTarget: string | null = null
 
@@ -252,16 +266,31 @@ export function registerBuiltinCommands(): void {
     // The player IS named when there is one, and that is not decoration: the whole complaint
     // this addresses was that the command reached the wrong application, so which one it
     // reached is the useful half of the answer.
-    describe: (groups) => {
-      const verb = PAUSING.has(groups[1]) ? 'Pausing' : groups[1] ? 'Playing' : 'Play/pause'
-      return playPauseTarget === null ? verb : `${verb} ${playPauseTarget}`
-    },
-    run: async () => {
+    // What happened, not what was asked for. The two used to be the same sentence, and with a
+    // toggle they were not the same event: "play music" while music was playing paused it and
+    // this said "Playing". `run` below now sends only the half that was asked for, so the verb
+    // is true — and where the player's state can be read it also knows whether there was
+    // anything to do.
+    describe: () => playPauseSaid,
+    run: async (groups) => {
       // A dedicated player if one is running, Spotify if not, and the bare media key only when
       // neither is — which is where a browser video is picked up, and the only case in which
       // Windows' own routing is still the right answer. See playback.ts.
-      playPauseTarget = mediaToPlayer('play-pause')
-      if (playPauseTarget === null) playPause()
+      const player = musicPlayerWindow()
+      const wanted = wantedHalf(groups[1])
+      if (player && wanted !== null) {
+        playPauseSaid = playOrPause(player, wanted).said
+      } else if (player) {
+        // "toggle" and "play/pause" genuinely mean either, so the toggle is the honest thing
+        // to send and the honest thing to say.
+        mediaIn(player.id, player.app, 'play-pause')
+        playPauseSaid = `Play/pause ${player.app}`
+      } else {
+        // Nothing on this machine claims to be a player, so the bare media key goes wherever
+        // Windows sends it and there is no state to read. The verb is all there is.
+        playPause()
+        playPauseSaid = wanted === null ? 'Play/pause' : wanted === 'play' ? 'Playing' : 'Pausing'
+      }
       hidePanel()
     }
   })

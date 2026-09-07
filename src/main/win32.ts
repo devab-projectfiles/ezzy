@@ -50,6 +50,11 @@ export const WM_APPCOMMAND = 0x0319
 export const APPCOMMAND_MEDIA_PLAY_PAUSE = 14
 export const APPCOMMAND_MEDIA_NEXTTRACK = 11
 export const APPCOMMAND_MEDIA_PREVIOUSTRACK = 12
+/** Play and pause as two commands rather than one toggle. Measured on Spotify: sending 46
+ *  started it and 47 stopped it, each doing only its own half. That is what lets a
+ *  confirmation say what happened instead of repeating what was asked. */
+export const APPCOMMAND_MEDIA_PLAY = 46
+export const APPCOMMAND_MEDIA_PAUSE = 47
 
 /** The WinEvents we subscribe to. Subscribe, never poll EnumWindows. */
 export const EVENT_SYSTEM_FOREGROUND = 0x0003

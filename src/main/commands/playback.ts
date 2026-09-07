@@ -100,11 +100,15 @@ const SKIP_IN =
 /** Which of those go backwards. */
 const BACK_VERB = new Set(['previous', 'prev', 'back', 'last', 'go back'])
 
-/** What the last run did, so the confirmation can say the true one. The registry calls
- *  `describe` immediately after the same command's `run` resolves, one command at a time, so
- *  it cannot be read out of order — the same arrangement, and the same reasoning, as
- *  `lastRun` in media-search.ts. */
-let lastRun: 'controlled' | 'opened' = 'controlled'
+/** Exactly what the last run did, in the words to say back. The registry calls `describe`
+ *  immediately after the same command's `run` resolves, one command at a time, so it cannot be
+ *  read out of order — the same arrangement, and the same reasoning, as `lastRun` in
+ *  media-search.ts.
+ *
+ *  A whole sentence rather than a flag, because what happened is no longer a function of what
+ *  was said: "play spotify" can come back as "Playing Spotify", as "Spotify is already
+ *  playing", or as "Opening Spotify", and only `run` knows which. */
+let lastSaid = 'Play/pause'
 
 export function registerPlaybackCommands(resolveTarget: ResolveTarget): void {
   register({
@@ -121,17 +125,18 @@ export function registerPlaybackCommands(resolveTarget: ResolveTarget): void {
       'play the music on spotify'
     ],
     match: PLAYBACK,
-    describe: (groups) => {
-      const service = DISPLAY[serviceOf(groups)]
-      if (lastRun === 'opened') return `Opening ${service}`
-      return PAUSE_VERB.has(groups[1]) ? `Pausing ${service}` : `Playing ${service}`
-    },
+    // Same as `play-pause` in builtin.ts: what happened rather than what was asked for. The
+    // sentence is built in `run`, because with a toggle the two were not the same event.
+    describe: () => lastSaid,
     run: async (groups, ctx) => {
       const service = serviceOf(groups)
       const target = service === 'youtube' ? youtubeWindow() : windowForApp(SPOTIFY)
       if (target) {
-        lastRun = 'controlled'
-        mediaIn(target.id, target.app, 'play-pause')
+        const wanted = PAUSE_VERB.has(groups[1]) ? 'pause' : 'play'
+        // Named by the service the user asked for rather than by the window's process, or
+        // "pause youtube" would answer "Pausing Chrome" — true, and not what was asked about.
+        const did = playOrPause(target, wanted)
+        lastSaid = did.said.replace(target.app, DISPLAY[service])
         hidePanel()
         return
       }
@@ -146,7 +151,7 @@ export function registerPlaybackCommands(resolveTarget: ResolveTarget): void {
       // "play spotify" with Spotify closed has always launched Spotify, and it still does —
       // the ladder that knows how is handed in rather than reimplemented here, the same
       // arrangement media-search.ts uses and for the same reason.
-      lastRun = 'opened'
+      lastSaid = `Opening ${DISPLAY[service]}`
       log(`playback: no ${service} window, falling back to opening it`)
       await resolveTarget(service, ctx, true)
     }
@@ -179,6 +184,29 @@ export function registerPlaybackCommands(resolveTarget: ResolveTarget): void {
   })
 }
 
+/** What a player is doing, when it can be told from the outside.
+ *
+ *  Spotify writes the track into its own window title while it plays and its plan name —
+ *  "Spotify Free", "Spotify Premium", or just "Spotify" — while it does not. Measured on this
+ *  machine: paused it read "Spotify Free", and a moment after being started, "J. Cole - Run A
+ *  Train (with Future)".
+ *
+ *  Only Spotify. Other players put other things in their titles — VLC sits at "VLC media
+ *  player" when idle, which this rule would read as a track — so everything else is `unknown`
+ *  and gets the older behaviour rather than a confident wrong answer. */
+export type Playing = 'playing' | 'paused' | 'unknown'
+
+/** What is left of a Spotify title once its own name is taken off, for the states that are not
+ *  a track. Lower-cased before comparison. */
+const SPOTIFY_IDLE = new Set(['', 'free', 'premium'])
+
+export function playbackState(window: EzzyWindow): Playing {
+  if (window.app.toLowerCase() !== SPOTIFY) return 'unknown'
+  const title = window.title.trim()
+  if (!/^spotify\b/i.test(title)) return 'playing'
+  return SPOTIFY_IDLE.has(title.slice('spotify'.length).trim().toLowerCase()) ? 'paused' : 'playing'
+}
+
 /** Play/pause, next or previous, aimed at whatever "play music" would have picked — a
  *  dedicated player, then Spotify, and null when neither is running and the bare media key
  *  should have it after all. Returns what it did to, so the confirmation can name it. */
@@ -187,6 +215,28 @@ export function mediaToPlayer(action: MediaAction): string | null {
   if (!player) return null
   mediaIn(player.id, player.app, action)
   return player.app
+}
+
+/** What happened, said in the words of what actually happened.
+ *
+ *  This is the whole of the fix for a confirmation that used to repeat the request back: with
+ *  a toggle, "play music" while music was playing paused it and Ezzy said "Playing". Now the
+ *  half that was asked for is the half that is sent, and where the player's state can be read
+ *  the answer knows whether there was anything to do at all. */
+export interface Did {
+  said: string
+  /** False when nothing needed doing, so nothing was sent. */
+  acted: boolean
+}
+
+export function playOrPause(window: EzzyWindow, wanted: 'play' | 'pause'): Did {
+  const state = playbackState(window)
+  const already = wanted === 'play' ? 'playing' : 'paused'
+  if (state === already) {
+    return { said: `${window.app} is already ${already}`, acted: false }
+  }
+  mediaIn(window.id, window.app, wanted)
+  return { said: `${wanted === 'play' ? 'Playing' : 'Pausing'} ${window.app}`, acted: true }
 }
 
 /** The service one of these patterns named. PLAYBACK has two shapes and so two groups it

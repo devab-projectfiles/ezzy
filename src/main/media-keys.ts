@@ -12,6 +12,8 @@
 
 import {
   APPCOMMAND_MEDIA_NEXTTRACK,
+  APPCOMMAND_MEDIA_PAUSE,
+  APPCOMMAND_MEDIA_PLAY,
   APPCOMMAND_MEDIA_PLAY_PAUSE,
   APPCOMMAND_MEDIA_PREVIOUSTRACK,
   Hwnd,
@@ -33,9 +35,11 @@ export function playPause(): void {
 
 /** The three media commands as one word each, since every caller wants to name what it is
  *  doing rather than which constant it is sending. */
-export type MediaAction = 'play-pause' | 'next' | 'previous'
+export type MediaAction = 'play' | 'pause' | 'play-pause' | 'next' | 'previous'
 
 const APPCOMMAND: Record<MediaAction, number> = {
+  play: APPCOMMAND_MEDIA_PLAY,
+  pause: APPCOMMAND_MEDIA_PAUSE,
   'play-pause': APPCOMMAND_MEDIA_PLAY_PAUSE,
   next: APPCOMMAND_MEDIA_NEXTTRACK,
   previous: APPCOMMAND_MEDIA_PREVIOUSTRACK
@@ -49,11 +53,16 @@ const APPCOMMAND: Record<MediaAction, number> = {
  *  on it: every player handles it, because it is what a media key becomes after Windows has
  *  picked who it is for.
  *
- *  Play/pause stays a toggle even here. APPCOMMAND_MEDIA_PLAY and APPCOMMAND_MEDIA_PAUSE
- *  exist and would say which was meant, but they are not honoured everywhere the toggle is,
- *  and a "play" that silently does nothing is a worse answer than a "play" that pauses
- *  something already playing. Ezzy cannot read what a player is doing, so the confirmation
- *  echoes the user's verb rather than claiming to know.
+ *  **Play and pause are separate here, where the recipient is known to honour them.** The
+ *  toggle was the only thing sent for a while, on the reasoning that a "play" which silently
+ *  does nothing is worse than one which pauses something already playing. That reasoning was
+ *  never measured, and it was wrong for the player this is mostly aimed at: on Spotify, 46
+ *  starts and 47 stops, each doing only its own half.
+ *
+ *  It matters because a toggle makes the confirmation a guess. Saying "play music" while
+ *  music was playing paused it and Ezzy said "Playing" — reported as a bug, and it was one.
+ *  Sending the half that was asked for makes the sentence true by construction. The toggle is
+ *  still here for "toggle" and "play/pause", which genuinely mean either.
  *
  *  Skipping can genuinely do nothing — a single video with no playlist behind it has no next
  *  track — and that is not reportable either, for the same reason: the message is posted, and
