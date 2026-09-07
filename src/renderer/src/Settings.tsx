@@ -89,6 +89,19 @@ function Settings(): React.JSX.Element {
       </section>
 
       <section className="settings__section">
+        <h2 className="settings__heading">APPEARANCE</h2>
+        {/* Two surface treatments, neither of them the "right" one. A toggle rather than a
+            list because there are exactly two and there is no third coming — and it is worded
+            for what it turns ON, since the flat surface is the default. */}
+        <Toggle
+          label="Glass surfaces"
+          detail="Adds the tinted gradient, the sheen and the lit edges. Off, each surface is one flat colour."
+          checked={config.appearance === 'glass'}
+          onChange={(glass) => void change({ appearance: glass ? 'glass' : 'flat' })}
+        />
+      </section>
+
+      <section className="settings__section">
         <h2 className="settings__heading">STARTUP</h2>
         <Toggle
           label="Start Ezzy when Windows starts"

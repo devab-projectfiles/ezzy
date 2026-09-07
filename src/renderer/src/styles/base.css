@@ -181,11 +181,7 @@
      the surface — and a band that changes across the face is the opposite of a flat colour.
      Left as a transparent gradient rather than deleted, so the elements that paint it keep a
      valid background and nothing in the layout moves. */
-  --glass-sheen: linear-gradient(
-    122deg,
-    rgba(255, 255, 255, 0) 0%,
-    rgba(255, 255, 255, 0) 100%
-  );
+  --glass-sheen: linear-gradient(122deg, rgba(255, 255, 255, 0) 0%, rgba(255, 255, 255, 0) 100%);
 
   /* Much lighter than the white-glass version needed: the dark fill is now doing the work of
      separating our text from the desktop, so the shadow only has to define edges. */
@@ -208,6 +204,57 @@
   --row-selected-rim: rgba(255, 255, 255, 0.14);
 
   --divider: rgba(255, 255, 255, 0.12);
+}
+
+/* ---------------------------------------------------------------- the glass set
+
+ Everything above describes ONE surface treatment. This is the other, kept as an option
+ rather than as history: it is what the app looked like before the flat one, and it is not
+ worse — it is a different taste, and the person who prefers it should not have to keep a
+ patch to have it.
+
+ Every value here is the original, restored verbatim rather than re-derived, so the option
+ is genuinely the old look and not an impression of it. The blue-slate ramps, the inner
+ glow, the diagonal sheen, the top specular, the bright rims. The reasoning behind each is
+ in the comments above the flat values it overrides; none of it is repeated here.
+
+ Only tokens are overridden. Nothing here changes a size, a radius, a position or a
+ behaviour, which is what makes switching between the two safe at any moment. */
+:root[data-appearance='glass'] {
+  --glass-fill-panel: linear-gradient(
+    148deg,
+    rgba(72, 80, 104, 0.76) 0%,
+    rgba(42, 47, 63, 0.8) 44%,
+    rgba(26, 30, 42, 0.84) 100%
+  );
+  --glass-fill-search: linear-gradient(
+    148deg,
+    rgba(76, 84, 108, 0.78) 0%,
+    rgba(44, 49, 65, 0.82) 52%,
+    rgba(28, 32, 44, 0.86) 100%
+  );
+  --glass-fill-dot: linear-gradient(
+    148deg,
+    rgba(74, 82, 106, 0.84) 0%,
+    rgba(34, 39, 53, 0.88) 100%
+  );
+  --glass-inner: inset 0 0 26px 0 rgba(255, 255, 255, 0.11);
+  --glass-rim: rgba(255, 255, 255, 0.5);
+  --glass-rim-search: rgba(255, 255, 255, 0.55);
+  --glass-rim-bright: rgba(255, 255, 255, 0.5);
+  --glass-highlight: rgba(255, 255, 255, 0.4);
+  --chip-rim: rgba(255, 255, 255, 0.26);
+  --rim-contrast-panel: rgba(4, 6, 12, 0.5);
+  --glass-sheen: linear-gradient(
+    122deg,
+    rgba(255, 255, 255, 0.18) 0%,
+    rgba(255, 255, 255, 0.04) 26%,
+    rgba(255, 255, 255, 0) 52%,
+    rgba(255, 255, 255, 0.05) 76%,
+    rgba(255, 255, 255, 0.14) 100%
+  );
+  --row-selected: rgba(255, 255, 255, 0.16);
+  --row-selected-rim: rgba(255, 255, 255, 0.3);
 }
 
 html,

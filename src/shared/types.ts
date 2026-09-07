@@ -5,6 +5,14 @@ export interface DotPosition {
   y: number
 }
 
+/** Which surface treatment the windows wear.
+ *
+ *  `flat` is one neutral colour per surface with no white over it. `glass` is what the app
+ *  looked like before that: a blue-slate gradient under an inner glow, a diagonal sheen, a top
+ *  specular and a bright rim. Both are kept because the second one is not worse, it is a
+ *  different taste, and the person who liked it should not have to keep a patch. */
+export type Appearance = 'flat' | 'glass'
+
 export interface EzzyConfig {
   /** Electron accelerator string, e.g. 'Alt+Space'. */
   hotkey: string
@@ -31,6 +39,9 @@ export interface EzzyConfig {
    *  A blocked microphone opens the panel either way. Is explicit that it has to lead to
    *  the setting rather than to a dead button, and that button lives on the search bar. */
   voicePanel: boolean
+  /** The surface treatment. Purely how the windows are painted — no size, position or
+   *  behaviour changes with it. */
+  appearance: Appearance
   /** Dot position keyed by display id, so each monitor remembers its own spot. */
   dotPositions: Record<string, DotPosition>
   /** Display the dot was last on, used to pick a position at startup. */
@@ -43,6 +54,7 @@ export const DEFAULT_CONFIG: EzzyConfig = {
   speech: true,
   voice: true,
   voicePanel: false,
+  appearance: 'flat',
   dotPositions: {},
   lastDisplayId: null
 }
@@ -285,6 +297,8 @@ export const IPC = {
   pillSide: 'dot:pill-side',
   panelClose: 'panel:close',
   getHotkey: 'app:get-hotkey',
+  getAppearance: 'app:get-appearance',
+  appearance: 'app:appearance',
   panelData: 'panel:data',
   panelChanged: 'panel:changed',
   focusWindow: 'windows:focus',
@@ -336,6 +350,12 @@ export interface EzzyApi {
   onPillSide(callback: (side: PillDirection) => void): () => void
   closePanel(): void
   getHotkey(): Promise<string>
+  /** The surface treatment as of now. Every window asks on load, because each is its own
+   *  document and none of them shares a stylesheet at runtime. */
+  getAppearance(): Promise<Appearance>
+  /** Fires when it is changed in Settings, so the change lands without a restart. Returns an
+   *  unsubscribe function. */
+  onAppearance(callback: (appearance: Appearance) => void): () => void
   /** The cached window list and app index. Reads variables in the main process — no OS
    *  enumeration happens here, which is what keeps the panel inside the 50ms budget. */
   getPanelData(): Promise<PanelData>

@@ -1,5 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import {
+  Appearance,
   EzzyApi,
   IPC,
   NavKey,
@@ -29,6 +30,12 @@ const ezzy: EzzyApi = {
     return () => void ipcRenderer.removeListener(IPC.dotHover, handler)
   },
   closePanel: () => ipcRenderer.send(IPC.panelClose),
+  getAppearance: () => ipcRenderer.invoke(IPC.getAppearance),
+  onAppearance: (callback) => {
+    const handler = (_event: unknown, appearance: Appearance): void => callback(appearance)
+    ipcRenderer.on(IPC.appearance, handler)
+    return () => void ipcRenderer.removeListener(IPC.appearance, handler)
+  },
   getHotkey: () => ipcRenderer.invoke(IPC.getHotkey),
   getPanelData: () => ipcRenderer.invoke(IPC.panelData),
   onPanelChanged: (callback) => {

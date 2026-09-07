@@ -19,7 +19,8 @@ import {
   SEARCH_PANEL_GAP,
   STATUS_VISUAL,
   VoiceCapture,
-  VoiceState
+  VoiceState,
+  Appearance
 } from '../shared/types'
 import { getConfig, updateConfig } from './config'
 import { log, since } from './verbose'
@@ -723,6 +724,18 @@ export function speakInDot(text: string): void {
 
 /** Recording runs in the dot's renderer: it is the only window that is always alive, and
  *  `getUserMedia` is a web API with no main-process equivalent. */
+/** Tell every window which surface treatment to wear.
+ *
+ *  Each of these is its own document with its own copy of the stylesheet, so there is nothing
+ *  shared to change — the attribute has to be set four times. Sent on change rather than
+ *  polled, and each window also asks once on load, because a window created later would
+ *  otherwise miss the broadcast entirely. */
+export function sendAppearance(appearance: Appearance): void {
+  for (const win of [dotWindow, panelWindow, searchWindow]) {
+    if (win && !win.isDestroyed()) win.webContents.send(IPC.appearance, appearance)
+  }
+}
+
 export function sendCapture(capture: VoiceCapture): void {
   dotWindow?.webContents.send(IPC.voiceCapture, capture)
 }

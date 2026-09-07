@@ -14,7 +14,7 @@
 
 import { BrowserWindow, app } from 'electron'
 import icon from '../../resources/icon.png?asset'
-import { EzzyConfig, IPC, SettingsResult, SettingsSnapshot } from '../shared/types'
+import { Appearance, EzzyConfig, IPC, SettingsResult, SettingsSnapshot } from '../shared/types'
 import { getConfig, updateConfig } from './config'
 import { activeHotkey, reapplyHotkey } from './hotkey'
 import { applyLoginItem } from './login-item'
@@ -78,6 +78,12 @@ export function openSettingsWindow(): void {
   })
 
   loadRenderer(win, 'settings')
+}
+
+/** The settings window paints itself from the same tokens as everything else, so it has to
+ *  hear about a change to them — including the one the user is making in it right now. */
+export function sendAppearanceToSettings(appearance: Appearance): void {
+  if (win && !win.isDestroyed()) win.webContents.send(IPC.appearance, appearance)
 }
 
 export function closeSettingsWindow(): void {

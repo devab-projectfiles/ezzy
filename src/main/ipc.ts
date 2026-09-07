@@ -2,6 +2,7 @@ import { ipcMain } from 'electron'
 import { EzzyConfig, IPC, NavKey, VoiceFailure } from '../shared/types'
 import { getConfig } from './config'
 import {
+  sendAppearance,
   beginDotDrag,
   currentPillSide,
   endDotDrag,
@@ -26,6 +27,7 @@ import {
 } from './voice'
 import { logRendererError, openLogFile } from './logger'
 import {
+  sendAppearanceToSettings,
   applySettings,
   closeSettingsWindow,
   openSettingsWindow,
@@ -117,8 +119,15 @@ export function registerIpc(): void {
     openSettingsWindow()
   })
   ipcMain.handle(IPC.getSettings, () => settingsSnapshot())
+  ipcMain.handle(IPC.getAppearance, () => getConfig().appearance)
   ipcMain.handle(IPC.setSettings, (_event, patch: Partial<EzzyConfig>) => {
     const result = applySettings(patch)
+    // Every window paints itself from the same tokens, so all of them hear about it — the
+    // settings window included, since the person changing it is looking at one.
+    if (patch.appearance !== undefined) {
+      sendAppearance(result.snapshot.config.appearance)
+      sendAppearanceToSettings(result.snapshot.config.appearance)
+    }
     // The tray shows the hotkey in force in both its tooltip and its first menu item, and
     // that is exactly what a settings change can invalidate. Rebuilding the menu is cheap
     // enough that it is not worth working out whether this particular change needed it.

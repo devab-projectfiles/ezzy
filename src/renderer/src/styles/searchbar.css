@@ -53,6 +53,19 @@
   );
 }
 
+/* The glass set's own sheen. Written out here because this element does not take
+   `--glass-sheen` — see the note on the zeroed gradient above, which is the bug that made the
+   search bar the last surface still wearing white. */
+:root[data-appearance='glass'] .searchbar__sheen {
+  background: linear-gradient(
+    114deg,
+    rgba(255, 255, 255, 0.18) 0%,
+    rgba(255, 255, 255, 0.02) 34%,
+    rgba(255, 255, 255, 0) 58%,
+    rgba(255, 255, 255, 0.1) 100%
+  );
+}
+
 .searchbar > svg,
 .searchbar > input {
   position: relative;
