@@ -45,6 +45,12 @@ export interface EzzyConfig {
    *  the microphone hears the music and whisper turns it into a command. Off for anyone who
    *  would rather mistranscribe than have their music interrupted. */
   duckMusic: boolean
+  /** Applications the index cannot find on its own.
+   *
+   *  The scan only sees the two Start Menu trees and Get-StartApps, so anything without a
+   *  shortcut — a portable executable, something installed somewhere odd — is invisible to it
+   *  however plainly it is installed. These are added by hand and merged into the index. */
+  customApps: CustomApp[]
   /** Extra names for applications, as app id -> what else you call them.
    *
    *  An alias is a name, not a rewrite: it goes into the same matching the real name goes
@@ -77,6 +83,7 @@ export const DEFAULT_CONFIG: EzzyConfig = {
   voicePanel: false,
   appearance: 'flat',
   duckMusic: true,
+  customApps: [],
   aliases: {},
   phrases: {},
   dotPositions: {},
@@ -322,12 +329,24 @@ export interface CommandInfo {
   group: 'media' | 'windows' | 'system'
 }
 
+/** An application the user pointed Ezzy at. `path` is whatever they picked — an executable,
+ *  a shortcut, a document — and is launched exactly the way an indexed shortcut is. */
+export interface CustomApp {
+  /** Stable across renames, so aliases and the index survive one. */
+  id: string
+  name: string
+  path: string
+}
+
 /** One application, as the settings window lists it. */
 export interface AppInfo {
   id: string
   name: string
   /** What else the user has taught Ezzy to call it. */
   aliases: string[]
+  /** True when the user added this one by hand, so the window can offer to remove it. Only
+   *  what the user added can be removed — the Start Menu is not Ezzy's to edit. */
+  custom: boolean
 }
 
 export const IPC = {
@@ -344,6 +363,7 @@ export const IPC = {
   getCommands: 'app:get-commands',
   checkPhrase: 'app:check-phrase',
   getApps: 'app:get-apps',
+  pickApp: 'app:pick',
   appearance: 'app:appearance',
   panelData: 'panel:data',
   panelChanged: 'panel:changed',
@@ -400,6 +420,10 @@ export interface EzzyApi {
   getCommands(): Promise<CommandInfo[]>
   /** Every application Ezzy has indexed, with the names the user has added to them. */
   getApps(): Promise<AppInfo[]>
+  /** Opens a file picker and returns what was chosen, or null if it was cancelled. The path
+   *  never comes from the renderer — the dialog runs in the main process and hands back only
+   *  what a person actually clicked. */
+  pickApp(): Promise<CustomApp | null>
   /** Why this phrase cannot be added, or null when it can. Asked before saving, so the reason
    *  can be shown next to the field rather than the phrase failing silently later. */
   checkPhrase(phrase: string): Promise<string | null>

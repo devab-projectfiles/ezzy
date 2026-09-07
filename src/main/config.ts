@@ -1,7 +1,7 @@
 import { app } from 'electron'
 import { readFileSync, writeFileSync } from 'fs'
 import { join } from 'path'
-import { DEFAULT_CONFIG, DotPosition, EzzyConfig } from '../shared/types'
+import { CustomApp, DEFAULT_CONFIG, DotPosition, EzzyConfig } from '../shared/types'
 import { log } from './verbose'
 
 let current: EzzyConfig = { ...DEFAULT_CONFIG }
@@ -50,6 +50,22 @@ function save(): void {
 }
 
 /** The config file is hand-editable, so every field is checked rather than trusted. */
+/** The hand-added applications, keeping only entries that are actually one. A path that has
+ *  since been deleted is left in rather than dropped: the file may be on a drive that is not
+ *  plugged in, and silently forgetting what the user added is worse than a launch that fails
+ *  and says so. */
+function readCustomApps(raw: unknown): CustomApp[] {
+  if (!Array.isArray(raw)) return []
+  return raw.filter(
+    (entry): entry is CustomApp =>
+      typeof entry === 'object' &&
+      entry !== null &&
+      typeof (entry as CustomApp).id === 'string' &&
+      typeof (entry as CustomApp).name === 'string' &&
+      typeof (entry as CustomApp).path === 'string'
+  )
+}
+
 /** Id -> list of strings, keeping only what is actually shaped like that — used for both
  *  the command phrases and the app aliases, which are the same shape. The file is a file:
  *  it can be hand-edited, half-written by a crash, or left over from an older version. */
@@ -85,6 +101,7 @@ function normalise(raw: Partial<EzzyConfig>): EzzyConfig {
     voicePanel: typeof raw.voicePanel === 'boolean' ? raw.voicePanel : DEFAULT_CONFIG.voicePanel,
     appearance: raw.appearance === 'glass' ? 'glass' : DEFAULT_CONFIG.appearance,
     duckMusic: typeof raw.duckMusic === 'boolean' ? raw.duckMusic : DEFAULT_CONFIG.duckMusic,
+    customApps: readCustomApps(raw.customApps),
     aliases: readPhrases(raw.aliases),
     phrases: readPhrases(raw.phrases),
     dotPositions,

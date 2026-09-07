@@ -346,10 +346,17 @@ body {
 
 /* The Apps page has its own filter: a hundred and forty applications is not a list to
    scroll, and the sidebar's search is about settings rather than about what is installed. */
-.settings__filter {
-  width: 100%;
-  max-width: 420px;
+.settings__filter-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
   margin: 0 0 14px;
+  max-width: 560px;
+}
+
+.settings__filter {
+  flex: 1;
+  min-width: 0;
   padding: 9px 12px;
   border: 1px solid var(--settings-row-rim);
   border-radius: 10px;
@@ -366,6 +373,22 @@ body {
 .settings__filter:focus {
   outline: none;
   border-color: var(--settings-accent);
+}
+
+/* Marks the entries the user added by hand, so it is obvious which ones can be removed —
+   the Start Menu is not Ezzy's to edit. */
+.settings__tag {
+  margin-left: 8px;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: rgba(124, 92, 255, 0.16);
+  color: var(--text-dim);
+  font-size: 11px;
+  vertical-align: middle;
+}
+
+.settings__command .settings__reset {
+  margin-top: 10px;
 }
 
 .settings__toggle {

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import type {
   AppInfo,
+  CustomApp,
   CommandInfo,
   EzzyConfig,
   SettingsSnapshot,
@@ -136,7 +137,12 @@ function Settings(): React.JSX.Element {
           <Apps
             apps={apps}
             aliases={snapshot.config.aliases}
-            onChange={(aliases) => void change({ aliases })}
+            custom={snapshot.config.customApps}
+            onAliases={(aliases) => void change({ aliases })}
+            onCustom={async (customApps) => {
+              await change({ customApps })
+              setApps(await window.ezzy.getApps())
+            }}
           />
         )}
         {!searching && page === 'commands' && (
@@ -568,11 +574,15 @@ function Names({
 function Apps({
   apps,
   aliases,
-  onChange
+  custom,
+  onAliases,
+  onCustom
 }: {
   apps: AppInfo[]
   aliases: Record<string, string[]>
-  onChange: (next: Record<string, string[]>) => void
+  custom: CustomApp[]
+  onAliases: (next: Record<string, string[]>) => void
+  onCustom: (next: CustomApp[]) => Promise<void>
 }): React.JSX.Element {
   const [filter, setFilter] = useState('')
   const needle = filter.trim().toLowerCase()
@@ -582,7 +592,10 @@ function Apps({
           app.name.toLowerCase().includes(needle) ||
           (aliases[app.id] ?? []).some((name) => name.toLowerCase().includes(needle))
       )
-    : apps.filter((app) => (aliases[app.id] ?? []).length > 0)
+    : // What the user has actually touched: anything renamed, and anything they added by
+      // hand. Listing only the renamed ones hid an app the moment it was added, which is
+      // exactly when someone wants to see it.
+      apps.filter((app) => app.custom || (aliases[app.id] ?? []).length > 0)
 
   return (
     <>
@@ -590,25 +603,35 @@ function Apps({
         Give an application another name and Ezzy will answer to it — typed or spoken. Useful when
         what you say and what it hears are not the same word.
       </p>
-      <input
-        className="settings__filter"
-        type="text"
-        placeholder={`Search ${apps.length} applications`}
-        value={filter}
-        autoComplete="off"
-        spellCheck={false}
-        onChange={(event) => setFilter(event.target.value)}
-      />
+      <div className="settings__filter-row">
+        <input
+          className="settings__filter"
+          type="text"
+          placeholder={`Search ${apps.length} applications`}
+          value={filter}
+          autoComplete="off"
+          spellCheck={false}
+          onChange={(event) => setFilter(event.target.value)}
+        />
+        {/* For anything the scan cannot see: a portable executable, or something installed
+            somewhere the Start Menu never hears about. */}
+        <button type="button" className="settings__button" onClick={() => void addApp()}>
+          Add an app…
+        </button>
+      </div>
       {shown.length === 0 && (
         <p className="settings__empty">
           {needle === ''
-            ? 'You have not renamed anything yet. Search above to find an application.'
+            ? 'Nothing added or renamed yet. Search above to find an application, or add one Ezzy cannot see.'
             : 'No application matches that.'}
         </p>
       )}
       {shown.map((app) => (
         <div key={app.id} className="settings__command">
-          <span className="settings__name">{app.name}</span>
+          <span className="settings__name">
+            {app.name}
+            {app.custom && <span className="settings__tag">added by you</span>}
+          </span>
           <Names
             fixed={[]}
             mine={aliases[app.id] ?? []}
@@ -617,13 +640,32 @@ function Apps({
               const copy = { ...aliases }
               if (next.length === 0) delete copy[app.id]
               else copy[app.id] = next
-              onChange(copy)
+              onAliases(copy)
             }}
           />
+          {app.custom && (
+            <button type="button" className="settings__reset" onClick={() => void forget(app.id)}>
+              Remove this app
+            </button>
+          )}
         </div>
       ))}
     </>
   )
+
+  async function addApp(): Promise<void> {
+    const picked = await window.ezzy.pickApp()
+    if (picked === null) return
+    await onCustom([...custom, picked])
+    // Show it, or a page that only lists what has been renamed would swallow the thing the
+    // user just added.
+    setFilter(picked.name)
+  }
+
+  async function forget(id: string): Promise<void> {
+    const bare = id.replace(/^custom:/, '')
+    await onCustom(custom.filter((entry) => entry.id !== bare))
+  }
 }
 
 /** One command, with the wordings the user has added to it.

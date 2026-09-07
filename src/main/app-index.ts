@@ -171,7 +171,9 @@ async function loadCache(): Promise<void> {
     // Normalised rather than trusted: the cache on disk predates aliases, so an entry from
     // an older version arrives without the field, and `labelsOf` spreads it. Filling it here
     // also means the user's names apply to a cold start, before any scan has run.
-    apps = raw.filter(isIndexedApp).map((entry) => ({ ...entry, aliases: aliases[entry.id] ?? [] }))
+    apps = withCustom(
+      raw.filter(isIndexedApp).map((entry) => ({ ...entry, aliases: aliases[entry.id] ?? [] }))
+    )
     log(`app index: ${apps.length} apps from cache`)
     if (apps.length > 0) notify()
   } catch {
@@ -235,7 +237,9 @@ async function saveCache(): Promise<void> {
 }
 
 function publish(found: Map<string, IndexedApp>): void {
-  apps = [...found.values()].sort((a, b) => a.name.localeCompare(b.name))
+  // The hand-added ones go in on every publish, or a rescan would drop them until the next
+  // time settings changed.
+  apps = withCustom([...found.values()]).sort((a, b) => a.name.localeCompare(b.name))
   notify()
 }
 
@@ -412,7 +416,44 @@ export function setAliases(next: Record<string, string[]>): void {
 
 /** Every app, with what the user calls it, for the settings window to list. */
 export function appCatalogue(): AppInfo[] {
-  return apps.map(({ id, name }) => ({ id, name, aliases: aliases[id] ?? [] }))
+  return apps.map(({ id, name }) => ({
+    id,
+    name,
+    aliases: aliases[id] ?? [],
+    custom: id.startsWith(CUSTOM_PREFIX)
+  }))
+}
+
+/** The prefix that marks an entry as one the user added. It is part of the id so that
+ *  nothing has to be looked up to know where an entry came from — the settings window needs
+ *  it to decide whether removing it is even offered. */
+export const CUSTOM_PREFIX = 'custom:'
+
+/** Fold the hand-added applications into the index.
+ *
+ *  Added last and only when nothing already there has that id, so a real Start Menu entry
+ *  always wins: if an app later gains a shortcut, the scanned one is the better record — it
+ *  carries a resolvable icon — and the hand-added copy quietly stops mattering. */
+function withCustom(found: IndexedApp[]): IndexedApp[] {
+  const custom = getConfig().customApps.map((entry): IndexedApp => ({
+    id: `${CUSTOM_PREFIX}${entry.id}`,
+    name: entry.name,
+    launch: { kind: 'shortcut', path: entry.path },
+    // The shell reads an icon out of an executable perfectly well, and out of a shortcut
+    // via the same resolution every other entry uses.
+    iconPath: entry.path,
+    aliases: aliases[`${CUSTOM_PREFIX}${entry.id}`] ?? []
+  }))
+  const known = new Set(found.map((entry) => entry.id))
+  return [...found, ...custom.filter((entry) => !known.has(entry.id))]
+}
+
+/** Re-fold them after the user adds or removes one, without a rescan. */
+export function setCustomApps(): void {
+  apps = withCustom(apps.filter((entry) => !entry.id.startsWith(CUSTOM_PREFIX)))
+  apps.sort((a, b) => a.name.localeCompare(b.name))
+  log(`app index: ${apps.length} apps, including hand-added ones`)
+  notify()
 }
 
 export function indexedApps(): IndexedApp[] {

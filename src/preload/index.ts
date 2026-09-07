@@ -33,6 +33,7 @@ const ezzy: EzzyApi = {
   getAppearance: () => ipcRenderer.invoke(IPC.getAppearance),
   getCommands: () => ipcRenderer.invoke(IPC.getCommands),
   getApps: () => ipcRenderer.invoke(IPC.getApps),
+  pickApp: () => ipcRenderer.invoke(IPC.pickApp),
   checkPhrase: (phrase) => ipcRenderer.invoke(IPC.checkPhrase, phrase),
   onAppearance: (callback) => {
     const handler = (_event: unknown, appearance: Appearance): void => callback(appearance)

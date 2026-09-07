@@ -1,6 +1,8 @@
-import { ipcMain } from 'electron'
+import { dialog, ipcMain } from 'electron'
 import { EzzyConfig, IPC, NavKey, VoiceFailure } from '../shared/types'
-import { appCatalogue, setAliases } from './app-index'
+import { randomUUID } from 'crypto'
+import { basename, extname } from 'path'
+import { appCatalogue, setAliases, setCustomApps } from './app-index'
 import { commandCatalogue, phraseProblem, setCustomPhrases } from './commands/registry'
 import { getConfig } from './config'
 import {
@@ -124,6 +126,22 @@ export function registerIpc(): void {
   ipcMain.handle(IPC.getAppearance, () => getConfig().appearance)
   ipcMain.handle(IPC.getCommands, () => commandCatalogue())
   ipcMain.handle(IPC.getApps, () => appCatalogue())
+  // The dialog runs here rather than in the renderer, so what comes back is a path a person
+  // actually clicked rather than a string the renderer chose. The name is seeded from the
+  // file so the common case needs no typing at all.
+  ipcMain.handle(IPC.pickApp, async () => {
+    const picked = await dialog.showOpenDialog({
+      title: 'Add an application',
+      properties: ['openFile'],
+      filters: [
+        { name: 'Applications and shortcuts', extensions: ['exe', 'lnk', 'url', 'bat', 'cmd'] },
+        { name: 'Anything', extensions: ['*'] }
+      ]
+    })
+    const path = picked.filePaths[0]
+    if (picked.canceled || path === undefined) return null
+    return { id: randomUUID(), name: basename(path, extname(path)), path }
+  })
   ipcMain.handle(IPC.checkPhrase, (_event, phrase: string) => phraseProblem(phrase))
   ipcMain.handle(IPC.setSettings, (_event, patch: Partial<EzzyConfig>) => {
     const result = applySettings(patch)
@@ -133,6 +151,7 @@ export function registerIpc(): void {
     // the registered set; this is what keeps the two in step.
     if (patch.phrases !== undefined) setCustomPhrases(result.snapshot.config.phrases)
     if (patch.aliases !== undefined) setAliases(result.snapshot.config.aliases)
+    if (patch.customApps !== undefined) setCustomApps()
     if (patch.appearance !== undefined) {
       sendAppearance(result.snapshot.config.appearance)
       sendAppearanceToSettings(result.snapshot.config.appearance)
