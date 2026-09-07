@@ -16,6 +16,7 @@ import { app } from 'electron'
 import { VoiceFailure, VoiceState } from '../shared/types'
 import { indexedApps } from './app-index'
 import { registerBuiltinCommands } from './commands/builtin'
+import { duckForListening, restoreAfterListening } from './commands/playback'
 import {
   isSilenceArtefact,
   normaliseTranscript,
@@ -273,7 +274,18 @@ function cancelCapture(): void {
   if (!armed) return
   armed = false
   capturing = false
+  // Nothing is paused by a press — only by a hold — but a hold can still be abandoned, and
+  // music left stopped by a launcher is worse than a command misheard.
+  restoreAfterListening()
   sendCapture('cancel')
+}
+
+/** Stop the music for as long as the recording lasts, if the user wants that.
+ *
+ *  Echo cancellation cannot do this and was measured twice not doing it — see
+ *  `duckForListening`. This is the part that works. */
+function quieten(): void {
+  if (getConfig().duckMusic) duckForListening()
 }
 
 async function beginListening(source: 'hotkey' | 'mic-button' = 'hotkey'): Promise<void> {
@@ -324,6 +336,7 @@ async function beginListening(source: 'hotkey' | 'mic-button' = 'hotkey'): Promi
     return
   }
   capturing = true
+  quieten()
   // "Listening" only if the device has already answered. Otherwise the surface says it is
   // getting ready, and `reportMicLive` promotes it the moment audio starts arriving.
   setState({ kind: micLive ? 'listening' : 'arming' })
@@ -340,6 +353,7 @@ async function finishListening(): Promise<void> {
   armed = false
   const releasedAt = performance.now()
   sendCapture('stop')
+  restoreAfterListening()
   setState({ kind: 'thinking' })
   await transcribeAndRun(await audioFromRenderer(), releasedAt)
 }
@@ -383,8 +397,10 @@ async function listenHandsFree(): Promise<void> {
   armedAt = performance.now()
   setState({ kind: 'arming' })
   sendCapture('listen')
+  quieten()
 
   const recording = await audioFromRenderer(HANDS_FREE_TIMEOUT_MS)
+  restoreAfterListening()
   // The recorder decides when the sentence ended, so this is the first moment the main process
   // knows it has — which is exactly when "listening" becomes "thinking".
   const finishedAt = performance.now()

@@ -280,6 +280,24 @@ function buildRows(
       )
     },
     {
+      id: 'duck-music',
+      page: 'voice',
+      section: 'Voice',
+      name: 'Pause music while listening',
+      detail:
+        'Your music stops for the second or two Ezzy is recording. Off, the microphone hears the music and sometimes turns it into a command you did not give.',
+      keywords: 'duck spotify echo interrupt',
+      disabled: !config.voice,
+      control: (
+        <Switch
+          checked={config.duckMusic}
+          disabled={!config.voice}
+          label="Pause music while listening"
+          onChange={(duckMusic) => void change({ duckMusic })}
+        />
+      )
+    },
+    {
       id: 'speech',
       page: 'voice',
       section: 'Voice',

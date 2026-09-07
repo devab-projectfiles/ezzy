@@ -39,6 +39,12 @@ export interface EzzyConfig {
    *  A blocked microphone opens the panel either way. Is explicit that it has to lead to
    *  the setting rather than to a dead button, and that button lives on the search bar. */
   voicePanel: boolean
+  /** Whether to pause the music while Ezzy is listening.
+   *
+   *  On, because the alternative is measurably broken: with music playing and nobody speaking,
+   *  the microphone hears the music and whisper turns it into a command. Off for anyone who
+   *  would rather mistranscribe than have their music interrupted. */
+  duckMusic: boolean
   /** Extra wordings for commands, as command id -> the things you say.
    *
    *  A phrase is rewritten to that command's canonical example BEFORE anything is matched, so
@@ -63,6 +69,7 @@ export const DEFAULT_CONFIG: EzzyConfig = {
   voice: true,
   voicePanel: false,
   appearance: 'flat',
+  duckMusic: true,
   phrases: {},
   dotPositions: {},
   lastDisplayId: null

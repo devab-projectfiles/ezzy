@@ -83,6 +83,7 @@ function normalise(raw: Partial<EzzyConfig>): EzzyConfig {
     voice: typeof raw.voice === 'boolean' ? raw.voice : DEFAULT_CONFIG.voice,
     voicePanel: typeof raw.voicePanel === 'boolean' ? raw.voicePanel : DEFAULT_CONFIG.voicePanel,
     appearance: raw.appearance === 'glass' ? 'glass' : DEFAULT_CONFIG.appearance,
+    duckMusic: typeof raw.duckMusic === 'boolean' ? raw.duckMusic : DEFAULT_CONFIG.duckMusic,
     phrases: readPhrases(raw.phrases),
     dotPositions,
     lastDisplayId: typeof raw.lastDisplayId === 'string' ? raw.lastDisplayId : null

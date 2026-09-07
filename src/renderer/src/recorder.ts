@@ -194,10 +194,23 @@ async function start(handsFree = false): Promise<void> {
     stream = await navigator.mediaDevices.getUserMedia({
       audio: {
         channelCount: 1,
-        // Echo cancellation is off, and that is a latency decision rather than a quality one.
-        // Measured: with AEC on, opening the device took 720-870ms; with it off, 225-400ms.
-        // Chromium has to wire up the render side of the audio pipeline to cancel against, and
-        // every millisecond of that is a millisecond of the user's first word on the floor.
+        // Echo cancellation is off, and it stays off for two measured reasons rather than one.
+        //
+        // The first is latency: with AEC on, opening the device took 720-870ms against
+        // 225-400ms without, and every millisecond of that is a millisecond of the user's
+        // first word on the floor.
+        //
+        // The second is that it does not do the job people expect of it. Re-measured with
+        // music playing from Spotify and nobody speaking: with AEC ON the microphone still
+        // captured the music — 19 of 37 blocks over the speech threshold — and whisper
+        // transcribed it as "Family Foundation of China". With it OFF, 20 of 43 and "Copilot,
+        // the mic is...". No improvement, and 577ms to open against 350ms.
+        //
+        // That is structural, not a tuning problem. Chromium cancels against the audio IT
+        // renders, and Spotify is a different process, so there is no reference signal to
+        // subtract. Music is handled by pausing it while listening instead — see
+        // `duckForListening` in commands/playback.ts.
+        //
         // Noise suppression and gain control cost nothing measurable and both help in the
         // rooms this is actually used in, so they stay.
         echoCancellation: false,

@@ -217,6 +217,40 @@ export function mediaToPlayer(action: MediaAction): string | null {
   return player.app
 }
 
+/** The player Ezzy paused so it could hear, or null when it has not paused anything. */
+let ducked: EzzyWindow | null = null
+
+/** Quiet the music for as long as Ezzy is listening.
+ *
+ *  Echo cancellation cannot do this — measured, twice: with it on the microphone still caught
+ *  the music and whisper turned it into a command nobody gave, and the device took 227ms
+ *  longer to open. Chromium cancels against what IT renders and Spotify is another process,
+ *  so there is nothing to subtract. See the note in recorder.ts.
+ *
+ *  So the music stops instead, for the couple of seconds the recording lasts. Only a player
+ *  whose state can actually be read is touched, which today means Spotify: pausing something
+ *  that only MIGHT be playing would leave it stopped afterwards, and a launcher that silently
+ *  stops your music is worse than one that mishears a command. */
+export function duckForListening(): void {
+  if (ducked) return
+  const player = musicPlayerWindow()
+  if (!player || playbackState(player) !== 'playing') return
+  mediaIn(player.id, player.app, 'pause')
+  ducked = player
+  log(`voice: paused ${player.app} so it can hear`)
+}
+
+/** Start it again. Called when the recording ends rather than when the command finishes, so
+ *  the gap is the length of the recording and not of the transcription that follows it — and
+ *  so a media command runs against the state the user could actually see. */
+export function restoreAfterListening(): void {
+  const player = ducked
+  if (!player) return
+  ducked = null
+  mediaIn(player.id, player.app, 'play')
+  log(`voice: started ${player.app} again`)
+}
+
 /** What happened, said in the words of what actually happened.
  *
  *  This is the whole of the fix for a confirmation that used to repeat the request back: with
@@ -231,12 +265,24 @@ export interface Did {
 
 export function playOrPause(window: EzzyWindow, wanted: 'play' | 'pause'): Did {
   const state = playbackState(window)
+  const said = `${wanted === 'play' ? 'Playing' : 'Pausing'} ${window.app}`
+
+  // A recipient whose state cannot be read gets the toggle, not the half that was asked for.
+  // Spotify was measured honouring 46 and 47 separately; nothing else here has been, and a
+  // "pause" that silently does nothing is worse than one that toggles. Verified against a
+  // browser: sending 47 to a Chrome window playing a video did not stop it. Since the state
+  // is unknown either way, the sentence is the user's own verb, exactly as it was before.
+  if (state === 'unknown') {
+    mediaIn(window.id, window.app, 'play-pause')
+    return { said, acted: true }
+  }
+
   const already = wanted === 'play' ? 'playing' : 'paused'
   if (state === already) {
     return { said: `${window.app} is already ${already}`, acted: false }
   }
   mediaIn(window.id, window.app, wanted)
-  return { said: `${wanted === 'play' ? 'Playing' : 'Pausing'} ${window.app}`, acted: true }
+  return { said, acted: true }
 }
 
 /** The service one of these patterns named. PLAYBACK has two shapes and so two groups it
