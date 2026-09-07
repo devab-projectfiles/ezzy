@@ -19,7 +19,8 @@ import type { Dirent } from 'fs'
 import { readFile, readdir, writeFile } from 'fs/promises'
 import { basename, extname, join } from 'path'
 import { promisify } from 'util'
-import { EzzyApp } from '../shared/types'
+import { AppInfo, EzzyApp } from '../shared/types'
+import { getConfig } from './config'
 import { cachedIcon, requestIcons } from './icons'
 import { log, since } from './verbose'
 
@@ -42,9 +43,17 @@ export interface IndexedApp {
    *  Apps entry, which has no file behind it at all. Resolved values ride the disk cache, so
    *  a warm start does none of this work again. */
   iconPath: string | null
+  /** Extra names the user has given this app. Empty for almost everything.
+   *
+   *  Held on the entry rather than looked up during matching, so `search.ts` never has to know
+   *  that a config file exists — an alias reaches it as one more name, which is exactly what
+   *  it is. */
+  aliases: string[]
 }
 
 let apps: IndexedApp[] = []
+/** App id -> the names the user added, as of the last `setAliases`. */
+let aliases: Record<string, string[]> = {}
 let listeners: Array<() => void> = []
 
 /** Shortcuts that are technically apps but that nobody means when they say "open X".
@@ -145,6 +154,9 @@ function startMenuRoots(): string[] {
 /** Cached to disk, refreshed on startup. The cache is read first so the very
  *  first panel of a session has apps in it, then the rescan corrects it in the background. */
 export async function startAppIndex(): Promise<void> {
+  // The user's own names first, so the cache and the scan both build entries that already
+  // carry them rather than entries that get corrected a moment later.
+  aliases = getConfig().aliases
   await loadCache()
   await refreshAppIndex()
 }
@@ -156,7 +168,10 @@ async function loadCache(): Promise<void> {
     // The cache is a plain file on disk and can be edited or truncated; validate it rather
     // than trusting it into the renderer — and, now that it carries launch instructions,
     // rather than trusting it into the shell either.
-    apps = raw.filter(isIndexedApp)
+    // Normalised rather than trusted: the cache on disk predates aliases, so an entry from
+    // an older version arrives without the field, and `labelsOf` spreads it. Filling it here
+    // also means the user's names apply to a cold start, before any scan has run.
+    apps = raw.filter(isIndexedApp).map((entry) => ({ ...entry, aliases: aliases[entry.id] ?? [] }))
     log(`app index: ${apps.length} apps from cache`)
     if (apps.length > 0) notify()
   } catch {
@@ -255,7 +270,8 @@ async function collect(
       id: `lnk:${full}`,
       name,
       launch: { kind: 'shortcut', path: full },
-      iconPath: null
+      iconPath: null,
+      aliases: aliases[`lnk:${full}`] ?? []
     })
   }
 }
@@ -330,7 +346,13 @@ async function collectStartApps(): Promise<IndexedApp[]> {
       const key = name.toLowerCase()
       if (seen.has(key)) continue
       seen.add(key)
-      rows.push({ id: `app:${appId}`, name, launch: { kind: 'appsFolder', appId }, iconPath: null })
+      rows.push({
+        id: `app:${appId}`,
+        name,
+        launch: { kind: 'appsFolder', appId },
+        iconPath: null,
+        aliases: aliases[`app:${appId}`] ?? []
+      })
     }
     since(`Get-StartApps: ${rows.length} entries`, startedAt)
     return rows
@@ -376,6 +398,23 @@ export function toEzzyApp(entry: IndexedApp): EzzyApp {
 /** Every app the index knows about, running or not. The panel wants `appsNotRunning`, which
  *  is a different question — a voice command saying "open chrome" has to reach Chrome whether
  *  or not a window of it is already up. */
+/** Adopt the user's own names for things.
+ *
+ *  Applied to the entries in place and then republished, so a name added in settings is
+ *  usable in the next breath rather than after a rescan — the scan takes five seconds and
+ *  nothing about a name the user just typed needs re-reading the Start Menu. */
+export function setAliases(next: Record<string, string[]>): void {
+  aliases = next
+  apps = apps.map((entry) => ({ ...entry, aliases: aliases[entry.id] ?? [] }))
+  since(`app index: ${Object.keys(aliases).length} apps have extra names`, performance.now())
+  for (const listener of listeners) listener()
+}
+
+/** Every app, with what the user calls it, for the settings window to list. */
+export function appCatalogue(): AppInfo[] {
+  return apps.map(({ id, name }) => ({ id, name, aliases: aliases[id] ?? [] }))
+}
+
 export function indexedApps(): IndexedApp[] {
   return apps
 }

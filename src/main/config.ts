@@ -50,7 +50,8 @@ function save(): void {
 }
 
 /** The config file is hand-editable, so every field is checked rather than trusted. */
-/** Command id -> phrases, keeping only what is actually shaped like that. The file is a file:
+/** Id -> list of strings, keeping only what is actually shaped like that — used for both
+ *  the command phrases and the app aliases, which are the same shape. The file is a file:
  *  it can be hand-edited, half-written by a crash, or left over from an older version. */
 function readPhrases(raw: unknown): Record<string, string[]> {
   if (typeof raw !== 'object' || raw === null) return {}
@@ -84,6 +85,7 @@ function normalise(raw: Partial<EzzyConfig>): EzzyConfig {
     voicePanel: typeof raw.voicePanel === 'boolean' ? raw.voicePanel : DEFAULT_CONFIG.voicePanel,
     appearance: raw.appearance === 'glass' ? 'glass' : DEFAULT_CONFIG.appearance,
     duckMusic: typeof raw.duckMusic === 'boolean' ? raw.duckMusic : DEFAULT_CONFIG.duckMusic,
+    aliases: readPhrases(raw.aliases),
     phrases: readPhrases(raw.phrases),
     dotPositions,
     lastDisplayId: typeof raw.lastDisplayId === 'string' ? raw.lastDisplayId : null

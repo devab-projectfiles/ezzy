@@ -1,5 +1,11 @@
 import { useEffect, useMemo, useState } from 'react'
-import type { CommandInfo, EzzyConfig, SettingsSnapshot, UpdateStatus } from '../../shared/types'
+import type {
+  AppInfo,
+  CommandInfo,
+  EzzyConfig,
+  SettingsSnapshot,
+  UpdateStatus
+} from '../../shared/types'
 import HotkeyField from './HotkeyField'
 
 /** The settings window: a nav down the left, one page of rows on the right.
@@ -14,7 +20,7 @@ import HotkeyField from './HotkeyField'
  *  process and the snapshot that comes back is what gets drawn — which matters for the hotkey,
  *  where what you asked for and what Windows gave you are not always the same thing. */
 
-type Page = 'general' | 'voice' | 'commands' | 'appearance' | 'updates'
+type Page = 'general' | 'voice' | 'commands' | 'apps' | 'appearance' | 'updates'
 
 interface NavItem {
   page: Page
@@ -45,11 +51,13 @@ function Settings(): React.JSX.Element {
   const [page, setPage] = useState<Page>('general')
   const [query, setQuery] = useState('')
   const [commands, setCommands] = useState<CommandInfo[]>([])
+  const [apps, setApps] = useState<AppInfo[]>([])
 
   useEffect(() => {
     void window.ezzy.getSettings().then(setSnapshot)
     void window.ezzy.getUpdateStatus().then(setUpdate)
     void window.ezzy.getCommands().then(setCommands)
+    void window.ezzy.getApps().then(setApps)
     return window.ezzy.onUpdateStatus(setUpdate)
   }, [])
 
@@ -124,6 +132,13 @@ function Settings(): React.JSX.Element {
         <h1 className="settings__title">
           {searching ? `Results for “${query.trim()}”` : titleOf(page)}
         </h1>
+        {!searching && page === 'apps' && (
+          <Apps
+            apps={apps}
+            aliases={snapshot.config.aliases}
+            onChange={(aliases) => void change({ aliases })}
+          />
+        )}
         {!searching && page === 'commands' && (
           <Commands
             commands={commands}
@@ -446,42 +461,44 @@ function Commands({ commands, phrases, onChange }: CommandsProps): React.JSX.Ele
   )
 }
 
-/** One command, with the wordings the user has added to it.
- *
- *  A phrase is checked by the main process before it is saved — it is the only half that knows
- *  what the patterns already understand — so the reason a phrase is refused appears under the
- *  field rather than the phrase being quietly dropped. */
-function Command({
-  command,
+/** A row of names: the ones that came with the thing, then the ones the user added, then a
+ *  way to add another. Shared by commands and applications because it is the same gesture in
+ *  both places — a phrase for a command and an alias for an app are both "another way to say
+ *  this", and they should not look or behave differently. */
+function Names({
+  fixed,
   mine,
+  placeholder,
+  check,
   onChange
 }: {
-  command: CommandInfo
+  fixed: string[]
   mine: string[]
-  onChange: (phrases: string[]) => void
+  placeholder: string
+  /** Why this cannot be added, or null. Only commands have a reason to refuse one. */
+  check?: (value: string) => Promise<string | null>
+  onChange: (next: string[]) => void
 }): React.JSX.Element {
   const [adding, setAdding] = useState(false)
   const [draft, setDraft] = useState('')
   const [problem, setProblem] = useState<string | null>(null)
 
   return (
-    <div className="settings__command">
-      <span className="settings__name">{command.title}</span>
-      <p className="settings__detail">{command.summary}</p>
+    <>
       <ul className="settings__examples">
-        {command.examples.map((example) => (
-          <li key={example} className="settings__example">
-            “{example}”
+        {fixed.map((value) => (
+          <li key={value} className="settings__example">
+            “{value}”
           </li>
         ))}
-        {mine.map((phrase) => (
-          <li key={phrase} className="settings__example settings__example--mine">
-            “{phrase}”
+        {mine.map((value) => (
+          <li key={value} className="settings__example settings__example--mine">
+            “{value}”
             <button
               type="button"
               className="settings__remove"
-              aria-label={`Remove ${phrase}`}
-              onClick={() => onChange(mine.filter((entry) => entry !== phrase))}
+              aria-label={`Remove ${value}`}
+              onClick={() => onChange(mine.filter((entry) => entry !== value))}
             >
               ×
             </button>
@@ -492,7 +509,7 @@ function Command({
             <input
               className="settings__phrase-input"
               autoFocus
-              placeholder="say it your way"
+              placeholder={placeholder}
               value={draft}
               onChange={(event) => {
                 setDraft(event.target.value)
@@ -510,13 +527,13 @@ function Command({
         ) : (
           <li>
             <button type="button" className="settings__add" onClick={() => setAdding(true)}>
-              + Add a phrase
+              + Add a name
             </button>
           </li>
         )}
       </ul>
       {problem && <p className="settings__error settings__error--phrase">{problem}</p>}
-    </div>
+    </>
   )
 
   function stop(): void {
@@ -526,16 +543,116 @@ function Command({
   }
 
   async function add(): Promise<void> {
-    const phrase = draft.trim()
-    if (phrase === '') return stop()
-    const reason = await window.ezzy.checkPhrase(phrase)
+    const value = draft.trim()
+    if (value === '') return stop()
+    if (mine.includes(value)) {
+      setProblem('You have already added that.')
+      return
+    }
+    const reason = check ? await check(value) : null
     if (reason !== null) {
       setProblem(reason)
       return
     }
-    onChange([...mine, phrase])
+    onChange([...mine, value])
     stop()
   }
+}
+
+/** Applications, and the names the user has given them.
+ *
+ *  There are 140 of these on this machine, so the page does not open as a wall of them: it
+ *  shows what has actually been customised and asks you to search for the rest. An alias is
+ *  almost always added in response to something specific going wrong — "it hears school when
+ *  I say Skool" — so arriving with a search box is arriving in the right place. */
+function Apps({
+  apps,
+  aliases,
+  onChange
+}: {
+  apps: AppInfo[]
+  aliases: Record<string, string[]>
+  onChange: (next: Record<string, string[]>) => void
+}): React.JSX.Element {
+  const [filter, setFilter] = useState('')
+  const needle = filter.trim().toLowerCase()
+  const shown = needle
+    ? apps.filter(
+        (app) =>
+          app.name.toLowerCase().includes(needle) ||
+          (aliases[app.id] ?? []).some((name) => name.toLowerCase().includes(needle))
+      )
+    : apps.filter((app) => (aliases[app.id] ?? []).length > 0)
+
+  return (
+    <>
+      <p className="settings__blurb">
+        Give an application another name and Ezzy will answer to it — typed or spoken. Useful when
+        what you say and what it hears are not the same word.
+      </p>
+      <input
+        className="settings__filter"
+        type="text"
+        placeholder={`Search ${apps.length} applications`}
+        value={filter}
+        autoComplete="off"
+        spellCheck={false}
+        onChange={(event) => setFilter(event.target.value)}
+      />
+      {shown.length === 0 && (
+        <p className="settings__empty">
+          {needle === ''
+            ? 'You have not renamed anything yet. Search above to find an application.'
+            : 'No application matches that.'}
+        </p>
+      )}
+      {shown.map((app) => (
+        <div key={app.id} className="settings__command">
+          <span className="settings__name">{app.name}</span>
+          <Names
+            fixed={[]}
+            mine={aliases[app.id] ?? []}
+            placeholder="another name for it"
+            onChange={(next) => {
+              const copy = { ...aliases }
+              if (next.length === 0) delete copy[app.id]
+              else copy[app.id] = next
+              onChange(copy)
+            }}
+          />
+        </div>
+      ))}
+    </>
+  )
+}
+
+/** One command, with the wordings the user has added to it.
+ *
+ *  A phrase is checked by the main process before it is saved — it is the only half that knows
+ *  what the patterns already understand — so the reason a phrase is refused appears under the
+ *  field rather than the phrase being quietly dropped. */
+function Command({
+  command,
+  mine,
+  onChange
+}: {
+  command: CommandInfo
+  mine: string[]
+  onChange: (phrases: string[]) => void
+}): React.JSX.Element {
+  return (
+    <div className="settings__command">
+      <span className="settings__name">{command.title}</span>
+      <p className="settings__detail">{command.summary}</p>
+      <Names
+        fixed={command.examples}
+        mine={mine}
+        placeholder="say it your way"
+        check={window.ezzy.checkPhrase}
+        onChange={onChange}
+      />
+    </div>
+  )
 }
 
 interface SwitchProps {
@@ -637,6 +754,18 @@ const NAV: NavItem[] = [
       <svg viewBox="0 0 16 16" aria-hidden="true">
         <rect x="1.8" y="3.2" width="12.4" height="9.6" rx="2" {...stroke} />
         <path d="M4.6 7.2 6.4 9l-1.8 1.8M8.4 10.8h3" {...stroke} />
+      </svg>
+    )
+  },
+  {
+    page: 'apps',
+    label: 'Apps',
+    icon: (
+      <svg viewBox="0 0 16 16" aria-hidden="true">
+        <rect x="2" y="2" width="5" height="5" rx="1.4" {...stroke} />
+        <rect x="9" y="2" width="5" height="5" rx="1.4" {...stroke} />
+        <rect x="2" y="9" width="5" height="5" rx="1.4" {...stroke} />
+        <rect x="9" y="9" width="5" height="5" rx="1.4" {...stroke} />
       </svg>
     )
   },

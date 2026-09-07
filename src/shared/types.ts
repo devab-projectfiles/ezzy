@@ -45,6 +45,13 @@ export interface EzzyConfig {
    *  the microphone hears the music and whisper turns it into a command. Off for anyone who
    *  would rather mistranscribe than have their music interrupted. */
   duckMusic: boolean
+  /** Extra names for applications, as app id -> what else you call them.
+   *
+   *  An alias is a name, not a rewrite: it goes into the same matching the real name goes
+   *  through, so it works when typed and when spoken and it inherits every near-miss rule
+   *  already there. This is the general form of the fix that had to be made in code when
+   *  whisper wrote "school" for Skool — with an alias, that is a line the user adds. */
+  aliases: Record<string, string[]>
   /** Extra wordings for commands, as command id -> the things you say.
    *
    *  A phrase is rewritten to that command's canonical example BEFORE anything is matched, so
@@ -70,6 +77,7 @@ export const DEFAULT_CONFIG: EzzyConfig = {
   voicePanel: false,
   appearance: 'flat',
   duckMusic: true,
+  aliases: {},
   phrases: {},
   dotPositions: {},
   lastDisplayId: null
@@ -314,6 +322,14 @@ export interface CommandInfo {
   group: 'media' | 'windows' | 'system'
 }
 
+/** One application, as the settings window lists it. */
+export interface AppInfo {
+  id: string
+  name: string
+  /** What else the user has taught Ezzy to call it. */
+  aliases: string[]
+}
+
 export const IPC = {
   dotDragStart: 'dot:drag-start',
   dotDragMove: 'dot:drag-move',
@@ -327,6 +343,7 @@ export const IPC = {
   getAppearance: 'app:get-appearance',
   getCommands: 'app:get-commands',
   checkPhrase: 'app:check-phrase',
+  getApps: 'app:get-apps',
   appearance: 'app:appearance',
   panelData: 'panel:data',
   panelChanged: 'panel:changed',
@@ -381,6 +398,8 @@ export interface EzzyApi {
   getHotkey(): Promise<string>
   /** Everything Ezzy understands, for the settings window to list. */
   getCommands(): Promise<CommandInfo[]>
+  /** Every application Ezzy has indexed, with the names the user has added to them. */
+  getApps(): Promise<AppInfo[]>
   /** Why this phrase cannot be added, or null when it can. Asked before saving, so the reason
    *  can be shown next to the field rather than the phrase failing silently later. */
   checkPhrase(phrase: string): Promise<string | null>

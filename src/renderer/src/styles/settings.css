@@ -344,6 +344,30 @@ body {
   text-align: left;
 }
 
+/* The Apps page has its own filter: a hundred and forty applications is not a list to
+   scroll, and the sidebar's search is about settings rather than about what is installed. */
+.settings__filter {
+  width: 100%;
+  max-width: 420px;
+  margin: 0 0 14px;
+  padding: 9px 12px;
+  border: 1px solid var(--settings-row-rim);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text-strong);
+  font: inherit;
+  font-size: 13px;
+}
+
+.settings__filter::placeholder {
+  color: var(--text-faint);
+}
+
+.settings__filter:focus {
+  outline: none;
+  border-color: var(--settings-accent);
+}
+
 .settings__toggle {
   display: flex;
   cursor: pointer;

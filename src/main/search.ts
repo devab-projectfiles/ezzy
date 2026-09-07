@@ -32,6 +32,10 @@ export interface Candidate {
   /** Position in the source list, so equal scores fall back to MRU order for windows and
    *  alphabetical order for apps rather than to whatever Fuse happened to emit. */
   order: number
+  /** Other names for the same thing, which the user supplied. Weighted like the name,
+   *  because that is what they are — see `labelsOf`, which puts them through every near-miss
+   *  rule the real name goes through. */
+  aliases: string[]
   window?: EzzyWindow
   app?: IndexedApp
 }
@@ -46,6 +50,10 @@ const OPTIONS: IFuseOptions<Candidate> = {
   threshold: 0.4,
   keys: [
     { name: 'name', weight: 0.75 },
+    // An alias is a name the user chose, so it is worth exactly what the real one is. Given
+    // its own key rather than folded into `name`, because Fuse scores a key as one string and
+    // joining three aliases into one would make each of them a worse match than it is.
+    { name: 'aliases', weight: 0.75 },
     { name: 'context', weight: 0.25 }
   ]
 }
@@ -124,6 +132,7 @@ function toCandidates(windows: EzzyWindow[], apps: IndexedApp[]): Candidate[] {
       kind: 'window',
       name: window.title,
       context: window.app,
+      aliases: [],
       order,
       window
     })),
@@ -131,6 +140,7 @@ function toCandidates(windows: EzzyWindow[], apps: IndexedApp[]): Candidate[] {
       kind: 'app',
       name: app.name,
       context: '',
+      aliases: app.aliases,
       order,
       app
     }))
@@ -349,7 +359,7 @@ function sharePrefix(one: string, two: string): boolean {
 }
 
 function labelsOf(candidate: Candidate): string[] {
-  return [candidate.name, candidate.context]
+  return [candidate.name, candidate.context, ...candidate.aliases]
     .map((label) => depunctuate(label.toLowerCase()))
     .filter((label) => label !== '')
 }

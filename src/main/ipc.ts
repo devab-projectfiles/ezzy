@@ -1,5 +1,6 @@
 import { ipcMain } from 'electron'
 import { EzzyConfig, IPC, NavKey, VoiceFailure } from '../shared/types'
+import { appCatalogue, setAliases } from './app-index'
 import { commandCatalogue, phraseProblem, setCustomPhrases } from './commands/registry'
 import { getConfig } from './config'
 import {
@@ -122,6 +123,7 @@ export function registerIpc(): void {
   ipcMain.handle(IPC.getSettings, () => settingsSnapshot())
   ipcMain.handle(IPC.getAppearance, () => getConfig().appearance)
   ipcMain.handle(IPC.getCommands, () => commandCatalogue())
+  ipcMain.handle(IPC.getApps, () => appCatalogue())
   ipcMain.handle(IPC.checkPhrase, (_event, phrase: string) => phraseProblem(phrase))
   ipcMain.handle(IPC.setSettings, (_event, patch: Partial<EzzyConfig>) => {
     const result = applySettings(patch)
@@ -130,6 +132,7 @@ export function registerIpc(): void {
     // The registry keeps its own copy so `runCommand` stays a pure function of its text and
     // the registered set; this is what keeps the two in step.
     if (patch.phrases !== undefined) setCustomPhrases(result.snapshot.config.phrases)
+    if (patch.aliases !== undefined) setAliases(result.snapshot.config.aliases)
     if (patch.appearance !== undefined) {
       sendAppearance(result.snapshot.config.appearance)
       sendAppearanceToSettings(result.snapshot.config.appearance)
