@@ -110,6 +110,15 @@ export function registerMediaSearchCommands(resolveTarget: ResolveTarget): void 
   // names where to look is the one that meant it.
   register({
     id: 'youtube-search',
+    title: 'YouTube',
+    group: 'media',
+    summary:
+      'The verb decides what happens. Play, watch and listen to find the first video and start it. Search, find and look up open the results instead, and skip the second it costs to find a video.',
+    examples: [
+      'play lofi beats on youtube',
+      'watch bohemian rhapsody on youtube',
+      'search youtube for rust tutorial'
+    ],
     match: YOUTUBE,
     describe: (groups) =>
       lastYouTubeRun === 'played'
@@ -158,6 +167,15 @@ export function registerMediaSearchCommands(resolveTarget: ResolveTarget): void 
   // Explicitly Spotify, so it always searches: no launcher, no "did you mean the app".
   register({
     id: 'spotify-search',
+    title: 'Spotify search',
+    group: 'media',
+    summary:
+      'Opens Spotify on the results for what you asked for. It cannot start a named track playing - that needs the Spotify Web API, which Ezzy deliberately does not use.',
+    examples: [
+      'play daft punk on spotify',
+      'search spotify for lofi',
+      'listen to miles davis on spotify'
+    ],
     match: SPOTIFY_SEARCH,
     describe: (groups) => `Searching Spotify for ${spoken(query(groups))}`,
     run: async (groups, ctx) => {
@@ -172,6 +190,11 @@ export function registerMediaSearchCommands(resolveTarget: ResolveTarget): void 
 
   register({
     id: 'spotify-play',
+    title: 'Play something',
+    group: 'media',
+    summary:
+      'Searches Spotify for whatever follows the word play - unless those words name something installed on this machine, in which case it opens that instead.',
+    examples: ['play daft punk', 'play bohemian rhapsody'],
     match: SPOTIFY,
     // "Playing X" was a lie in the case that matters. Ezzy can put Spotify on the search
     // results for a name; it cannot start that artist playing (see `playOnSpotify`), and a

@@ -109,6 +109,16 @@ let lastRun: 'controlled' | 'opened' = 'controlled'
 export function registerPlaybackCommands(resolveTarget: ResolveTarget): void {
   register({
     id: 'playback-in',
+    title: 'Play or pause one app',
+    group: 'media',
+    summary:
+      'Aims playback at Spotify or YouTube by name, for when a music player is running but you want the other one. It only ever resumes or pauses what is already open - it never searches. Saying play spotify with Spotify closed still launches it.',
+    examples: [
+      'play spotify',
+      'pause youtube',
+      'pause the youtube video',
+      'play the music on spotify'
+    ],
     match: PLAYBACK,
     describe: (groups) => {
       const service = DISPLAY[serviceOf(groups)]
@@ -146,6 +156,11 @@ export function registerPlaybackCommands(resolveTarget: ResolveTarget): void {
   // is a request about music that is not playing.
   register({
     id: 'playback-skip-in',
+    title: 'Skip in one app',
+    group: 'media',
+    summary:
+      'Changes track inside Spotify or YouTube by name. Unlike play spotify this never launches anything: skipping in an app that is not running is not a request to start it.',
+    examples: ['next song on spotify', 'skip on youtube', 'previous track on spotify'],
     match: SKIP_IN,
     describe: (groups) =>
       `${BACK_VERB.has(groups[1]) ? 'Previous' : 'Next'} track on ${DISPLAY[serviceOf(groups, 2)]}`,

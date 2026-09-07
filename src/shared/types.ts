@@ -287,6 +287,17 @@ export type UpdateStatus =
   | { kind: 'ready'; version: string }
   | { kind: 'error'; message: string }
 
+/** One command, as the settings window lists it. The pattern that actually matches it never
+ *  leaves the main process — a regex is not something to show anybody, and the examples are
+ *  what a person needs in order to say the thing. */
+export interface CommandInfo {
+  id: string
+  title: string
+  summary: string
+  examples: string[]
+  group: 'media' | 'windows' | 'system'
+}
+
 export const IPC = {
   dotDragStart: 'dot:drag-start',
   dotDragMove: 'dot:drag-move',
@@ -298,6 +309,7 @@ export const IPC = {
   panelClose: 'panel:close',
   getHotkey: 'app:get-hotkey',
   getAppearance: 'app:get-appearance',
+  getCommands: 'app:get-commands',
   appearance: 'app:appearance',
   panelData: 'panel:data',
   panelChanged: 'panel:changed',
@@ -350,6 +362,8 @@ export interface EzzyApi {
   onPillSide(callback: (side: PillDirection) => void): () => void
   closePanel(): void
   getHotkey(): Promise<string>
+  /** Everything Ezzy understands, for the settings window to list. */
+  getCommands(): Promise<CommandInfo[]>
   /** The surface treatment as of now. Every window asks on load, because each is its own
    *  document and none of them shares a stylesheet at runtime. */
   getAppearance(): Promise<Appearance>

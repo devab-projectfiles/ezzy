@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import type { EzzyConfig, SettingsSnapshot, UpdateStatus } from '../../shared/types'
+import type { CommandInfo, EzzyConfig, SettingsSnapshot, UpdateStatus } from '../../shared/types'
 import HotkeyField from './HotkeyField'
 
 /** The settings window: a nav down the left, one page of rows on the right.
@@ -14,7 +14,7 @@ import HotkeyField from './HotkeyField'
  *  process and the snapshot that comes back is what gets drawn — which matters for the hotkey,
  *  where what you asked for and what Windows gave you are not always the same thing. */
 
-type Page = 'general' | 'voice' | 'appearance' | 'updates'
+type Page = 'general' | 'voice' | 'commands' | 'appearance' | 'updates'
 
 interface NavItem {
   page: Page
@@ -44,10 +44,12 @@ function Settings(): React.JSX.Element {
   const [update, setUpdate] = useState<UpdateStatus>({ kind: 'idle' })
   const [page, setPage] = useState<Page>('general')
   const [query, setQuery] = useState('')
+  const [commands, setCommands] = useState<CommandInfo[]>([])
 
   useEffect(() => {
     void window.ezzy.getSettings().then(setSnapshot)
     void window.ezzy.getUpdateStatus().then(setUpdate)
+    void window.ezzy.getCommands().then(setCommands)
     return window.ezzy.onUpdateStatus(setUpdate)
   }, [])
 
@@ -74,6 +76,10 @@ function Settings(): React.JSX.Element {
   const shown = searching
     ? rows.filter((row) => matches(row, query))
     : rows.filter((r) => r.page === page)
+  // Commands are searched alongside the settings, because "spotify" is a thing this app does
+  // and a search that answered it with nothing would be telling the user it does not.
+  const foundCommands = searching ? commands.filter((c) => commandMatches(c, query)) : []
+  const nothing = shown.length === 0 && foundCommands.length === 0
 
   return (
     <div className="settings">
@@ -118,26 +124,49 @@ function Settings(): React.JSX.Element {
         <h1 className="settings__title">
           {searching ? `Results for “${query.trim()}”` : titleOf(page)}
         </h1>
-        {shown.length === 0 ? (
-          <p className="settings__empty">Nothing here matches that.</p>
-        ) : (
-          groupBy(shown, searching).map(([heading, group]) => (
-            <section key={heading} className="settings__section">
-              {/* A page whose only group repeats its own name says it twice. The heading earns
+        {!searching && page === 'commands' && <Commands commands={commands} />}
+        {searching && nothing && <p className="settings__empty">Nothing here matches that.</p>}
+        {page === 'commands' && !searching
+          ? null
+          : shown.length === 0
+            ? null
+            : groupBy(shown, searching).map(([heading, group]) => (
+                <section key={heading} className="settings__section">
+                  {/* A page whose only group repeats its own name says it twice. The heading earns
                   its place when it divides a page — General's Shortcut and Startup — and not
                   when it is the page. */}
-              {heading !== titleOf(page) && <h2 className="settings__heading">{heading}</h2>}
-              {group.map((row) => (
-                <div key={row.id} className={`settings__row${row.disabled ? ' is-disabled' : ''}`}>
-                  <div className="settings__label">
-                    <span className="settings__name">{row.name}</span>
-                    <span className="settings__detail">{row.detail}</span>
-                  </div>
-                  <div className="settings__control">{row.control}</div>
-                </div>
+                  {heading !== titleOf(page) && <h2 className="settings__heading">{heading}</h2>}
+                  {group.map((row) => (
+                    <div
+                      key={row.id}
+                      className={`settings__row${row.disabled ? ' is-disabled' : ''}`}
+                    >
+                      <div className="settings__label">
+                        <span className="settings__name">{row.name}</span>
+                        <span className="settings__detail">{row.detail}</span>
+                      </div>
+                      <div className="settings__control">{row.control}</div>
+                    </div>
+                  ))}
+                </section>
               ))}
-            </section>
-          ))
+        {foundCommands.length > 0 && (
+          <section className="settings__section">
+            <h2 className="settings__heading">Commands</h2>
+            {foundCommands.map((command) => (
+              <div key={command.id} className="settings__command">
+                <span className="settings__name">{command.title}</span>
+                <p className="settings__detail">{command.summary}</p>
+                <ul className="settings__examples">
+                  {command.examples.map((example) => (
+                    <li key={example} className="settings__example">
+                      “{example}”
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ))}
+          </section>
         )}
       </main>
     </div>
@@ -330,6 +359,13 @@ function groupBy(rows: Row[], searching: boolean): Array<[string, Row[]]> {
   return [...groups.entries()]
 }
 
+function commandMatches(command: CommandInfo, query: string): boolean {
+  const needle = query.trim().toLowerCase()
+  return `${command.title} ${command.summary} ${command.examples.join(' ')}`
+    .toLowerCase()
+    .includes(needle)
+}
+
 function matches(row: Row, query: string): boolean {
   const needle = query.trim().toLowerCase()
   return `${row.name} ${row.detail} ${row.keywords ?? ''} ${titleOf(row.page)}`
@@ -339,6 +375,50 @@ function matches(row: Row, query: string): boolean {
 
 function titleOf(page: Page): string {
   return NAV.find((item) => item.page === page)?.label ?? ''
+}
+
+const GROUPS: Array<[CommandInfo['group'], string, string]> = [
+  ['media', 'Music and video', 'Spotify, YouTube, and whatever else is playing.'],
+  ['windows', 'Windows and apps', 'Getting to a window, or starting something that is not open.'],
+  ['system', 'The machine', 'Settings pages, networks and power.']
+]
+
+/** What Ezzy understands, read out of the registry rather than written out here.
+ *
+ *  There is exactly one list of commands in this app and this draws it, so a command cannot
+ *  be added without appearing here and cannot be removed and left behind. The examples are
+ *  the command's own, and the first of them is the phrasing its pattern is written around. */
+function Commands({ commands }: { commands: CommandInfo[] }): React.JSX.Element {
+  if (commands.length === 0) {
+    return <p className="settings__empty">Loading…</p>
+  }
+  return (
+    <>
+      {GROUPS.map(([group, heading, blurb]) => {
+        const mine = commands.filter((command) => command.group === group)
+        if (mine.length === 0) return null
+        return (
+          <section key={group} className="settings__section">
+            <h2 className="settings__heading">{heading}</h2>
+            <p className="settings__blurb">{blurb}</p>
+            {mine.map((command) => (
+              <div key={command.id} className="settings__command">
+                <span className="settings__name">{command.title}</span>
+                <p className="settings__detail">{command.summary}</p>
+                <ul className="settings__examples">
+                  {command.examples.map((example) => (
+                    <li key={example} className="settings__example">
+                      “{example}”
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ))}
+          </section>
+        )
+      })}
+    </>
+  )
 }
 
 interface SwitchProps {
@@ -430,6 +510,16 @@ const NAV: NavItem[] = [
       <svg viewBox="0 0 16 16" aria-hidden="true">
         <rect x="6" y="1.8" width="4" height="7.4" rx="2" {...stroke} />
         <path d="M3.6 7.4a4.4 4.4 0 0 0 8.8 0M8 11.8v2.4" {...stroke} />
+      </svg>
+    )
+  },
+  {
+    page: 'commands',
+    label: 'Commands',
+    icon: (
+      <svg viewBox="0 0 16 16" aria-hidden="true">
+        <rect x="1.8" y="3.2" width="12.4" height="9.6" rx="2" {...stroke} />
+        <path d="M4.6 7.2 6.4 9l-1.8 1.8M8.4 10.8h3" {...stroke} />
       </svg>
     )
   },

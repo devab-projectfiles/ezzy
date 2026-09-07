@@ -1,5 +1,6 @@
 import { ipcMain } from 'electron'
 import { EzzyConfig, IPC, NavKey, VoiceFailure } from '../shared/types'
+import { commandCatalogue } from './commands/registry'
 import { getConfig } from './config'
 import {
   sendAppearance,
@@ -120,6 +121,7 @@ export function registerIpc(): void {
   })
   ipcMain.handle(IPC.getSettings, () => settingsSnapshot())
   ipcMain.handle(IPC.getAppearance, () => getConfig().appearance)
+  ipcMain.handle(IPC.getCommands, () => commandCatalogue())
   ipcMain.handle(IPC.setSettings, (_event, patch: Partial<EzzyConfig>) => {
     const result = applySettings(patch)
     // Every window paints itself from the same tokens, so all of them hear about it — the

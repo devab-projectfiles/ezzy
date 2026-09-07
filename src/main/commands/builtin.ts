@@ -184,6 +184,10 @@ export function registerBuiltinCommands(): void {
   // read by `switch to` as a request to switch to something called "sleep".
   register({
     id: 'sleep',
+    title: 'Sleep',
+    group: 'system',
+    summary: 'Puts the machine to sleep. Applications still get their usual chance to object.',
+    examples: ['go to sleep', 'sleep the computer', 'suspend'],
     match:
       /^(?:sleep|go to sleep|suspend)(?:\s+the)?(?:\s+(?:pc|computer|laptop|machine|system))?$/,
     describe: () => 'Going to sleep',
@@ -195,6 +199,10 @@ export function registerBuiltinCommands(): void {
 
   register({
     id: 'hibernate',
+    title: 'Hibernate',
+    group: 'system',
+    summary: 'Hibernates the machine rather than sleeping it.',
+    examples: ['hibernate', 'hibernate the laptop'],
     match: /^hibernate(?:\s+the)?(?:\s+(?:pc|computer|laptop|machine|system))?$/,
     describe: () => 'Hibernating',
     run: async (_groups, ctx) => {
@@ -205,6 +213,10 @@ export function registerBuiltinCommands(): void {
 
   register({
     id: 'shut-down',
+    title: 'Shut down',
+    group: 'system',
+    summary: 'Shuts Windows down.',
+    examples: ['shut down', 'power off the computer', 'turn off'],
     match:
       /^(?:shut\s*down|power\s*off|turn\s*off)(?:\s+the)?(?:\s+(?:pc|computer|laptop|machine|system))?$/,
     describe: () => 'Shutting down',
@@ -223,6 +235,11 @@ export function registerBuiltinCommands(): void {
   // so the confirmation says what Ezzy did, not what the music did.
   register({
     id: 'play-pause',
+    title: 'Play or pause',
+    group: 'media',
+    summary:
+      'Toggles playback. It picks who gets it: a dedicated music player if one is running, Spotify if not, and the plain media key only when neither is - which is where a browser video ends up. It says which app it reached.',
+    examples: ['play music', 'pause the music', 'pause', 'stop the music', 'resume'],
     match: PLAY_PAUSE,
     // One key toggles both, so the verb the user chose is the only evidence of which one they
     // meant. Echoing it back is honest — Ezzy genuinely does not know whether anything was
@@ -250,6 +267,11 @@ export function registerBuiltinCommands(): void {
   // either behaviour on its own. Say "next song on youtube" to override the choice.
   register({
     id: 'next-track',
+    title: 'Next track',
+    group: 'media',
+    summary:
+      'Skips forward, using the same ladder as play or pause - so a skip can never land in a different app than the play before it.',
+    examples: ['next track', 'next song', 'skip', 'skip this song'],
     match: NEXT_TRACK,
     describe: () => (skipTarget === null ? 'Next track' : `Next track on ${skipTarget}`),
     run: async () => {
@@ -261,6 +283,10 @@ export function registerBuiltinCommands(): void {
 
   register({
     id: 'previous-track',
+    title: 'Previous track',
+    group: 'media',
+    summary: 'Goes back a track, using the same ladder as play or pause.',
+    examples: ['previous track', 'go back', 'last song'],
     match: PREVIOUS_TRACK,
     describe: () => (skipTarget === null ? 'Previous track' : `Previous track on ${skipTarget}`),
     run: async () => {
@@ -299,6 +325,11 @@ export function registerBuiltinCommands(): void {
 
   register({
     id: 'switch-to',
+    title: 'Switch to a window',
+    group: 'windows',
+    summary:
+      'Brings a window forward. Browser windows answer to the site in their active tab, so switch to gmail finds the window showing it.',
+    examples: ['switch to chrome', 'go back to code', 'take me to slack'],
     match: SWITCH,
     describe: (groups) => `Switching to ${spoken(groups[1])}`,
     run: (groups, ctx) => goTo(groups[1], ctx)
@@ -306,6 +337,11 @@ export function registerBuiltinCommands(): void {
 
   register({
     id: 'open',
+    title: 'Open an app',
+    group: 'windows',
+    summary:
+      'Goes to the window if it is already open, starts the application if it is not, and otherwise opens a path or a web address.',
+    examples: ['open figma', 'launch spotify', 'open github.com'],
     match: OPEN,
     describe: (groups) => `Opening ${spoken(groups[1])}`,
     run: (groups, ctx) => goTo(groups[1], ctx)
@@ -313,6 +349,11 @@ export function registerBuiltinCommands(): void {
 
   register({
     id: 'close-all',
+    title: 'Close everything',
+    group: 'windows',
+    summary:
+      'Asks every window to close. Each one is asked rather than told, so anything with unsaved work still gets to stop you.',
+    examples: ['close all windows', 'close everything'],
     match: CLOSE_ALL,
     describe: () => 'Closing every window',
     run: async (_groups, ctx) => {
@@ -339,6 +380,10 @@ export function registerBuiltinCommands(): void {
   // "this" — and after CLOSE_ALL, which it would read as "close the window".
   register({
     id: 'close-this',
+    title: 'Close this window',
+    group: 'windows',
+    summary: 'Closes the window in front, the same way its title bar X does.',
+    examples: ['close this window', 'close it'],
     match: CLOSE_THIS,
     describe: () => 'Closing this window',
     run: async (_groups, ctx) => {
@@ -355,6 +400,10 @@ export function registerBuiltinCommands(): void {
 
   register({
     id: 'close-named',
+    title: 'Close a window',
+    group: 'windows',
+    summary: 'Closes a window you name.',
+    examples: ['close chrome', 'close the outlook window'],
     match: CLOSE_NAMED,
     describe: (groups) => `Closing ${spoken(groups[1])}`,
     run: async (groups, ctx) => {
@@ -373,6 +422,11 @@ export function registerBuiltinCommands(): void {
   // Last: every pattern with a verb in it gets first refusal.
   register({
     id: 'bare-target',
+    title: 'A name on its own',
+    group: 'windows',
+    summary:
+      'A name with no verb in front of it opens that thing. It is what catches a first word clipped off by the microphone, so it is deliberately strict - it refuses the words whisper invents out of a silent room.',
+    examples: ['chrome', 'antigravity'],
     match: BARE,
     describe: (groups) => `Opening ${spoken(groups[1])}`,
     run: async (groups, ctx) => {

@@ -109,6 +109,11 @@ const WIFI_CONNECT =
 export function registerSystemCommands(): void {
   register({
     id: 'open-settings',
+    title: 'Windows settings pages',
+    group: 'system',
+    summary:
+      'Opens a Windows settings page directly. It knows a closed list of pages, so it can never mistake an application for one.',
+    examples: ['open bluetooth', 'show me display settings', 'go to windows update'],
     match: OPEN_SETTINGS,
     describe: (groups) => `Opening ${groups[1]} settings`,
     run: async (groups, ctx) => {
@@ -129,6 +134,10 @@ export function registerSystemCommands(): void {
   // registered ahead of the one that would swallow it.
   register({
     id: 'wifi-list',
+    title: 'Show the networks',
+    group: 'system',
+    summary: 'Opens the list of networks in range, for when you want to pick one yourself.',
+    examples: ['connect to wifi', 'join a network'],
     match: WIFI_LIST,
     describe: () => 'Here are the networks',
     run: async (_groups, ctx) => {
@@ -146,6 +155,11 @@ export function registerSystemCommands(): void {
 
   register({
     id: 'wifi-connect',
+    title: 'Join a network',
+    group: 'system',
+    summary:
+      'Connects to a network Windows has already saved. It never handles a password and never adds a profile. If the name matches nothing, it shows you the list instead of guessing.',
+    examples: ['connect to home', 'join the office wifi'],
     match: WIFI_CONNECT,
     describe: (groups) => `Connecting to ${groups[1]}`,
     run: (groups, ctx) => joinNetwork(groups[1], ctx)

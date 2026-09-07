@@ -232,6 +232,50 @@ body {
   max-width: 320px;
 }
 
+/* -------------------------------------------------------------- the command list
+
+   Not settings rows: a command is a title, a sentence and the things you can say, and the
+   things you can say are the part people came for. They are set in the same monospace the
+   rest of the app never uses, because a phrase to be spoken aloud is quoted material and
+   should not be mistaken for a label. */
+.settings__blurb {
+  margin: -2px 0 10px;
+  font-size: 13px;
+  color: var(--text-faint);
+}
+
+.settings__command {
+  padding: 14px 2px;
+  border-bottom: 1px solid var(--settings-row-rim);
+}
+
+.settings__section .settings__command:last-child {
+  border-bottom: 0;
+}
+
+.settings__command .settings__detail {
+  margin: 5px 0 0;
+  max-width: 62ch;
+}
+
+.settings__examples {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 10px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.settings__example {
+  padding: 4px 10px;
+  border: 1px solid var(--settings-row-rim);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.04);
+  font-size: 12.5px;
+  color: var(--text-dim);
+}
+
 .settings__toggle {
   display: flex;
   cursor: pointer;

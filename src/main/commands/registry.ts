@@ -8,6 +8,7 @@
  *  This file knows nothing about voice. It takes text, which is what the plan asks for — "tested
  *  against transcript or typed input" — and chunk D only feeds it the one source. */
 
+import { CommandInfo } from '../../shared/types'
 import { log } from '../verbose'
 
 /** What a command's `run` is given besides its own captures. Deliberately tiny: a command
@@ -29,7 +30,25 @@ export interface Command {
   run: (groups: RegExpMatchArray, ctx: CommandContext) => Promise<void>
   /** For the spoken and visual confirmation. */
   describe: (groups: RegExpMatchArray) => string
+
+  // ------------------------------------------------------------------ documentation
+  // Required, not optional, and that is the point: a command nobody can discover may as
+  // well not exist. A regex cannot be shown to a user, so the only way the settings window
+  // can list what Ezzy understands is if every command says so itself — and making these
+  // mandatory means a new command cannot be added without saying what it is for.
+
+  /** What this command is called, in the settings list. */
+  title: string
+  /** One sentence on what it does, and on anything surprising about it. */
+  summary: string
+  /** Things you can actually say. The FIRST is the canonical one — the phrasing a custom
+   *  phrase rewrites to — so it must be a form this command's own pattern matches. */
+  examples: string[]
+  /** Which part of the list it belongs under. */
+  group: CommandGroup
 }
+
+export type CommandGroup = 'media' | 'windows' | 'system'
 
 export interface CommandOutcome {
   ok: boolean
@@ -47,6 +66,18 @@ export function register(command: Command): void {
 /** The registered set, in registration order — which is also match order. */
 export function registeredCommands(): readonly Command[] {
   return commands
+}
+
+/** Every command as something that can cross IPC and be drawn. Neither the pattern nor the
+ *  handler comes with it: one cannot be rendered and the other cannot be serialised. */
+export function commandCatalogue(): CommandInfo[] {
+  return commands.map(({ id, title, summary, examples, group }) => ({
+    id,
+    title,
+    summary,
+    examples,
+    group
+  }))
 }
 
 /** Run whatever `text` names. Returns null when no command claims it, which the caller

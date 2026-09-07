@@ -31,6 +31,7 @@ const ezzy: EzzyApi = {
   },
   closePanel: () => ipcRenderer.send(IPC.panelClose),
   getAppearance: () => ipcRenderer.invoke(IPC.getAppearance),
+  getCommands: () => ipcRenderer.invoke(IPC.getCommands),
   onAppearance: (callback) => {
     const handler = (_event: unknown, appearance: Appearance): void => callback(appearance)
     ipcRenderer.on(IPC.appearance, handler)
