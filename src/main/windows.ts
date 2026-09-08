@@ -20,7 +20,8 @@ import {
   STATUS_VISUAL,
   VoiceCapture,
   VoiceState,
-  Appearance
+  Appearance,
+  SpeechRequest
 } from '../shared/types'
 import { getConfig, updateConfig } from './config'
 import { log, since } from './verbose'
@@ -718,8 +719,8 @@ function sendToDot(state: VoiceState): void {
 /** `speechSynthesis` is renderer-only. The dot's renderer is the one that speaks — it is
  *  always alive, where the search bar exists only while the panel is open, which is not long
  *  enough to carry a confirmation that arrives after the panel has been dismissed. */
-export function speakInDot(text: string): void {
-  dotWindow?.webContents.send(IPC.speak, text)
+export function speakInDot(request: SpeechRequest): void {
+  dotWindow?.webContents.send(IPC.speak, request)
 }
 
 /** Recording runs in the dot's renderer: it is the only window that is always alive, and

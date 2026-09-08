@@ -1,5 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import {
+  SpeechRequest,
   Appearance,
   EzzyApi,
   IPC,
@@ -86,7 +87,7 @@ const ezzy: EzzyApi = {
   toggleVoice: () => ipcRenderer.send(IPC.toggleVoice),
   openTouchpadSettings: () => ipcRenderer.send(IPC.openTouchpadSettings),
   onSpeak: (callback) => {
-    const handler = (_event: unknown, text: string): void => callback(text)
+    const handler = (_event: unknown, request: SpeechRequest): void => callback(request)
     ipcRenderer.on(IPC.speak, handler)
     return () => void ipcRenderer.removeListener(IPC.speak, handler)
   },

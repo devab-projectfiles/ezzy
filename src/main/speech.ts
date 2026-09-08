@@ -33,16 +33,28 @@ export type Tone = 'success' | 'failure'
  *  so what is heard and what is read never disagree. */
 export function speak(text: string, tone: Tone): void {
   if (text.trim() === '') return
-  if (!getConfig().speech) return
-  const line = `${lead(tone)}${text}`
+  const config = getConfig()
+  if (!config.speech) return
+  const line = config.speechVariety ? `${lead(tone)}${text}` : text
   log(`speech: "${line}"`)
-  speakInDot(line)
+  speakInDot({
+    text: line,
+    voice: config.voiceName,
+    rate: config.speechRate,
+    volume: config.speechVolume
+  })
 }
 
 /** Stop talking. Sent when a new command starts, so a confirmation still playing does not
  *  end up in the microphone that is about to open. */
 export function hush(): void {
-  speakInDot('')
+  const config = getConfig()
+  speakInDot({
+    text: '',
+    voice: config.voiceName,
+    rate: config.speechRate,
+    volume: config.speechVolume
+  })
 }
 
 /** Never the same lead twice running, which is the only thing anyone actually notices. */

@@ -45,6 +45,18 @@ export interface EzzyConfig {
    *  the microphone hears the music and whisper turns it into a command. Off for anyone who
    *  would rather mistranscribe than have their music interrupted. */
   duckMusic: boolean
+  /** Which installed voice reads confirmations, by its own name, or null to let Ezzy pick.
+   *  Null is not "no voice" — it is the preference order in `speech.ts`, which finds the best
+   *  English voice on the machine. A name that is no longer installed falls back to that. */
+  voiceName: string | null
+  /** How fast and how loud it reads. 1 is the synthesiser's own pace; the default is a shade
+   *  above it, because a confirmation is four words the user is already expecting. */
+  speechRate: number
+  speechVolume: number
+  /** Whether to vary the phrasing — the "Okay, ", "Sure, ", "Got it, " in front of a
+   *  confirmation. Off, every answer is the plain sentence, which some people prefer and
+   *  which is also easier to ignore. */
+  speechVariety: boolean
   /** Applications the index cannot find on its own.
    *
    *  The scan only sees the two Start Menu trees and Get-StartApps, so anything without a
@@ -83,6 +95,10 @@ export const DEFAULT_CONFIG: EzzyConfig = {
   voicePanel: false,
   appearance: 'flat',
   duckMusic: true,
+  voiceName: null,
+  speechRate: 1.08,
+  speechVolume: 0.85,
+  speechVariety: true,
   customApps: [],
   aliases: {},
   phrases: {},
@@ -329,6 +345,20 @@ export interface CommandInfo {
   group: 'media' | 'windows' | 'system'
 }
 
+/** One thing to say, and how to say it.
+ *
+ *  The settings travel WITH the sentence rather than being pushed to the dot whenever they
+ *  change. The dot is the only window that speaks and it speaks perhaps once a minute, so
+ *  there is nothing to gain from it holding its own copy of a preference — and a copy is a
+ *  thing that can be out of date. An empty `text` means stop talking. */
+export interface SpeechRequest {
+  text: string
+  /** The voice's own name, or null to let the renderer pick the best English one. */
+  voice: string | null
+  rate: number
+  volume: number
+}
+
 /** An application the user pointed Ezzy at. `path` is whatever they picked — an executable,
  *  a shortcut, a document — and is launched exactly the way an indexed shortcut is. */
 export interface CustomApp {
@@ -502,7 +532,7 @@ export interface EzzyApi {
    *  subscribes — it is the one window that is always alive, and the confirmation for a
    *  command usually arrives after the panel has already gone. An empty string means stop
    *  talking. Returns an unsubscribe function. */
-  onSpeak(callback: (text: string) => void): () => void
+  onSpeak(callback: (request: SpeechRequest) => void): () => void
 
   // ---------------------------------------------------------------- chunk F
   /** Opens the settings window. On the panel's APPS header, which is the only surface a

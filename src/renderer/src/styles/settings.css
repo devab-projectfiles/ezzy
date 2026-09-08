@@ -391,6 +391,43 @@ body {
   margin-top: 10px;
 }
 
+/* The two controls that carry a value rather than a state. The reading sits to the left of
+   the slider so the column of controls still ends flush with the window's edge. */
+.settings__select {
+  min-width: 210px;
+  max-width: 260px;
+  padding: 7px 10px;
+  border: 1px solid var(--chip-rim);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text-strong);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.settings__select:disabled {
+  cursor: default;
+}
+
+.settings__reading {
+  min-width: 46px;
+  color: var(--text-faint);
+  font-size: 12px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.settings__slider {
+  width: 170px;
+  accent-color: var(--settings-accent);
+  cursor: pointer;
+}
+
+.settings__slider:disabled {
+  cursor: default;
+}
+
 .settings__toggle {
   display: flex;
   cursor: pointer;

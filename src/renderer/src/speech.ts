@@ -1,3 +1,5 @@
+import { SpeechRequest } from '../../shared/types'
+
 /** The `speechSynthesis` wrapper.
  *
  *  It lives in a renderer because the plan says it has to: speech synthesis is a web API and the
@@ -19,12 +21,15 @@ let speaking: SpeechSynthesisUtterance | null = null
  *  new utterance is queued and never starts. Only paid when something was actually talking. */
 const RESTART_MS = 80
 
-/** Just above natural. A confirmation is four words the user is already expecting, and the
- *  default rate makes it feel like waiting for a machine to finish. */
-const RATE = 1.08
-
-/** The confirmation is furniture, not the thing the user is doing. */
-const VOLUME = 0.85
+/** The pace and loudness now come with the sentence — they are settings, and the main
+ *  process is where settings live. See `SpeechRequest`. What used to be the constants here
+ *  are the defaults in DEFAULT_CONFIG: just above natural, because a confirmation is four
+ *  words the user is already expecting, and below full, because it is furniture rather than
+ *  the thing they are doing. */
+let rate = 1.08
+let volume = 0.85
+/** The voice the user asked for by name, or null to pick the best English one. */
+let wanted: string | null = null
 
 /** How long after the last word the room still counts as loud.
  *
@@ -59,7 +64,16 @@ export function initSpeech(): () => void {
 
 /** Say it, interrupting whatever is already being said. An empty string only interrupts —
  *  that is how the main process shuts speech up when a new command starts. */
-export function speak(text: string): void {
+export function speak(request: SpeechRequest): void {
+  const { text } = request
+  // Adopted before anything is said, so a change in settings applies to the very next
+  // sentence rather than to the one after it.
+  rate = request.rate
+  volume = request.volume
+  if (request.voice !== wanted) {
+    wanted = request.voice
+    pickVoice()
+  }
   const synth = window.speechSynthesis
   const wasBusy = synth.speaking || synth.pending
   // Dropping the reference before the cancelled utterance's own event arrives is what tells
@@ -76,8 +90,8 @@ export function speak(text: string): void {
 
 function say(text: string): void {
   const utterance = new SpeechSynthesisUtterance(text)
-  utterance.rate = RATE
-  utterance.volume = VOLUME
+  utterance.rate = rate
+  utterance.volume = volume
   if (chosen) {
     utterance.voice = chosen
     utterance.lang = chosen.lang
@@ -129,7 +143,18 @@ export function isSpeaking(tail = false): boolean {
 /** Local voices only where there is a choice: a network voice adds latency to something that
  *  is meant to be instant, and it stops working on a train. */
 function pickVoice(): void {
-  const voices = window.speechSynthesis.getVoices().filter((voice) => voice.lang.startsWith('en'))
+  const all = window.speechSynthesis.getVoices()
+  // A voice asked for by name wins outright, and is not filtered to English — someone who
+  // chose a Spanish voice chose it. A name that is no longer installed falls through to the
+  // preference order below rather than leaving the app silent.
+  if (wanted !== null) {
+    const named = all.find((voice) => voice.name === wanted)
+    if (named) {
+      chosen = named
+      return
+    }
+  }
+  const voices = all.filter((voice) => voice.lang.startsWith('en'))
   if (voices.length === 0) return
   const local = voices.filter((voice) => voice.localService)
   const pool = local.length > 0 ? local : voices

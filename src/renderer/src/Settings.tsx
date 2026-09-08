@@ -53,6 +53,7 @@ function Settings(): React.JSX.Element {
   const [query, setQuery] = useState('')
   const [commands, setCommands] = useState<CommandInfo[]>([])
   const [apps, setApps] = useState<AppInfo[]>([])
+  const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([])
 
   useEffect(() => {
     void window.ezzy.getSettings().then(setSnapshot)
@@ -60,6 +61,15 @@ function Settings(): React.JSX.Element {
     void window.ezzy.getCommands().then(setCommands)
     void window.ezzy.getApps().then(setApps)
     return window.ezzy.onUpdateStatus(setUpdate)
+  }, [])
+
+  // Read here rather than asked of the main process: the list is the machine's, every window
+  // has the same one, and it arrives asynchronously the first time it is asked for.
+  useEffect(() => {
+    const read = (): void => setVoices(window.speechSynthesis.getVoices())
+    read()
+    window.speechSynthesis.addEventListener('voiceschanged', read)
+    return () => window.speechSynthesis.removeEventListener('voiceschanged', read)
   }, [])
 
   useEffect(() => {
@@ -71,10 +81,10 @@ function Settings(): React.JSX.Element {
   }, [])
 
   const rows = useMemo(
-    () => (snapshot ? buildRows(snapshot, update, hotkeyError, change) : []),
+    () => (snapshot ? buildRows(snapshot, update, hotkeyError, voices, change) : []),
     // `change` is deliberately not a dependency: it closes over nothing but the setters, and
     // the rows are rebuilt on every snapshot anyway because that is what they draw.
-    [snapshot, update, hotkeyError]
+    [snapshot, update, hotkeyError, voices]
   )
 
   // One frame of nothing rather than a layout that jumps: every control below needs the
@@ -213,6 +223,7 @@ function buildRows(
   snapshot: SettingsSnapshot,
   update: UpdateStatus,
   hotkeyError: string | null,
+  voices: SpeechSynthesisVoice[],
   change: (patch: Partial<EzzyConfig>) => Promise<void>
 ): Row[] {
   const { config, packaged, activeHotkey, version, logPath } = snapshot
@@ -315,6 +326,110 @@ function buildRows(
           disabled={!config.voice}
           label="Pause music while listening"
           onChange={(duckMusic) => void change({ duckMusic })}
+        />
+      )
+    },
+    {
+      id: 'voice-name',
+      page: 'voice',
+      section: 'How it sounds',
+      name: 'Voice',
+      detail:
+        'Which installed voice reads confirmations. Automatic picks the best English one on this machine.',
+      keywords: 'accent narrator tts synthesiser',
+      disabled: !config.voice || !config.speech,
+      control: (
+        <select
+          className="settings__select"
+          value={config.voiceName ?? ''}
+          disabled={!config.voice || !config.speech}
+          onChange={(event) => void change({ voiceName: event.target.value || null })}
+        >
+          <option value="">Automatic</option>
+          {voices.map((voice) => (
+            <option key={voice.name} value={voice.name}>
+              {voice.name}
+            </option>
+          ))}
+        </select>
+      )
+    },
+    {
+      id: 'speech-rate',
+      page: 'voice',
+      section: 'How it sounds',
+      name: 'Speed',
+      detail: 'How fast it talks. 1.0 is the voice’s own pace.',
+      keywords: 'rate speed fast slow',
+      disabled: !config.voice || !config.speech,
+      control: (
+        <Slider
+          value={config.speechRate}
+          min={0.5}
+          max={2}
+          step={0.02}
+          label="Speech speed"
+          format={(value) => `${value.toFixed(2)}x`}
+          disabled={!config.voice || !config.speech}
+          onChange={(speechRate) => void change({ speechRate })}
+        />
+      )
+    },
+    {
+      id: 'speech-volume',
+      page: 'voice',
+      section: 'How it sounds',
+      name: 'Volume',
+      detail: 'Quieter than your music on purpose — it is furniture, not the thing you are doing.',
+      keywords: 'loud quiet',
+      disabled: !config.voice || !config.speech,
+      control: (
+        <Slider
+          value={config.speechVolume}
+          min={0}
+          max={1}
+          step={0.05}
+          label="Speech volume"
+          format={(value) => `${Math.round(value * 100)}%`}
+          disabled={!config.voice || !config.speech}
+          onChange={(speechVolume) => void change({ speechVolume })}
+        />
+      )
+    },
+    {
+      id: 'speech-preview',
+      page: 'voice',
+      section: 'How it sounds',
+      name: 'Try it',
+      detail: 'Says a confirmation the way it would after a command.',
+      keywords: 'test preview sample',
+      disabled: !config.voice || !config.speech,
+      control: (
+        <button
+          type="button"
+          className="settings__button"
+          disabled={!config.voice || !config.speech}
+          onClick={() => preview(config, voices)}
+        >
+          Play
+        </button>
+      )
+    },
+    {
+      id: 'speech-variety',
+      page: 'voice',
+      section: 'How it sounds',
+      name: 'Vary the phrasing',
+      detail:
+        'Puts “Okay,” or “Sure,” in front of a confirmation now and then. Off, every answer is the plain sentence.',
+      keywords: 'wording lead phrasing repetitive',
+      disabled: !config.voice || !config.speech,
+      control: (
+        <Switch
+          checked={config.speechVariety}
+          disabled={!config.voice || !config.speech}
+          label="Vary the phrasing"
+          onChange={(speechVariety) => void change({ speechVariety })}
         />
       )
     },
@@ -695,6 +810,64 @@ function Command({
       />
     </div>
   )
+}
+
+function Slider({
+  value,
+  min,
+  max,
+  step,
+  label,
+  format,
+  disabled,
+  onChange
+}: {
+  value: number
+  min: number
+  max: number
+  step: number
+  label: string
+  format: (value: number) => string
+  disabled?: boolean
+  onChange: (value: number) => void
+}): React.JSX.Element {
+  return (
+    <>
+      <span className="settings__reading">{format(value)}</span>
+      <input
+        className="settings__slider"
+        type="range"
+        aria-label={label}
+        value={value}
+        min={min}
+        max={max}
+        step={step}
+        disabled={disabled}
+        onChange={(event) => onChange(Number(event.target.value))}
+      />
+    </>
+  )
+}
+
+/** Say a sample here rather than asking the dot to say one.
+ *
+ *  It is the same Chromium and the same installed voices, so what is heard is what the dot
+ *  would produce — and going through the dot would mean a preview that cannot be heard while
+ *  the settings window has focus is indistinguishable from one that is broken. */
+function preview(config: EzzyConfig, voices: SpeechSynthesisVoice[]): void {
+  const synth = window.speechSynthesis
+  synth.cancel()
+  const utterance = new SpeechSynthesisUtterance(
+    config.speechVariety ? 'Okay, switching to Chrome' : 'Switching to Chrome'
+  )
+  utterance.rate = config.speechRate
+  utterance.volume = config.speechVolume
+  const voice = voices.find((entry) => entry.name === config.voiceName)
+  if (voice) {
+    utterance.voice = voice
+    utterance.lang = voice.lang
+  }
+  synth.speak(utterance)
 }
 
 interface SwitchProps {

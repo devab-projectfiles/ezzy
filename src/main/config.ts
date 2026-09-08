@@ -50,6 +50,11 @@ function save(): void {
 }
 
 /** The config file is hand-editable, so every field is checked rather than trusted. */
+function clamp(raw: unknown, low: number, high: number, fallback: number): number {
+  if (typeof raw !== 'number' || !Number.isFinite(raw)) return fallback
+  return Math.min(high, Math.max(low, raw))
+}
+
 /** The hand-added applications, keeping only entries that are actually one. A path that has
  *  since been deleted is left in rather than dropped: the file may be on a drive that is not
  *  plugged in, and silently forgetting what the user added is worse than a launch that fails
@@ -101,6 +106,13 @@ function normalise(raw: Partial<EzzyConfig>): EzzyConfig {
     voicePanel: typeof raw.voicePanel === 'boolean' ? raw.voicePanel : DEFAULT_CONFIG.voicePanel,
     appearance: raw.appearance === 'glass' ? 'glass' : DEFAULT_CONFIG.appearance,
     duckMusic: typeof raw.duckMusic === 'boolean' ? raw.duckMusic : DEFAULT_CONFIG.duckMusic,
+    voiceName: typeof raw.voiceName === 'string' ? raw.voiceName : DEFAULT_CONFIG.voiceName,
+    // Clamped rather than trusted: the file is editable, and a rate of 40 is a voice nobody
+    // can understand with no way to see why.
+    speechRate: clamp(raw.speechRate, 0.5, 2, DEFAULT_CONFIG.speechRate),
+    speechVolume: clamp(raw.speechVolume, 0, 1, DEFAULT_CONFIG.speechVolume),
+    speechVariety:
+      typeof raw.speechVariety === 'boolean' ? raw.speechVariety : DEFAULT_CONFIG.speechVariety,
     customApps: readCustomApps(raw.customApps),
     aliases: readPhrases(raw.aliases),
     phrases: readPhrases(raw.phrases),
