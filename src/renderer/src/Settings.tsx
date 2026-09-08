@@ -973,6 +973,10 @@ function Slider({
         className="settings__slider"
         type="range"
         aria-label={label}
+        // How much of the track is behind the thumb. The browser knows, and gives no way to
+        // ask, so the track is painted from this instead of from a native fill nobody can
+        // restyle.
+        style={{ '--fill': `${((value - min) / (max - min)) * 100}%` } as React.CSSProperties}
         value={value}
         min={min}
         max={max}

@@ -38,6 +38,42 @@ body {
    the settings this is modelled on. The nav is a fixed column and the content scrolls on its
    own, so a long page never moves the nav and the window can be dragged to any size without
    the two ever disagreeing about who scrolls. */
+/* A hairline scrollbar rather than the platform's.
+   `color-scheme: dark` above made the native one dark, which was the readability half; this
+   is the rest of it. A 15px slab down the edge of a window whose own gutters are 34px reads
+   as part of the operating system rather than as part of the page. Scoped to this window: the
+   panel and the search bar have their own, sized for a list of rows. */
+.settings ::-webkit-scrollbar,
+.settings::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.settings ::-webkit-scrollbar-track,
+.settings::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.settings ::-webkit-scrollbar-thumb,
+.settings::-webkit-scrollbar-thumb {
+  /* Inset by a transparent border so the thumb is 4px of colour in an 8px lane, which is what
+     makes it read as a hairline without shrinking the area a pointer can catch. */
+  border: 2px solid transparent;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.16);
+  background-clip: padding-box;
+}
+
+.settings ::-webkit-scrollbar-thumb:hover,
+.settings::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.3);
+  background-clip: padding-box;
+}
+
+.settings ::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
 .settings {
   display: grid;
   grid-template-columns: 236px 1fr;
@@ -514,14 +550,61 @@ body {
   font-variant-numeric: tabular-nums;
 }
 
+/* Drawn rather than left to `accent-color`, which paints a thick saturated bar and a large
+   round thumb — loud next to a page whose only other colour is on the toggles. A hairline
+   track and a small light thumb say the same thing quietly, and keep the accent meaning "this
+   is on" rather than "this is a control". */
 .settings__slider {
   width: 170px;
-  accent-color: var(--settings-accent);
+  height: 16px;
+  appearance: none;
+  background: none;
   cursor: pointer;
+}
+
+.settings__slider::-webkit-slider-runnable-track {
+  height: 3px;
+  border-radius: 999px;
+  /* Two flat stops rather than a gradient: the fill has an edge at the thumb, not a fade. */
+  background: linear-gradient(
+    to right,
+    rgba(255, 255, 255, 0.5) 0 var(--fill),
+    rgba(255, 255, 255, 0.12) var(--fill) 100%
+  );
+}
+
+.settings__slider::-webkit-slider-thumb {
+  appearance: none;
+  width: 12px;
+  height: 12px;
+  /* Half the thumb minus half the track, so it sits on the line rather than below it. */
+  margin-top: -4.5px;
+  border-radius: 50%;
+  background: var(--text-strong);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.55);
+  transition: transform 120ms var(--ease-glass);
+}
+
+.settings__slider:hover:not(:disabled)::-webkit-slider-thumb {
+  transform: scale(1.18);
+}
+
+.settings__slider:focus-visible {
+  outline: none;
+}
+
+.settings__slider:focus-visible::-webkit-slider-thumb {
+  box-shadow:
+    0 1px 4px rgba(0, 0, 0, 0.55),
+    0 0 0 3px rgba(124, 92, 255, 0.5);
 }
 
 .settings__slider:disabled {
   cursor: default;
+}
+
+.settings__slider:disabled::-webkit-slider-thumb {
+  background: var(--text-faint);
 }
 
 .settings__toggle {
