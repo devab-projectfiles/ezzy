@@ -901,6 +901,7 @@ function Dropdown({
               <button
                 type="button"
                 role="option"
+                title={option.label}
                 aria-selected={option.value === value}
                 className={`settings__option${option.value === value ? ' is-chosen' : ''}${
                   index === active ? ' is-active' : ''

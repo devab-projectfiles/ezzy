@@ -455,7 +455,9 @@ body {
   top: calc(100% + 6px);
   right: 0;
   z-index: 20;
-  min-width: 240px;
+  /* Exactly the button's width. The wrapper shrinks to the button, so 100% is that — and it
+     stays that when the button's width changes, which a repeated pixel value would not. */
+  width: 100%;
   max-height: 260px;
   margin: 0;
   padding: 4px;
@@ -478,7 +480,12 @@ body {
   font: inherit;
   font-size: 13px;
   text-align: left;
+  /* A fixed width means the long names have to give way rather than widen the menu. They
+     differ early — David, Mark, Zira — so the tail is what can be spared; the full name is on
+     the row's tooltip for the cases where it is not. */
+  overflow: hidden;
   white-space: nowrap;
+  text-overflow: ellipsis;
   cursor: pointer;
 }
 
