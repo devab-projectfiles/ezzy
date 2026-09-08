@@ -571,8 +571,12 @@ body {
     rgba(255, 255, 255, 0.5) 0 var(--fill),
     rgba(255, 255, 255, 0.12) var(--fill) 100%
   );
+  transition: background 140ms var(--ease-glass);
 }
 
+/* The colour lives on the dot, not on the bar. A coloured bar is a state — it is what the
+   toggles mean by purple — while a coloured dot is just the thing you take hold of, which is
+   what this is. */
 .settings__slider::-webkit-slider-thumb {
   appearance: none;
   width: 12px;
@@ -580,13 +584,41 @@ body {
   /* Half the thumb minus half the track, so it sits on the line rather than below it. */
   margin-top: -4.5px;
   border-radius: 50%;
-  background: var(--text-strong);
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.55);
-  transition: transform 120ms var(--ease-glass);
+  background: var(--settings-accent);
+  box-shadow:
+    0 0 0 1px rgba(0, 0, 0, 0.45),
+    0 1px 4px rgba(0, 0, 0, 0.55);
+  transition:
+    transform 120ms var(--ease-glass),
+    box-shadow 140ms var(--ease-glass);
 }
 
 .settings__slider:hover:not(:disabled)::-webkit-slider-thumb {
   transform: scale(1.18);
+}
+
+/* While it is being dragged, and only then. `:active` on a range input holds for exactly as
+   long as the thumb is held, so the control can be loud while it is being used and go quiet
+   the moment it is let go — which is when a slider is furniture again. */
+.settings__slider:active:not(:disabled)::-webkit-slider-runnable-track {
+  background: linear-gradient(
+    to right,
+    var(--settings-accent) 0 var(--fill),
+    rgba(255, 255, 255, 0.18) var(--fill) 100%
+  );
+}
+
+.settings__slider:active:not(:disabled)::-webkit-slider-thumb {
+  transform: scale(1.35);
+  box-shadow:
+    0 0 0 1px rgba(0, 0, 0, 0.45),
+    0 0 0 6px rgba(124, 92, 255, 0.22);
+}
+
+/* The reading follows it up, so the number you are setting is the brightest thing in the row
+   while you are setting it. */
+.settings__control:has(.settings__slider:active) .settings__reading {
+  color: var(--text-strong);
 }
 
 .settings__slider:focus-visible {
@@ -605,6 +637,7 @@ body {
 
 .settings__slider:disabled::-webkit-slider-thumb {
   background: var(--text-faint);
+  box-shadow: none;
 }
 
 .settings__toggle {
