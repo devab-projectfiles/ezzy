@@ -1,5 +1,7 @@
-import { Menu, Tray, nativeImage } from 'electron'
-import icon from '../../resources/icon.png?asset'
+import { execFileSync } from 'node:child_process'
+import { Menu, Tray, nativeImage, nativeTheme } from 'electron'
+import trayOnDark from '../../resources/tray-on-dark.png?asset'
+import trayOnLight from '../../resources/tray-on-light.png?asset'
 import { UpdateStatus } from '../shared/types'
 import { getConfig } from './config'
 import { HotkeyResult, activeHotkey } from './hotkey'
@@ -14,11 +16,51 @@ let quit: () => void = () => {}
  *  once per update rather than on every status change that follows it. */
 let announcedUpdate: string | null = null
 
+/** Which way Windows paints the taskbar, which is the only thing behind the tray icon.
+ *
+ *  Deliberately not `nativeTheme.shouldUseDarkColors`: index.ts pins `themeSource` to 'dark'
+ *  so Ezzy's own surfaces never follow the OS, and that pin makes the flag permanently true.
+ *  Windows also tracks the taskbar's theme separately from the one it hands to apps —
+ *  `SystemUsesLightTheme` is the taskbar, `AppsUseLightTheme` is everything else — and only
+ *  the first describes what our icon sits on. Electron exposes neither, so it comes from the
+ *  registry.
+ */
+function taskbarIsLight(): boolean {
+  try {
+    const output = execFileSync(
+      'reg',
+      [
+        'query',
+        'HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize',
+        '/v',
+        'SystemUsesLightTheme'
+      ],
+      { encoding: 'utf8', windowsHide: true, timeout: 2000 }
+    )
+    return /SystemUsesLightTheme\s+REG_DWORD\s+0x1/i.test(output)
+  } catch {
+    // The value is missing on installs that have never been themed. Dark is the Windows 11
+    // default taskbar, and a white mark on a dark bar is the safer of the two guesses —
+    // the other way round is invisible rather than merely low-contrast.
+    return false
+  }
+}
+
+/** The mark is drawn at 32px and handed over at 32px. The tray asks for 16 at 100% but 20 at
+ *  125% and 24 at 150%, so shrinking it to 16 here would force Windows to scale a small
+ *  bitmap back up on exactly the displays this machine uses. */
+function trayImage(): Electron.NativeImage {
+  return nativeImage.createFromPath(taskbarIsLight() ? trayOnLight : trayOnDark)
+}
+
 export function createTray(onQuit: () => void, hotkey: HotkeyResult): void {
   quit = onQuit
-  tray = new Tray(nativeImage.createFromPath(icon).resize({ width: 16, height: 16 }))
+  tray = new Tray(trayImage())
   tray.setToolTip('Ezzy')
   tray.on('click', () => togglePanel())
+  // Switching Windows between light and dark leaves the icon behind otherwise, and a
+  // dark-on-dark tray icon reads as the app having crashed.
+  nativeTheme.on('updated', () => tray?.setImage(trayImage()))
   refreshTray()
   announce(hotkey)
   onUpdateStatus((status) => {

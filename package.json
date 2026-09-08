@@ -31,7 +31,8 @@
     "dev:verbose": "electron-vite dev -- --verbose",
     "fetch:whisper": "node scripts/fetch-whisper.mjs",
     "scoop:manifest": "node scripts/scoop-manifest.mjs",
-    "publish:win": "npm run build && electron-builder --win --publish always"
+    "publish:win": "npm run build && electron-builder --win --publish always",
+    "make:icons": "electron scripts/make-icons.mjs"
   },
   "dependencies": {
     "@electron-toolkit/preload": "^3.0.2",
