@@ -734,15 +734,19 @@ function Apps({
 
   return (
     <>
+      {/* The count belongs out here, not in the placeholder. It answers "did Ezzy find my
+          apps?", which is a question about the scan — and a placeholder disappears the moment
+          anyone types, which is exactly when they were reading it. */}
       <p className="settings__blurb">
-        Give an application another name and Ezzy will answer to it — typed or spoken. Useful when
-        what you say and what it hears are not the same word.
+        Ezzy found {apps.length} applications on this PC. Give one another name and it will answer
+        to that too — typed or spoken, for when what you say and what it hears are not the same
+        word. Anything the scan missed can be added by hand.
       </p>
       <div className="settings__filter-row">
         <input
           className="settings__filter"
           type="text"
-          placeholder={`Search ${apps.length} applications`}
+          placeholder="Search or find an app"
           value={filter}
           autoComplete="off"
           spellCheck={false}

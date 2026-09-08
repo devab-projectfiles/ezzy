@@ -14,9 +14,9 @@
  *    either way. That is the tray, which sits *inside* the taskbar and therefore does have
  *    to match it: a near-black mark on a light taskbar, a white one on a dark taskbar.
  *
- *  The marks are used exactly as drawn. They are already scaled and optically centred, so
- *  nothing here re-traces, re-scales or re-centres them — the only geometry below is the
- *  plate they sit on and how much of it they fill.
+ *  The paths are used exactly as drawn — nothing here re-traces them. What does move is the
+ *  viewBox: the ink does not fill the 64x64 box it is drawn in, and centring the box is not
+ *  the same as centring the mark. See inkFitted.
  */
 
 import { app, BrowserWindow } from 'electron'
@@ -91,6 +91,40 @@ async function render(size, html) {
   throw new Error(`capture never painted at ${size}px`)
 }
 
+/** Returns the mark with its viewBox tightened onto the ink it actually draws.
+ *
+ *  The marks are drawn inside a 64x64 viewBox but do not fill it: measured, the ink sits 18
+ *  units right of centre and covers 278x345 of a 512px render. Dropped straight onto a square
+ *  plate that reads as a small mark pushed to one side, which is exactly what it looked like
+ *  in the title bar at 16px.
+ *
+ *  Nothing here re-traces, re-scales or re-centres the artwork — the paths are untouched and
+ *  the files on disk are not written to. Only the window onto them moves, so the renderer's
+ *  own `preserveAspectRatio` does the centring and the plate gets a mark that fills it.
+ *
+ *  The box comes from `getBBox()` rather than from counting pixels: it is the exact geometry
+ *  the renderer will use, at no resolution in particular.
+ */
+async function inkFitted(name, svg) {
+  const file = join(tmpDir, `measure-${name}.html`)
+  writeFileSync(file, `<!doctype html><meta charset="utf-8"><body>${svg}</body>`, 'utf8')
+  await win.loadFile(file)
+  // Asked of the <svg>, not of the <g> inside it. getBBox reports in the element's own user
+  // space, excluding that element's transform but including its descendants' — and the mark
+  // carries a translate+scale on the group. Measuring the group returns its raw path space
+  // (450x559 units here), which is not the space a viewBox is written in.
+  const box = await win.webContents.executeJavaScript(
+    `(() => { const b = document.querySelector('svg').getBBox();
+      return { x: b.x, y: b.y, width: b.width, height: b.height } })()`
+  )
+  const round = (value) => Math.round(value * 1000) / 1000
+  const viewBox = `${round(box.x)} ${round(box.y)} ${round(box.width)} ${round(box.height)}`
+  console.log(
+    `  ${name}: ink ${round(box.width)}x${round(box.height)} at ${round(box.x)},${round(box.y)}`
+  )
+  return svg.replace(/viewBox="[^"]*"/, `viewBox="${viewBox}" preserveAspectRatio="xMidYMid meet"`)
+}
+
 /** A multi-resolution .ico holding one PNG per size.
  *
  *  Windows has read PNG-compressed icon entries since Vista, so each size is simply the PNG
@@ -151,8 +185,12 @@ app.whenReady().then(async () => {
   win.showInactive()
 
   try {
+    console.log('measuring the marks')
+    const brand = await inkFitted('icon', iconSvg)
+    const mono = await inkFitted('icon-mono', monoSvg)
+
     console.log('app icon — brand gradient on the dark squircle')
-    const appPng = await render(APP_PNG, page(APP_PNG, squircle(APP_PNG), iconSvg, MARK_ON_PLATE))
+    const appPng = await render(APP_PNG, page(APP_PNG, squircle(APP_PNG), brand, MARK_ON_PLATE))
     save(join(ROOT, 'resources', 'icon.png'), appPng)
     save(join(ROOT, 'build', 'icon.png'), appPng)
 
@@ -162,15 +200,15 @@ app.whenReady().then(async () => {
       // laid out at 16px keeps a crisp edge that a 512-to-16 reduction turns to mush.
       entries.push({
         size,
-        png: await render(size, page(size, squircle(size), iconSvg, MARK_ON_PLATE))
+        png: await render(size, page(size, squircle(size), brand, MARK_ON_PLATE))
       })
     }
     save(join(ROOT, 'build', 'icon.ico'), encodeIco(entries))
 
     console.log('tray icons — the mono mark, one per taskbar theme')
-    const onLight = await render(TRAY, page(TRAY, 'color:#1a1a1a;', monoSvg, MARK_BARE))
+    const onLight = await render(TRAY, page(TRAY, 'color:#1a1a1a;', mono, MARK_BARE))
     save(join(ROOT, 'resources', 'tray-on-light.png'), onLight)
-    const onDark = await render(TRAY, page(TRAY, 'color:#ffffff;', monoSvg, MARK_BARE))
+    const onDark = await render(TRAY, page(TRAY, 'color:#ffffff;', mono, MARK_BARE))
     save(join(ROOT, 'resources', 'tray-on-dark.png'), onDark)
   } catch (error) {
     console.error(`make:icons failed — ${error.message}`)
