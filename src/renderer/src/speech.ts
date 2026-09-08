@@ -144,6 +144,11 @@ export function isSpeaking(tail = false): boolean {
  *  is meant to be instant, and it stops working on a train. */
 function pickVoice(): void {
   const all = window.speechSynthesis.getVoices()
+  // Logged before anything can return early. The list is the one thing here that can be
+  // empty for reasons nothing in this file controls — Chromium fills it asynchronously and
+  // answers `getVoices()` with nothing until it has — and a settings window offering only
+  // "Automatic" looks like a missing feature rather than an empty list.
+  console.log(`speech: ${all.length} voices available`)
   // A voice asked for by name wins outright, and is not filtered to English — someone who
   // chose a Spanish voice chose it. A name that is no longer installed falls through to the
   // preference order below rather than leaving the app silent.

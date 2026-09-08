@@ -11,6 +11,13 @@
    The palette is the same family the glass resolves to over a dark backdrop, so opening
    settings does not feel like leaving the app. */
 :root {
+  /* The one thing that tells Windows this window is dark.
+     Without it a native control's popup is drawn light while the page paints its text white,
+     and a `select` opens as a white sheet with white options on it: the voices were listed
+     the whole time and could not be read. It also fixes the scrollbars, which had the same
+     problem for the same reason. Only the surfaces the page draws itself were ever dark. */
+  color-scheme: dark;
+
   --settings-bg: #14161c;
   --settings-nav: #101218;
   --settings-row: rgba(255, 255, 255, 0.05);
@@ -393,21 +400,103 @@ body {
 
 /* The two controls that carry a value rather than a state. The reading sits to the left of
    the slider so the column of controls still ends flush with the window's edge. */
-.settings__select {
-  min-width: 210px;
-  max-width: 260px;
-  padding: 7px 10px;
+/* Drawn by the page rather than by Windows — see the note on `Dropdown`. The menu is
+   positioned against this box, which is why it is the thing that is relative. */
+.settings__dropdown {
+  position: relative;
+}
+
+.settings__dropdown-button {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 240px;
+  padding: 8px 10px 8px 12px;
   border: 1px solid var(--chip-rim);
   border-radius: 8px;
   background: rgba(255, 255, 255, 0.06);
   color: var(--text-strong);
   font: inherit;
   font-size: 13px;
+  text-align: left;
   cursor: pointer;
 }
 
-.settings__select:disabled {
+.settings__dropdown-button:hover:not(:disabled),
+.settings__dropdown-button.is-open {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.settings__dropdown-button.is-open {
+  border-color: var(--settings-accent);
+}
+
+.settings__dropdown-button:disabled {
   cursor: default;
+}
+
+.settings__dropdown-value {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.settings__chevron {
+  flex: none;
+  width: 14px;
+  height: 14px;
+  color: var(--text-faint);
+}
+
+.settings__menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 20;
+  min-width: 240px;
+  max-height: 260px;
+  margin: 0;
+  padding: 4px;
+  overflow-y: auto;
+  list-style: none;
+  border: 1px solid var(--settings-row-rim);
+  border-radius: 10px;
+  background: #1b1e26;
+  box-shadow: 0 14px 34px rgba(0, 0, 0, 0.55);
+}
+
+.settings__option {
+  display: block;
+  width: 100%;
+  padding: 8px 10px;
+  border: 0;
+  border-radius: 7px;
+  background: none;
+  color: var(--text-dim);
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+/* Hover and keyboard share one highlight, so the arrows and the mouse never disagree about
+   which row is the one Enter would take. */
+.settings__option.is-active {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text-strong);
+}
+
+.settings__option.is-chosen {
+  color: var(--text-strong);
+}
+
+.settings__option.is-chosen::after {
+  content: '✓';
+  float: right;
+  color: var(--settings-accent);
 }
 
 .settings__reading {

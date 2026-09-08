@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type {
   AppInfo,
   CustomApp,
@@ -63,13 +63,37 @@ function Settings(): React.JSX.Element {
     return window.ezzy.onUpdateStatus(setUpdate)
   }, [])
 
-  // Read here rather than asked of the main process: the list is the machine's, every window
-  // has the same one, and it arrives asynchronously the first time it is asked for.
+  // Read here rather than asked of the main process: the list is the machine's and every
+  // window has the same one.
+  //
+  // Polled as well as subscribed, and that is not belt-and-braces — it is the only thing that
+  // works. Chromium fills this list asynchronously and answers `getVoices()` with nothing
+  // until it has: measured in the dot, three consecutive reads returned 0 voices before one
+  // returned 3. `voiceschanged` fires while the engine is waking, so a window that opens
+  // afterwards subscribes to an event that has already happened and would sit on an empty
+  // list for as long as it stayed open — which is exactly a settings window, opened on demand
+  // and offering nothing but "Automatic".
+  //
+  // So it asks again for a few seconds and stops as soon as there is an answer.
   useEffect(() => {
-    const read = (): void => setVoices(window.speechSynthesis.getVoices())
+    let tries = 0
+    const read = (): void => {
+      const found = window.speechSynthesis.getVoices()
+      if (found.length > 0) {
+        setVoices(found)
+        window.clearInterval(timer)
+      }
+    }
+    const timer = window.setInterval(() => {
+      read()
+      if (++tries > 20) window.clearInterval(timer)
+    }, 200)
     read()
     window.speechSynthesis.addEventListener('voiceschanged', read)
-    return () => window.speechSynthesis.removeEventListener('voiceschanged', read)
+    return () => {
+      window.clearInterval(timer)
+      window.speechSynthesis.removeEventListener('voiceschanged', read)
+    }
   }, [])
 
   useEffect(() => {
@@ -339,19 +363,15 @@ function buildRows(
       keywords: 'accent narrator tts synthesiser',
       disabled: !config.voice || !config.speech,
       control: (
-        <select
-          className="settings__select"
+        <Dropdown
           value={config.voiceName ?? ''}
           disabled={!config.voice || !config.speech}
-          onChange={(event) => void change({ voiceName: event.target.value || null })}
-        >
-          <option value="">Automatic</option>
-          {voices.map((voice) => (
-            <option key={voice.name} value={voice.name}>
-              {voice.name}
-            </option>
-          ))}
-        </select>
+          options={[
+            { value: '', label: 'Automatic' },
+            ...voices.map((voice) => ({ value: voice.name, label: voice.name }))
+          ]}
+          onChange={(voiceName) => void change({ voiceName: voiceName || null })}
+        />
       )
     },
     {
@@ -810,6 +830,120 @@ function Command({
       />
     </div>
   )
+}
+
+/** A dropdown drawn by the page rather than by Windows.
+ *
+ *  A native `select` opens a popup the operating system paints, and no stylesheet reaches
+ *  inside it: on a dark window it came up as a light sheet with white text on it, so the
+ *  voices were listed and unreadable. `color-scheme: dark` fixed the reading of it and not
+ *  the look — it was still a Windows menu in the middle of an application that does not have
+ *  any others.
+ *
+ *  So it is a button and a list, which is a small amount of code for complete control of how
+ *  it looks. What that costs is the behaviour a native select gets for nothing, so the parts
+ *  worth having are put back by hand: Escape closes it, a click anywhere else closes it, the
+ *  arrows move through it and Enter takes the highlighted one. */
+function Dropdown({
+  value,
+  options,
+  disabled,
+  onChange
+}: {
+  value: string
+  options: Array<{ value: string; label: string }>
+  disabled?: boolean
+  onChange: (value: string) => void
+}): React.JSX.Element {
+  const [open, setOpen] = useState(false)
+  const [active, setActive] = useState(0)
+  const box = useRef<HTMLDivElement>(null)
+  const current = options.find((option) => option.value === value)
+
+  useEffect(() => {
+    if (!open) return
+    const away = (event: MouseEvent): void => {
+      if (!box.current?.contains(event.target as Node)) setOpen(false)
+    }
+    // Capture, so it closes before a click lands on whatever is underneath.
+    document.addEventListener('mousedown', away, true)
+    return () => document.removeEventListener('mousedown', away, true)
+  }, [open])
+
+  return (
+    <div className="settings__dropdown" ref={box}>
+      <button
+        type="button"
+        className={`settings__dropdown-button${open ? ' is-open' : ''}`}
+        disabled={disabled}
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        onClick={() => {
+          setActive(
+            Math.max(
+              0,
+              options.findIndex((option) => option.value === value)
+            )
+          )
+          setOpen((was) => !was)
+        }}
+        onKeyDown={onKey}
+      >
+        <span className="settings__dropdown-value">{current?.label ?? 'Automatic'}</span>
+        <svg viewBox="0 0 16 16" aria-hidden="true" className="settings__chevron">
+          <path d="M4.4 6.2 8 9.8l3.6-3.6" {...stroke} />
+        </svg>
+      </button>
+      {open && (
+        <ul className="settings__menu" role="listbox">
+          {options.map((option, index) => (
+            <li key={option.value}>
+              <button
+                type="button"
+                role="option"
+                aria-selected={option.value === value}
+                className={`settings__option${option.value === value ? ' is-chosen' : ''}${
+                  index === active ? ' is-active' : ''
+                }`}
+                onMouseEnter={() => setActive(index)}
+                onClick={() => {
+                  onChange(option.value)
+                  setOpen(false)
+                }}
+              >
+                {option.label}
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  )
+
+  function onKey(event: React.KeyboardEvent): void {
+    if (event.key === 'Escape' && open) {
+      event.stopPropagation()
+      setOpen(false)
+      return
+    }
+    if (!open && (event.key === 'ArrowDown' || event.key === 'Enter')) {
+      event.preventDefault()
+      setOpen(true)
+      return
+    }
+    if (!open) return
+    if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+      event.preventDefault()
+      const step = event.key === 'ArrowDown' ? 1 : -1
+      setActive((was) => (was + step + options.length) % options.length)
+    }
+    if (event.key === 'Enter') {
+      event.preventDefault()
+      const option = options[active]
+      if (option) onChange(option.value)
+      setOpen(false)
+    }
+  }
 }
 
 function Slider({
