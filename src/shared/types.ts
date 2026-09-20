@@ -13,6 +13,19 @@ export interface DotPosition {
  *  different taste, and the person who liked it should not have to keep a patch. */
 export type Appearance = 'flat' | 'glass'
 
+/** Which mark the floating dot wears.
+ *
+ *  `cards` is the original glyph and stays the default — it is the only one the pill animates,
+ *  because dot.css fans its two side cards out by id when the pill expands. The other three
+ *  are single paths, so they sit still. That is a real difference in feel, not an oversight:
+ *  the alternatives are there for people who prefer the shape, and a static mark is the
+ *  honest cost of one that was not drawn in three pieces. */
+export type DotLogo = 'cards' | 'orbit' | 'cluster' | 'panels'
+
+/** Every value `DotLogo` can take, in the order the picker shows them. One list, so validating
+ *  the config file and drawing the row of choices cannot disagree about what exists. */
+export const DOT_LOGOS: readonly DotLogo[] = ['cards', 'orbit', 'cluster', 'panels']
+
 export interface EzzyConfig {
   /** Electron accelerator string, e.g. 'Alt+Space'. */
   hotkey: string
@@ -81,6 +94,8 @@ export interface EzzyConfig {
   /** The surface treatment. Purely how the windows are painted — no size, position or
    *  behaviour changes with it. */
   appearance: Appearance
+  /** Which mark the floating dot draws. Same idea as `appearance`: looks only. */
+  dotLogo: DotLogo
   /** Dot position keyed by display id, so each monitor remembers its own spot. */
   dotPositions: Record<string, DotPosition>
   /** Display the dot was last on, used to pick a position at startup. */
@@ -94,6 +109,7 @@ export const DEFAULT_CONFIG: EzzyConfig = {
   voice: true,
   voicePanel: false,
   appearance: 'flat',
+  dotLogo: 'cards',
   duckMusic: true,
   voiceName: null,
   speechRate: 1.08,
@@ -390,11 +406,13 @@ export const IPC = {
   panelClose: 'panel:close',
   getHotkey: 'app:get-hotkey',
   getAppearance: 'app:get-appearance',
+  getDotLogo: 'app:get-dot-logo',
   getCommands: 'app:get-commands',
   checkPhrase: 'app:check-phrase',
   getApps: 'app:get-apps',
   pickApp: 'app:pick',
   appearance: 'app:appearance',
+  dotLogo: 'app:dot-logo',
   panelData: 'panel:data',
   panelChanged: 'panel:changed',
   focusWindow: 'windows:focus',
@@ -463,6 +481,12 @@ export interface EzzyApi {
   /** Fires when it is changed in Settings, so the change lands without a restart. Returns an
    *  unsubscribe function. */
   onAppearance(callback: (appearance: Appearance) => void): () => void
+  /** Which mark the dot should draw, asked once on load. Only the dot window and Settings
+   *  care, but it travels the same way `appearance` does for the same reason. */
+  getDotLogo(): Promise<DotLogo>
+  /** Fires when it is changed in Settings, so the dot swaps without a restart. Returns an
+   *  unsubscribe function. */
+  onDotLogo(callback: (logo: DotLogo) => void): () => void
   /** The cached window list and app index. Reads variables in the main process — no OS
    *  enumeration happens here, which is what keeps the panel inside the 50ms budget. */
   getPanelData(): Promise<PanelData>

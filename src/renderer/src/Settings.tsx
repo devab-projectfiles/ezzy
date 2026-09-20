@@ -1,12 +1,18 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { DOT_LOGOS } from '../../shared/types'
 import type {
   AppInfo,
   CustomApp,
   CommandInfo,
+  DotLogo,
   EzzyConfig,
   SettingsSnapshot,
   UpdateStatus
 } from '../../shared/types'
+import cards from '../assets/dot.svg?raw'
+import orbit from '../assets/dots/orbit.svg?raw'
+import cluster from '../assets/dots/cluster.svg?raw'
+import panels from '../assets/dots/panels.svg?raw'
 import HotkeyField from './HotkeyField'
 
 /** The settings window: a nav down the left, one page of rows on the right.
@@ -484,6 +490,18 @@ function buildRows(
           label="Glass surfaces"
           onChange={(glass) => void change({ appearance: glass ? 'glass' : 'flat' })}
         />
+      )
+    },
+    {
+      id: 'dot-logo',
+      page: 'appearance',
+      section: 'Surfaces',
+      name: 'Dot mark',
+      detail:
+        'The shape the floating dot wears. Cards is the only one that animates when the pill opens.',
+      keywords: 'logo icon glyph dot mark shape',
+      control: (
+        <LogoPicker value={config.dotLogo} onChange={(dotLogo) => void change({ dotLogo })} />
       )
     },
     {
@@ -1019,6 +1037,43 @@ interface SwitchProps {
   /** The row already shows the name, so the control needs its own only for a screen reader. */
   label: string
   onChange: (checked: boolean) => void
+}
+
+/** The marks, drawn at the size they are actually worn so the choice is made on what the dot
+ *  will look like rather than on a blown-up preview. Same source as the dot itself. */
+const LOGO_PREVIEWS: Record<DotLogo, string> = { cards, orbit, cluster, panels }
+
+const LOGO_NAMES: Record<DotLogo, string> = {
+  cards: 'Cards',
+  orbit: 'Orbit',
+  cluster: 'Cluster',
+  panels: 'Panels'
+}
+
+function LogoPicker({
+  value,
+  onChange
+}: {
+  value: DotLogo
+  onChange: (logo: DotLogo) => void
+}): React.JSX.Element {
+  return (
+    <div className="settings__logos" role="radiogroup" aria-label="Dot mark">
+      {DOT_LOGOS.map((logo) => (
+        <button
+          key={logo}
+          type="button"
+          role="radio"
+          aria-checked={logo === value}
+          aria-label={LOGO_NAMES[logo]}
+          title={LOGO_NAMES[logo]}
+          className={`settings__logo${logo === value ? ' is-selected' : ''}`}
+          onClick={() => onChange(logo)}
+          dangerouslySetInnerHTML={{ __html: LOGO_PREVIEWS[logo] }}
+        />
+      ))}
+    </div>
+  )
 }
 
 function Switch({ checked, disabled, label, onChange }: SwitchProps): React.JSX.Element {

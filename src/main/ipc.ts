@@ -7,6 +7,7 @@ import { commandCatalogue, phraseProblem, setCustomPhrases } from './commands/re
 import { getConfig } from './config'
 import {
   sendAppearance,
+  sendDotLogo,
   beginDotDrag,
   currentPillSide,
   endDotDrag,
@@ -124,6 +125,7 @@ export function registerIpc(): void {
   })
   ipcMain.handle(IPC.getSettings, () => settingsSnapshot())
   ipcMain.handle(IPC.getAppearance, () => getConfig().appearance)
+  ipcMain.handle(IPC.getDotLogo, () => getConfig().dotLogo)
   ipcMain.handle(IPC.getCommands, () => commandCatalogue())
   ipcMain.handle(IPC.getApps, () => appCatalogue())
   // The dialog runs here rather than in the renderer, so what comes back is a path a person
@@ -155,6 +157,9 @@ export function registerIpc(): void {
     if (patch.appearance !== undefined) {
       sendAppearance(result.snapshot.config.appearance)
       sendAppearanceToSettings(result.snapshot.config.appearance)
+    }
+    if (patch.dotLogo !== undefined) {
+      sendDotLogo(result.snapshot.config.dotLogo)
     }
     // The tray shows the hotkey in force in both its tooltip and its first menu item, and
     // that is exactly what a settings change can invalidate. Rebuilding the menu is cheap

@@ -3,14 +3,24 @@ import {
   DOT_VISUAL,
   PILL_VISUAL,
   STATUS_VISUAL,
+  type DotLogo,
   type PillDirection,
   type VoiceState
 } from '../../shared/types'
-import glyph from '../assets/dot.svg?raw'
+import cards from '../assets/dot.svg?raw'
+import orbit from '../assets/dots/orbit.svg?raw'
+import cluster from '../assets/dots/cluster.svg?raw'
+import panels from '../assets/dots/panels.svg?raw'
 import { initSpeech, speak } from './speech'
 
 /** Pointer travel below this is a click with a shaky hand, not a drag. */
 const DRAG_THRESHOLD = 4
+
+/** The marks, inlined rather than loaded as files so the dot can tint them with
+ *  `currentColor` — an <img> cannot inherit colour, and the pill dims its mark with the rest
+ *  of itself. `cards` is the original and the only one dot.css animates, because it is the
+ *  only one drawn as three pieces with ids. */
+const GLYPHS: Record<DotLogo, string> = { cards, orbit, cluster, panels }
 
 function Dot(): React.JSX.Element {
   const [dragging, setDragging] = useState(false)
@@ -21,6 +31,7 @@ function Dot(): React.JSX.Element {
   const [hotkey, setHotkey] = useState('')
   const [pillWidth, setPillWidth] = useState(PILL_VISUAL)
   const [voice, setVoice] = useState<VoiceState>({ kind: 'idle' })
+  const [logo, setLogo] = useState<DotLogo>('cards')
 
   const contentRef = useRef<HTMLSpanElement>(null)
   const origin = useRef<{ x: number; y: number } | null>(null)
@@ -60,6 +71,13 @@ function Dot(): React.JSX.Element {
   useEffect(() => {
     window.ezzy.getPillSide().then(setSide)
     return window.ezzy.onPillSide(setSide)
+  }, [])
+
+  // Asks once and subscribes, for the same reason appearance does: this window is created
+  // before Settings exists, so it would miss a broadcast, and it outlives any single change.
+  useEffect(() => {
+    void window.ezzy.getDotLogo().then(setLogo)
+    return window.ezzy.onDotLogo(setLogo)
   }, [])
 
   const status = statusFor(voice)
@@ -178,9 +196,9 @@ function Dot(): React.JSX.Element {
             <StateGlyph kind={voice.kind} />
           </span>
         ) : (
-          // dot.svg is the single source of truth for the mark; its three card ids are what
-          // dot.css animates.
-          <span className="pill__glyph" dangerouslySetInnerHTML={{ __html: glyph }} />
+          // The chosen mark. dot.svg is still the default, and its three card ids are what
+          // dot.css animates — the alternatives are single paths and sit still.
+          <span className="pill__glyph" dangerouslySetInnerHTML={{ __html: GLYPHS[logo] }} />
         )}
 
         {status ? (

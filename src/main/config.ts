@@ -1,7 +1,14 @@
 import { app } from 'electron'
 import { readFileSync, writeFileSync } from 'fs'
 import { join } from 'path'
-import { CustomApp, DEFAULT_CONFIG, DotPosition, EzzyConfig } from '../shared/types'
+import {
+  CustomApp,
+  DEFAULT_CONFIG,
+  DOT_LOGOS,
+  DotLogo,
+  DotPosition,
+  EzzyConfig
+} from '../shared/types'
 import { log } from './verbose'
 
 let current: EzzyConfig = { ...DEFAULT_CONFIG }
@@ -105,6 +112,11 @@ function normalise(raw: Partial<EzzyConfig>): EzzyConfig {
     voice: typeof raw.voice === 'boolean' ? raw.voice : DEFAULT_CONFIG.voice,
     voicePanel: typeof raw.voicePanel === 'boolean' ? raw.voicePanel : DEFAULT_CONFIG.voicePanel,
     appearance: raw.appearance === 'glass' ? 'glass' : DEFAULT_CONFIG.appearance,
+    // Checked against the list rather than cast: the file is hand-editable, and a name with
+    // no asset behind it would leave the dot with nothing drawn in it at all.
+    dotLogo: DOT_LOGOS.includes(raw.dotLogo as DotLogo)
+      ? (raw.dotLogo as DotLogo)
+      : DEFAULT_CONFIG.dotLogo,
     duckMusic: typeof raw.duckMusic === 'boolean' ? raw.duckMusic : DEFAULT_CONFIG.duckMusic,
     voiceName: typeof raw.voiceName === 'string' ? raw.voiceName : DEFAULT_CONFIG.voiceName,
     // Clamped rather than trusted: the file is editable, and a rate of 40 is a voice nobody
