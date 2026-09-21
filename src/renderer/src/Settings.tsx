@@ -1066,7 +1066,10 @@ function LogoPicker({
           role="radio"
           aria-checked={logo === value}
           aria-label={LOGO_NAMES[logo]}
-          title={LOGO_NAMES[logo]}
+          // Not `title`: the OS tooltip cannot be styled, arrives after its own delay and
+          // draws in the platform's colours, which is the one thing on this page that does
+          // not look like the rest of it. The label is drawn from CSS instead.
+          data-label={LOGO_NAMES[logo]}
           className={`settings__logo${logo === value ? ' is-selected' : ''}`}
           onClick={() => onChange(logo)}
           dangerouslySetInnerHTML={{ __html: LOGO_PREVIEWS[logo] }}
