@@ -3,7 +3,8 @@ import {
   DOT_VISUAL,
   PILL_VISUAL,
   STATUS_VISUAL,
-  type DotLogo,
+  type BuiltInLogo,
+  type DotMark,
   type PillDirection,
   type VoiceState
 } from '../../shared/types'
@@ -16,11 +17,19 @@ import { initSpeech, speak } from './speech'
 /** Pointer travel below this is a click with a shaky hand, not a drag. */
 const DRAG_THRESHOLD = 4
 
+/** The mark to draw. A choice of 'custom' with nothing saved falls back to the default rather
+ *  than drawing an empty circle — the config file is hand-editable, and the two fields can be
+ *  edited apart. */
+function glyphFor(mark: DotMark): string {
+  if (mark.markup !== null) return mark.markup
+  return GLYPHS[mark.logo as BuiltInLogo] ?? GLYPHS.cards
+}
+
 /** The marks, inlined rather than loaded as files so the dot can tint them with
  *  `currentColor` — an <img> cannot inherit colour, and the pill dims its mark with the rest
  *  of itself. `cards` is the original and the only one dot.css animates, because it is the
  *  only one drawn as three pieces with ids. */
-const GLYPHS: Record<DotLogo, string> = { cards, orbit, cluster, panels }
+const GLYPHS: Record<BuiltInLogo, string> = { cards, orbit, cluster, panels }
 
 function Dot(): React.JSX.Element {
   const [dragging, setDragging] = useState(false)
@@ -31,7 +40,7 @@ function Dot(): React.JSX.Element {
   const [hotkey, setHotkey] = useState('')
   const [pillWidth, setPillWidth] = useState(PILL_VISUAL)
   const [voice, setVoice] = useState<VoiceState>({ kind: 'idle' })
-  const [logo, setLogo] = useState<DotLogo>('cards')
+  const [mark, setMark] = useState<DotMark>({ logo: 'cards', markup: null })
 
   const contentRef = useRef<HTMLSpanElement>(null)
   const origin = useRef<{ x: number; y: number } | null>(null)
@@ -76,8 +85,8 @@ function Dot(): React.JSX.Element {
   // Asks once and subscribes, for the same reason appearance does: this window is created
   // before Settings exists, so it would miss a broadcast, and it outlives any single change.
   useEffect(() => {
-    void window.ezzy.getDotLogo().then(setLogo)
-    return window.ezzy.onDotLogo(setLogo)
+    void window.ezzy.getDotLogo().then(setMark)
+    return window.ezzy.onDotLogo(setMark)
   }, [])
 
   const status = statusFor(voice)
@@ -198,7 +207,7 @@ function Dot(): React.JSX.Element {
         ) : (
           // The chosen mark. dot.svg is still the default, and its three card ids are what
           // dot.css animates — the alternatives are single paths and sit still.
-          <span className="pill__glyph" dangerouslySetInnerHTML={{ __html: GLYPHS[logo] }} />
+          <span className="pill__glyph" dangerouslySetInnerHTML={{ __html: glyphFor(mark) }} />
         )}
 
         {status ? (

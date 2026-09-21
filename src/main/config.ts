@@ -4,10 +4,12 @@ import { join } from 'path'
 import {
   CustomApp,
   DEFAULT_CONFIG,
+  BuiltInLogo,
+  CustomLogo,
   DOT_LOGOS,
-  DotLogo,
   DotPosition,
-  EzzyConfig
+  EzzyConfig,
+  MAX_CUSTOM_LOGOS
 } from '../shared/types'
 import { log } from './verbose'
 
@@ -92,7 +94,33 @@ function readPhrases(raw: unknown): Record<string, string[]> {
   return out
 }
 
+/** The marks the user added, keeping only entries that are actually one and capping the list.
+ *  The markup is not re-checked here — it was cleaned by the renderer that accepted it, and
+ *  this process has no parser to check it with. */
+function readCustomLogos(raw: unknown): CustomLogo[] {
+  if (!Array.isArray(raw)) return []
+  return raw
+    .filter(
+      (entry): entry is CustomLogo =>
+        typeof entry === 'object' &&
+        entry !== null &&
+        typeof (entry as CustomLogo).id === 'string' &&
+        typeof (entry as CustomLogo).markup === 'string'
+    )
+    .slice(0, MAX_CUSTOM_LOGOS)
+}
+
+/** A built-in name, or the id of a mark that is actually still in the list. Anything else —
+ *  a hand-edited typo, or a custom mark that has since been removed — falls back, so the dot
+ *  can never be pointed at a drawing that does not exist. */
+function readDotLogo(raw: unknown, customLogos: CustomLogo[]): string {
+  if (typeof raw !== 'string') return DEFAULT_CONFIG.dotLogo
+  if (DOT_LOGOS.includes(raw as BuiltInLogo)) return raw
+  return customLogos.some((logo) => logo.id === raw) ? raw : DEFAULT_CONFIG.dotLogo
+}
+
 function normalise(raw: Partial<EzzyConfig>): EzzyConfig {
+  const customLogos = readCustomLogos(raw.customLogos)
   const dotPositions: Record<string, DotPosition> = {}
   if (raw.dotPositions && typeof raw.dotPositions === 'object') {
     for (const [id, pos] of Object.entries(raw.dotPositions)) {
@@ -114,9 +142,8 @@ function normalise(raw: Partial<EzzyConfig>): EzzyConfig {
     appearance: raw.appearance === 'glass' ? 'glass' : DEFAULT_CONFIG.appearance,
     // Checked against the list rather than cast: the file is hand-editable, and a name with
     // no asset behind it would leave the dot with nothing drawn in it at all.
-    dotLogo: DOT_LOGOS.includes(raw.dotLogo as DotLogo)
-      ? (raw.dotLogo as DotLogo)
-      : DEFAULT_CONFIG.dotLogo,
+    dotLogo: readDotLogo(raw.dotLogo, customLogos),
+    customLogos,
     duckMusic: typeof raw.duckMusic === 'boolean' ? raw.duckMusic : DEFAULT_CONFIG.duckMusic,
     voiceName: typeof raw.voiceName === 'string' ? raw.voiceName : DEFAULT_CONFIG.voiceName,
     // Clamped rather than trusted: the file is editable, and a rate of 40 is a voice nobody

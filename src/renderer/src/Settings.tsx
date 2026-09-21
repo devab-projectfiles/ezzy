@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { DOT_LOGOS } from '../../shared/types'
+import { DOT_LOGOS, MAX_CUSTOM_LOGOS } from '../../shared/types'
 import type {
   AppInfo,
+  BuiltInLogo,
   CustomApp,
+  CustomLogo,
   CommandInfo,
-  DotLogo,
   EzzyConfig,
   SettingsSnapshot,
   UpdateStatus
@@ -14,6 +15,7 @@ import orbit from '../assets/dots/orbit.svg?raw'
 import cluster from '../assets/dots/cluster.svg?raw'
 import panels from '../assets/dots/panels.svg?raw'
 import HotkeyField from './HotkeyField'
+import { cleanLogo } from './logo'
 
 /** The settings window: a nav down the left, one page of rows on the right.
  *
@@ -501,7 +503,14 @@ function buildRows(
         'The shape the floating dot wears. Cards is the only one that animates when the pill opens.',
       keywords: 'logo icon glyph dot mark shape',
       control: (
-        <LogoPicker value={config.dotLogo} onChange={(dotLogo) => void change({ dotLogo })} />
+        <LogoPicker
+          value={config.dotLogo}
+          own={config.customLogos}
+          onChange={(dotLogo) => void change({ dotLogo })}
+          onOwn={(customLogos, select) =>
+            void change(select === undefined ? { customLogos } : { customLogos, dotLogo: select })
+          }
+        />
       )
     },
     {
@@ -1041,9 +1050,9 @@ interface SwitchProps {
 
 /** The marks, drawn at the size they are actually worn so the choice is made on what the dot
  *  will look like rather than on a blown-up preview. Same source as the dot itself. */
-const LOGO_PREVIEWS: Record<DotLogo, string> = { cards, orbit, cluster, panels }
+const LOGO_PREVIEWS: Record<BuiltInLogo, string> = { cards, orbit, cluster, panels }
 
-const LOGO_NAMES: Record<DotLogo, string> = {
+const LOGO_NAMES: Record<BuiltInLogo, string> = {
   cards: 'Cards',
   orbit: 'Orbit',
   cluster: 'Cluster',
@@ -1052,30 +1061,119 @@ const LOGO_NAMES: Record<DotLogo, string> = {
 
 function LogoPicker({
   value,
-  onChange
+  own,
+  onChange,
+  onOwn
 }: {
-  value: DotLogo
-  onChange: (logo: DotLogo) => void
+  value: string
+  own: CustomLogo[]
+  onChange: (logo: string) => void
+  onOwn: (logos: CustomLogo[], select?: string) => void
 }): React.JSX.Element {
+  const [problem, setProblem] = useState<string | null>(null)
+  const full = own.length >= MAX_CUSTOM_LOGOS
+
+  async function add(): Promise<void> {
+    setProblem(null)
+    const picked = await window.ezzy.pickLogo()
+    if (picked.kind === 'cancelled') return
+    if (picked.kind === 'problem') {
+      setProblem(picked.message)
+      return
+    }
+    const cleaned = cleanLogo(picked.markup)
+    if (cleaned.kind === 'problem') {
+      setProblem(cleaned.message)
+      return
+    }
+    const id = `own-${Date.now().toString(36)}`
+    onOwn([...own, { id, markup: cleaned.markup }], id)
+  }
+
+  function remove(id: string): void {
+    setProblem(null)
+    // Dropping the one being worn would leave the dot pointing at nothing, so the choice
+    // falls back in the same breath as the removal rather than in a second write.
+    onOwn(
+      own.filter((logo) => logo.id !== id),
+      value === id ? 'cards' : undefined
+    )
+  }
+
   return (
-    <div className="settings__logos" role="radiogroup" aria-label="Dot mark">
-      {DOT_LOGOS.map((logo) => (
+    <div className="settings__logo-field">
+      <div className="settings__logos" role="radiogroup" aria-label="Dot mark">
+        {DOT_LOGOS.map((logo) => (
+          <button
+            key={logo}
+            type="button"
+            role="radio"
+            aria-checked={logo === value}
+            aria-label={LOGO_NAMES[logo]}
+            // Not `title`: the OS tooltip cannot be styled, arrives after its own delay and
+            // draws in the platform's colours, which is the one thing on this page that does
+            // not look like the rest of it. The label is drawn from CSS instead.
+            data-label={LOGO_NAMES[logo]}
+            className={`settings__logo${logo === value ? ' is-selected' : ''}`}
+            onClick={() => onChange(logo)}
+            dangerouslySetInnerHTML={{ __html: LOGO_PREVIEWS[logo] }}
+          />
+        ))}
+        {own.map((logo, index) => (
+          <span key={logo.id} className="settings__logo-slot">
+            <button
+              type="button"
+              role="radio"
+              aria-checked={logo.id === value}
+              aria-label={`Your mark ${index + 1}`}
+              data-label={`Yours ${index + 1}`}
+              className={`settings__logo${logo.id === value ? ' is-selected' : ''}`}
+              onClick={() => onChange(logo.id)}
+              dangerouslySetInnerHTML={{ __html: logo.markup }}
+            />
+            {/* On the swatch rather than in a menu: there is one thing to do to a mark you
+                added, and hiding it behind a second click would be the longer road to it. */}
+            <button
+              type="button"
+              className="settings__logo-remove"
+              aria-label={`Remove your mark ${index + 1}`}
+              onClick={() => remove(logo.id)}
+            >
+              <CrossIcon />
+            </button>
+          </span>
+        ))}
+        {/* Always here, so adding a second mark does not mean losing the first. It only goes
+            when there is no room left, and then it says so rather than disappearing. */}
         <button
-          key={logo}
           type="button"
-          role="radio"
-          aria-checked={logo === value}
-          aria-label={LOGO_NAMES[logo]}
-          // Not `title`: the OS tooltip cannot be styled, arrives after its own delay and
-          // draws in the platform's colours, which is the one thing on this page that does
-          // not look like the rest of it. The label is drawn from CSS instead.
-          data-label={LOGO_NAMES[logo]}
-          className={`settings__logo${logo === value ? ' is-selected' : ''}`}
-          onClick={() => onChange(logo)}
-          dangerouslySetInnerHTML={{ __html: LOGO_PREVIEWS[logo] }}
-        />
-      ))}
+          className="settings__logo settings__logo--add"
+          aria-label={full ? 'Remove one of your marks to add another' : 'Add your own mark'}
+          data-label={full ? 'Remove one to add another' : 'Add your own'}
+          disabled={full}
+          onClick={() => void add()}
+        >
+          <PlusIcon />
+        </button>
+      </div>
+      {problem !== null && <p className="settings__logo-problem">{problem}</p>}
     </div>
+  )
+}
+
+function CrossIcon(): React.JSX.Element {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+      <path d="M6 6l12 12M18 6L6 18" strokeLinecap="round" />
+    </svg>
+  )
+}
+
+function PlusIcon(): React.JSX.Element {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <path d="M12 5v14M5 12h14" strokeLinecap="round" />
+    </svg>
   )
 }
 

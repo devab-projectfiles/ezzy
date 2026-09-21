@@ -73,6 +73,12 @@
   display: block;
   width: 32px;
   height: 32px;
+  /* The side cards slide 9 user units outward on hover, and the mark is drawn to the edges of
+     its 64-unit box — so the left one leaves the viewport, and an <svg> clips to its viewport.
+     That was a clean vertical slice off the left card for as long as the pill was open. There
+     is room for it to go: the 32px mark sits in a 56px slot, so 9 units (4.5px at this scale)
+     still lands inside the pill, which does its own clipping. */
+  overflow: visible;
 }
 
 /* The state marks are line art where the dot mark is three solid cards, so they need to sit

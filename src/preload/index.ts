@@ -2,7 +2,7 @@ import { contextBridge, ipcRenderer } from 'electron'
 import {
   SpeechRequest,
   Appearance,
-  DotLogo,
+  DotMark,
   EzzyApi,
   IPC,
   NavKey,
@@ -34,6 +34,7 @@ const ezzy: EzzyApi = {
   closePanel: () => ipcRenderer.send(IPC.panelClose),
   getAppearance: () => ipcRenderer.invoke(IPC.getAppearance),
   getDotLogo: () => ipcRenderer.invoke(IPC.getDotLogo),
+  pickLogo: () => ipcRenderer.invoke(IPC.pickLogo),
   getCommands: () => ipcRenderer.invoke(IPC.getCommands),
   getApps: () => ipcRenderer.invoke(IPC.getApps),
   pickApp: () => ipcRenderer.invoke(IPC.pickApp),
@@ -44,7 +45,7 @@ const ezzy: EzzyApi = {
     return () => void ipcRenderer.removeListener(IPC.appearance, handler)
   },
   onDotLogo: (callback) => {
-    const handler = (_event: unknown, logo: DotLogo): void => callback(logo)
+    const handler = (_event: unknown, mark: DotMark): void => callback(mark)
     ipcRenderer.on(IPC.dotLogo, handler)
     return () => void ipcRenderer.removeListener(IPC.dotLogo, handler)
   },

@@ -20,11 +20,45 @@ export type Appearance = 'flat' | 'glass'
  *  are single paths, so they sit still. That is a real difference in feel, not an oversight:
  *  the alternatives are there for people who prefer the shape, and a static mark is the
  *  honest cost of one that was not drawn in three pieces. */
-export type DotLogo = 'cards' | 'orbit' | 'cluster' | 'panels'
+export type DotLogo = 'cards' | 'orbit' | 'cluster' | 'panels' | 'custom'
 
 /** Every value `DotLogo` can take, in the order the picker shows them. One list, so validating
  *  the config file and drawing the row of choices cannot disagree about what exists. */
-export const DOT_LOGOS: readonly DotLogo[] = ['cards', 'orbit', 'cluster', 'panels']
+export type BuiltInLogo = Exclude<DotLogo, 'custom'>
+export const DOT_LOGOS: readonly BuiltInLogo[] = ['cards', 'orbit', 'cluster', 'panels']
+
+/** One mark the user added. The id is what `dotLogo` points at, so renaming or reordering
+ *  the list never changes which one is being worn. */
+export interface CustomLogo {
+  id: string
+  markup: string
+}
+
+/** How many of their own someone may keep.
+ *
+ *  Two, because the row already carries four built-ins and an add button: a third pushes it
+ *  past what reads as a row of choices and starts wrapping into the label beside it. Anyone
+ *  who wants a different mark removes one first, which is a click, and the alternative — a
+ *  scrolling gallery of marks — is a feature nobody asked for. */
+export const MAX_CUSTOM_LOGOS = 2
+
+/** What the dot needs to draw its mark: the id it was told to wear, and the markup if that id
+ *  belongs to one of the user's own. Sent as a pair because an id is meaningless without the
+ *  drawing behind it, and two separate messages could arrive in either order. */
+export interface DotMark {
+  logo: string
+  markup: string | null
+}
+
+/** The largest SVG accepted as a custom mark. A drawing of something worn at 32px does not
+ *  need more than this, and the file is kept in the config, which is read at every launch. */
+export const MAX_LOGO_BYTES = 96 * 1024
+
+/** What came back from the file dialog. `cancelled` is not a failure and says nothing to the
+ *  user; `problem` is a sentence to show them, because a mark that silently refuses to appear
+ *  is the worst of the three outcomes. */
+export type PickedLogo =
+  { kind: 'cancelled' } | { kind: 'problem'; message: string } | { kind: 'svg'; markup: string }
 
 export interface EzzyConfig {
   /** Electron accelerator string, e.g. 'Alt+Space'. */
@@ -94,8 +128,17 @@ export interface EzzyConfig {
   /** The surface treatment. Purely how the windows are painted — no size, position or
    *  behaviour changes with it. */
   appearance: Appearance
-  /** Which mark the floating dot draws. Same idea as `appearance`: looks only. */
-  dotLogo: DotLogo
+  /** Which mark the floating dot draws: a built-in name, or the id of one in `customLogos`.
+   *  One field rather than a kind and an id, so there is no way to express "custom, but which
+   *  one?". Same idea as `appearance`: looks only. */
+  dotLogo: string
+  /** Marks the user added, as sanitised SVG markup.
+   *
+   *  Stored rather than referenced by path: a file the user moves or deletes would leave the
+   *  dot blank with nothing to explain why, and these are a few kilobytes of text. Each has
+   *  been through `cleanLogo` before it gets here — see the note there for what that means
+   *  and why the cleaning happens in a renderer rather than in the main process. */
+  customLogos: CustomLogo[]
   /** Dot position keyed by display id, so each monitor remembers its own spot. */
   dotPositions: Record<string, DotPosition>
   /** Display the dot was last on, used to pick a position at startup. */
@@ -110,6 +153,7 @@ export const DEFAULT_CONFIG: EzzyConfig = {
   voicePanel: false,
   appearance: 'flat',
   dotLogo: 'cards',
+  customLogos: [],
   duckMusic: true,
   voiceName: null,
   speechRate: 1.08,
@@ -407,6 +451,7 @@ export const IPC = {
   getHotkey: 'app:get-hotkey',
   getAppearance: 'app:get-appearance',
   getDotLogo: 'app:get-dot-logo',
+  pickLogo: 'app:pick-logo',
   getCommands: 'app:get-commands',
   checkPhrase: 'app:check-phrase',
   getApps: 'app:get-apps',
@@ -483,10 +528,14 @@ export interface EzzyApi {
   onAppearance(callback: (appearance: Appearance) => void): () => void
   /** Which mark the dot should draw, asked once on load. Only the dot window and Settings
    *  care, but it travels the same way `appearance` does for the same reason. */
-  getDotLogo(): Promise<DotLogo>
+  getDotLogo(): Promise<DotMark>
+  /** Opens a file dialog for an SVG and returns its text, or why it cannot be used. Reading
+   *  only — the markup is inert until something injects it, and nothing does before it has
+   *  been cleaned. */
+  pickLogo(): Promise<PickedLogo>
   /** Fires when it is changed in Settings, so the dot swaps without a restart. Returns an
    *  unsubscribe function. */
-  onDotLogo(callback: (logo: DotLogo) => void): () => void
+  onDotLogo(callback: (mark: DotMark) => void): () => void
   /** The cached window list and app index. Reads variables in the main process — no OS
    *  enumeration happens here, which is what keeps the panel inside the 50ms budget. */
   getPanelData(): Promise<PanelData>

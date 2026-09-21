@@ -1,6 +1,15 @@
 import { dialog, ipcMain } from 'electron'
-import { EzzyConfig, IPC, NavKey, VoiceFailure } from '../shared/types'
+import {
+  DotMark,
+  EzzyConfig,
+  IPC,
+  MAX_LOGO_BYTES,
+  NavKey,
+  PickedLogo,
+  VoiceFailure
+} from '../shared/types'
 import { randomUUID } from 'crypto'
+import { readFileSync, statSync } from 'fs'
 import { basename, extname } from 'path'
 import { appCatalogue, setAliases, setCustomApps } from './app-index'
 import { commandCatalogue, phraseProblem, setCustomPhrases } from './commands/registry'
@@ -40,6 +49,14 @@ import {
 } from './settings-window'
 import { checkForUpdates, installUpdate, updateStatus } from './updater'
 import { refreshTray } from './tray'
+
+/** The pair the dot draws from. Read at the moment it is asked for or broadcast, so the two
+ *  halves can never be a version apart. */
+function dotMark(): DotMark {
+  const config = getConfig()
+  const own = config.customLogos.find((logo) => logo.id === config.dotLogo)
+  return { logo: config.dotLogo, markup: own?.markup ?? null }
+}
 
 export function registerIpc(): void {
   ipcMain.on(IPC.dotDragStart, (_event, x: number, y: number) => beginDotDrag({ x, y }))
@@ -125,7 +142,7 @@ export function registerIpc(): void {
   })
   ipcMain.handle(IPC.getSettings, () => settingsSnapshot())
   ipcMain.handle(IPC.getAppearance, () => getConfig().appearance)
-  ipcMain.handle(IPC.getDotLogo, () => getConfig().dotLogo)
+  ipcMain.handle(IPC.getDotLogo, () => dotMark())
   ipcMain.handle(IPC.getCommands, () => commandCatalogue())
   ipcMain.handle(IPC.getApps, () => appCatalogue())
   // The dialog runs here rather than in the renderer, so what comes back is a path a person
@@ -144,6 +161,32 @@ export function registerIpc(): void {
     if (picked.canceled || path === undefined) return null
     return { id: randomUUID(), name: basename(path, extname(path)), path }
   })
+  // Reads the file and hands its text back, nothing more. The cleaning happens in the
+  // settings renderer, which has a parser: there is no DOM here, so anything this process
+  // could do to SVG markup would be regex work against a format regexes cannot parse.
+  // Reading is safe — markup is inert until something injects it, and the only injection is
+  // in the dot, which never sees a version that has not been through cleanLogo.
+  ipcMain.handle(IPC.pickLogo, async (): Promise<PickedLogo> => {
+    const picked = await dialog.showOpenDialog({
+      title: 'Choose a mark for the dot',
+      properties: ['openFile'],
+      filters: [{ name: 'SVG images', extensions: ['svg'] }]
+    })
+    const file = picked.filePaths[0]
+    if (picked.canceled || file === undefined) return { kind: 'cancelled' }
+    try {
+      const { size } = statSync(file)
+      if (size > MAX_LOGO_BYTES) {
+        return {
+          kind: 'problem',
+          message: `That file is ${Math.round(size / 1024)}KB. A mark drawn at 32px should be well under ${Math.round(MAX_LOGO_BYTES / 1024)}KB — this one is probably a photo saved as an SVG.`
+        }
+      }
+      return { kind: 'svg', markup: readFileSync(file, 'utf8') }
+    } catch {
+      return { kind: 'problem', message: 'That file could not be read.' }
+    }
+  })
   ipcMain.handle(IPC.checkPhrase, (_event, phrase: string) => phraseProblem(phrase))
   ipcMain.handle(IPC.setSettings, (_event, patch: Partial<EzzyConfig>) => {
     const result = applySettings(patch)
@@ -158,8 +201,8 @@ export function registerIpc(): void {
       sendAppearance(result.snapshot.config.appearance)
       sendAppearanceToSettings(result.snapshot.config.appearance)
     }
-    if (patch.dotLogo !== undefined) {
-      sendDotLogo(result.snapshot.config.dotLogo)
+    if (patch.dotLogo !== undefined || patch.customLogos !== undefined) {
+      sendDotLogo(dotMark())
     }
     // The tray shows the hotkey in force in both its tooltip and its first menu item, and
     // that is exactly what a settings change can invalidate. Rebuilding the menu is cheap

@@ -21,7 +21,7 @@ import {
   VoiceCapture,
   VoiceState,
   Appearance,
-  DotLogo,
+  DotMark,
   SpeechRequest
 } from '../shared/types'
 import { getConfig, updateConfig } from './config'
@@ -739,8 +739,8 @@ export function sendAppearance(appearance: Appearance): void {
 }
 
 /** Only the dot draws the mark, so unlike the appearance broadcast this goes to one window. */
-export function sendDotLogo(logo: DotLogo): void {
-  if (dotWindow && !dotWindow.isDestroyed()) dotWindow.webContents.send(IPC.dotLogo, logo)
+export function sendDotLogo(mark: DotMark): void {
+  if (dotWindow && !dotWindow.isDestroyed()) dotWindow.webContents.send(IPC.dotLogo, mark)
 }
 
 export function sendCapture(capture: VoiceCapture): void {
