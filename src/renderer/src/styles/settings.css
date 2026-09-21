@@ -814,6 +814,16 @@ body {
   opacity: 1;
 }
 
+/* The add button is always the rightmost swatch, and its own label is the longest one in
+   the row ("Remove one to add another") — centered the way the others are, it ran past the
+   window's edge. Anchored to the button's right edge instead, it grows leftward across the
+   row it already has room in, rather than off the side of it. */
+.settings__logo--add::after {
+  left: auto;
+  right: 0;
+  transform: none;
+}
+
 .settings__logo {
   position: relative;
   display: flex;
