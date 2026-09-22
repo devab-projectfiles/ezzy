@@ -1,16 +1,12 @@
-/** Icons for the panel's rows.
+/** Icons for the panel's rows. `app.getFileIcon` already knows what every `.lnk` and
+ *  `.exe` looks like, so nothing here parses an ICO or a PE resource section — this just
+ *  caches the answers, since reading a few hundred costs seconds cold and nothing warm.
  *
- *  The shell already knows what every `.lnk` and every `.exe` looks like, and Electron
- *  exposes that through `app.getFileIcon` — so nothing here parses an ICO, an PE resource
- *  section or an AppxManifest. What it does instead is keep the answers, because reading a
- *  few hundred of them costs seconds on a cold machine and nothing at all on a warm one.
- *
- *  Two rules shape the rest of this file:
- *   * Reading an icon is never on the path to a usable panel. Every consumer asks for the
- *     cached value synchronously, gets `undefined` on a miss, and draws the outline glyph.
- *     The fetch lands later and the list re-publishes.
- *   * The data URLs cross IPC on every keystroke, so the number of rows is capped upstream
- *     (MAX_APP_ROWS) rather than the icons being made small here. */
+ *  Reading an icon is never on the path to a usable panel — every consumer asks for the
+ *  cached value synchronously, gets `undefined` on a miss, and draws the outline glyph;
+ *  the fetch lands later and the list re-publishes. Rows are capped upstream
+ *  (MAX_APP_ROWS) rather than the icons being shrunk here, since the data URLs cross IPC
+ *  on every keystroke. */
 
 import { app } from 'electron'
 import { readFile, writeFile } from 'fs/promises'

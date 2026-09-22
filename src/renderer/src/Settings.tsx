@@ -71,18 +71,10 @@ function Settings(): React.JSX.Element {
     return window.ezzy.onUpdateStatus(setUpdate)
   }, [])
 
-  // Read here rather than asked of the main process: the list is the machine's and every
-  // window has the same one.
-  //
-  // Polled as well as subscribed, and that is not belt-and-braces — it is the only thing that
-  // works. Chromium fills this list asynchronously and answers `getVoices()` with nothing
-  // until it has: measured in the dot, three consecutive reads returned 0 voices before one
-  // returned 3. `voiceschanged` fires while the engine is waking, so a window that opens
-  // afterwards subscribes to an event that has already happened and would sit on an empty
-  // list for as long as it stayed open — which is exactly a settings window, opened on demand
-  // and offering nothing but "Automatic".
-  //
-  // So it asks again for a few seconds and stops as soon as there is an answer.
+  // Polled as well as subscribed — Chromium fills this list asynchronously and answers
+  // getVoices() with nothing until it has (measured: three empty reads before one
+  // returned 3). voiceschanged fires while the engine is waking, so a window opened
+  // after that (like this one, on demand) would otherwise sit on an empty list forever.
   useEffect(() => {
     let tries = 0
     const read = (): void => {
@@ -114,21 +106,17 @@ function Settings(): React.JSX.Element {
 
   const rows = useMemo(
     () => (snapshot ? buildRows(snapshot, update, hotkeyError, voices, change) : []),
-    // `change` is deliberately not a dependency: it closes over nothing but the setters, and
-    // the rows are rebuilt on every snapshot anyway because that is what they draw.
+
     [snapshot, update, hotkeyError, voices]
   )
 
-  // One frame of nothing rather than a layout that jumps: every control below needs the
-  // config to know what it is showing.
   if (!snapshot) return <div className="settings" />
 
   const searching = query.trim() !== ''
   const shown = searching
     ? rows.filter((row) => matches(row, query))
     : rows.filter((r) => r.page === page)
-  // Commands are searched alongside the settings, because "spotify" is a thing this app does
-  // and a search that answered it with nothing would be telling the user it does not.
+
   const foundCommands = searching ? commands.filter((c) => commandMatches(c, query)) : []
   const nothing = shown.length === 0 && foundCommands.length === 0
 

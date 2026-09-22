@@ -61,11 +61,9 @@ function Dot(): React.JSX.Element {
     }
   }, [])
 
-  // the plan, "the hover pill": "later the same pill carries state — a waveform while listening,
-  // 'didn't catch that' on a failed command. Keep it as one reusable component."
-  //
-  // So chunk E's visual feedback is this, and not a card of its own. The main process only
-  // sends a state here when the search bar is not up to draw it — the two never both speak.
+  // The pill itself carries voice feedback, rather than a card of its own — the main
+  // process only sends a state here when the search bar is not up to draw it, so the
+  // two never both speak.
   useEffect(() => {
     return window.ezzy.onVoiceState(setVoice)
   }, [])

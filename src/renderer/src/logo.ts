@@ -1,21 +1,19 @@
 /** Turning a file someone chose into a mark the dot can safely wear.
  *
- *  **Why this is in a renderer.** The dot draws its mark with `dangerouslySetInnerHTML`, and
- *  the dot's window has the preload bridge on it. An SVG is a document, not a picture: it can
- *  carry `<script>`, event-handler attributes, `<use href="http…">` and `<foreignObject>` full
- *  of HTML. `innerHTML` will not run a `<script>` it inserts, but it very much will fire an
- *  `onload` on an `<image>` — so a downloaded file could reach `window.ezzy`. The main process
- *  has no DOM, so anything it did to this markup would be regular expressions against a format
- *  that cannot be parsed with them. Here there is a real parser, and `DOMParser` is inert: it
- *  builds a tree without running anything in it.
+ *  Runs in a renderer because there is a real parser here — the main process has no DOM,
+ *  so anything it did to SVG markup would be regex against a format regex cannot parse.
+ *  `DOMParser` is inert: it builds a tree without running anything in it.
  *
- *  So the rule is a whitelist, not a blacklist. Anything not named below is dropped, which
- *  means a tag or attribute nobody thought of fails closed.
+ *  Security matters because the dot draws its mark with `dangerouslySetInnerHTML` on a
+ *  window that carries the preload bridge. An SVG is a document, not a picture — it can
+ *  carry `<script>`, event handlers, `<use href="http…">`, `<foreignObject>` full of
+ *  HTML. `innerHTML` will not run an inserted `<script>`, but it will fire an `onload` on
+ *  an `<image>`, so a downloaded file could reach `window.ezzy`. The rule below is a
+ *  whitelist, not a blacklist — a tag or attribute nobody thought of fails closed.
  *
- *  The mark is also flattened to one colour. The dot tints its glyph — it dims with the pill
- *  and brightens on hover — and a mark with its own fills would ignore all of that and sit
- *  there in its own palette looking like a sticker.
- */
+ *  The mark is also flattened to one colour: the dot tints its glyph (dims with the
+ *  pill, brightens on hover), and a mark with its own fills would ignore that and sit
+ *  there looking like a sticker. */
 
 /** Shapes and the scaffolding that positions them. No `use`, no `image`, no `foreignObject`,
  *  no `style`, no animation elements: each of those either fetches something, embeds a

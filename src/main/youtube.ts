@@ -1,55 +1,41 @@
-/** Resolving a YouTube search to its first video, so "play X on youtube" can play X.
+/** Resolving a YouTube search to its first video, so "play X on youtube" can play X. A
+ *  search URL alone only opens results; `watch?v=<id>` autoplays. Spotify cannot be
+ *  answered the same way — its search page ships no track ids — so only YouTube gets this.
  *
- *  **Why this exists at all.** Handing the shell a search URL opens the results and stops
- *  there: the list lives in the browser's renderer and Ezzy has no view of it. Playing is the
- *  easy half — `watch?v=<id>` autoplays — so the whole problem is learning which video is
- *  first. Measured on this machine: Spotify cannot be answered the same way (its search page
- *  ships no track ids at all, they arrive later over an authenticated call), which is why only
- *  YouTube gets this and "play daft punk" still just opens Spotify's results.
+ *  A page fetch, not an API: no key, no account, no quota, the ids are in the HTML a
+ *  browser would receive. The only outbound request Ezzy makes besides the update check
+ *  and the model download.
  *
- *  **This is a page fetch, not an API.** No key, no account, no quota — the ids are in the
- *  HTML the browser itself would receive. It is also the only outbound request Ezzy makes that
- *  is not the update check or the model download, and README the plan says so out loud rather than
- *  quietly making the promise untrue. Nothing about the query is sent anywhere else and no
- *  response is stored.
- *
- *  **Every failure means today's behaviour, never an error.** A timeout, a bot check, a
- *  consent interstitial, a markup change that retires `videoRenderer` — all of them return
- *  null, and the caller opens the results page exactly as it did before this file existed.
- *  That is the whole safety argument: the worst case is what the user already had. */
+ *  Every failure means today's behaviour, never an error — a timeout or a markup change
+ *  returns null, and the caller opens the results page exactly as before. */
 
 import { net } from 'electron'
 import { log, since } from './verbose'
 
-/** Bounded so a slow network cannot hold a voice command open. The whole voice path has
- *  1200ms to put something in front of the user, and this spends part of that budget before
- *  the browser is even asked — so it is deliberately tight, and a miss costs only the fallback
- *  it was already going to take. Measured here: the page arrives in 200-600ms. */
+/** Bounded so a slow network cannot hold a voice command open — the whole voice path
+ *  has 1200ms to answer, and this spends part of it before the browser is even asked.
+ *  Measured: the page arrives in 200-600ms. */
 const TIMEOUT_MS = 1_500
 
-/** The first result sat 750KB into a 1.2MB page when this was written, so most of the body has
- *  to be read. This is the ceiling on how much of it we will ever hold, not an expectation. */
+/** The first result sat 750KB into a 1.2MB page when this was written, so most of the
+ *  body has to be read — a ceiling on how much is ever held, not an expectation. */
 const MAX_BYTES = 3_000_000
 
-/** How much new body to accumulate between attempts at the pattern. Running it over the whole
- *  buffer on every chunk would be quadratic for no benefit; every 64KB finds the id within a
- *  chunk or two of when it arrives and lets the request be aborted early. */
+/** How much new body to accumulate between attempts at the pattern — running it over
+ *  the whole buffer on every chunk would be quadratic for no benefit. */
 const SCAN_EVERY = 64 * 1024
 
-/** The id of a real search result.
- *
- *  Scoped to `videoRenderer` rather than taking the first `"videoId"` anywhere in the page,
- *  because "anywhere" includes whatever YouTube decides to put above the results — an ad, a
- *  Shorts shelf, a channel card. On the page this was built against the two happened to be the
- *  same video, which is exactly the kind of coincidence that hides a bug until someone's
- *  command plays an advert. */
+/** The id of a real search result. Scoped to `videoRenderer` rather than the first
+ *  `"videoId"` anywhere in the page, since "anywhere" includes an ad, a Shorts shelf, a
+ *  channel card — a coincidence that would otherwise hide a bug until a command plays
+ *  an advert. */
 const FIRST_RESULT = /"videoRenderer":\{"videoId":"([\w-]{11})"/
 
 /** Ids are 11 characters of URL-safe base64. Checked before it is put in a URL. */
 const VIDEO_ID = /^[\w-]{11}$/
 
-/** The first video a YouTube search returns, or null if that cannot be established quickly
- *  and confidently. Never throws. */
+/** The first video a YouTube search returns, or null if that cannot be established
+ *  quickly and confidently. Never throws. */
 export async function topVideoId(query: string): Promise<string | null> {
   const startedAt = performance.now()
   const url = `https://www.youtube.com/results?search_query=${encodeURIComponent(query)}`
@@ -64,13 +50,11 @@ export async function topVideoId(query: string): Promise<string | null> {
       resolve(value)
     }
 
-    // Electron's net rather than node's https, for the same reason whisper-model.ts uses it:
-    // it goes through Chromium's stack, so a system proxy and the machine's certificate store
-    // are honoured. A corporate laptop is the case that would otherwise fail silently.
+    // Electron's net rather than node's https — goes through Chromium's stack, so a
+    // system proxy and the machine's certificate store are honoured.
     const request = net.request({ url, method: 'GET' })
-    // The parser expects the markup a desktop browser is served. Electron's default agent
-    // announces Electron, and a page tailored to something else is a page whose shape this
-    // file has never seen.
+    // The parser expects the markup a desktop browser is served, and Electron's default
+    // agent announces Electron instead.
     request.setHeader(
       'User-Agent',
       'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36'
@@ -117,7 +101,6 @@ export async function topVideoId(query: string): Promise<string | null> {
   })
 
   since(`youtube: top result for "${query}" -> ${id ?? 'nothing'}`, startedAt)
-  // Belt and braces before it becomes a URL: the pattern already constrains the shape, and
-  // this is what makes that a guarantee rather than a reading of the regex.
+  // The pattern already constrains the shape; this makes it a guarantee before the URL.
   return id !== null && VIDEO_ID.test(id) ? id : null
 }

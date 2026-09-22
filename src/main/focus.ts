@@ -1,21 +1,16 @@
 /** Bringing someone else's window to the front.
  *
- *  SetForegroundWindow silently fails for us. Windows only lets the process that *already*
- *  owns the foreground change it; every other caller gets `false`, or worse, a flashing
- *  taskbar button and no focus change. Ezzy's dot is `focusable: false` and is never the
- *  foreground window, so the naive call does nothing at all.
+ *  SetForegroundWindow silently fails for us — Windows only lets the process that
+ *  already owns the foreground change it, and Ezzy's dot (`focusable: false`) never is.
  *
- *  The workaround, in the order it is attempted:
+ *  The workaround, in order: (1) AttachThreadInput our thread to both the outgoing
+ *  foreground window's thread and the target's — while threads share an input queue,
+ *  Windows treats them as one actor and the restriction lifts; (2) if a full-screen or
+ *  elevated app still refuses, tap a synthetic ALT (Windows counts it as user input and
+ *  drops the foreground lock for a moment), then retry the attach.
  *
- *    1. AttachThreadInput our thread to both the outgoing foreground window's thread and
- *       the target's. While threads share an input queue Windows treats them as one actor,
- *       and the foreground restriction lifts.
- *    2. If that is not enough — it usually is, but a full-screen or elevated foreground app
- *       can still refuse — tap a synthetic ALT. Windows counts it as user input and drops
- *       the foreground lock for a moment, then retry the attach.
- *
- *  Both attempts verify against GetForegroundWindow rather than trusting the return value,
- *  because SetForegroundWindow returns true in cases where it only queued a flash. */
+ *  Both attempts verify against GetForegroundWindow rather than the return value, since
+ *  SetForegroundWindow returns true in cases where it only queued a flash. */
 
 import { since } from './verbose'
 import {

@@ -24,10 +24,8 @@ export function configFilePath(): string {
 
 export function loadConfig(): EzzyConfig {
   try {
-    // Tray > Settings opens this file in whatever editor Windows picks, and Notepad saves
-    // UTF-8 with a BOM by default. Without this the parse throws, the catch below resets
-    // every setting — dot position included — and writes the defaults back over the file.
-    // Editing your own hotkey through the app's menu would silently wipe it.
+    // Notepad saves UTF-8 with a BOM by default; without stripping it the parse throws
+    // and the catch below resets every setting back to defaults.
     const text = readFileSync(configFilePath(), 'utf8')
     const json = text.charCodeAt(0) === BOM ? text.slice(1) : text
     const raw = JSON.parse(json) as Partial<EzzyConfig>

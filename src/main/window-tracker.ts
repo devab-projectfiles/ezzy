@@ -201,11 +201,9 @@ function promote(hwnd: Hwnd): void {
 
 // ------------------------------------------------------------------- filtering
 
-/** the filter, plus the owner walk Alt-Tab itself uses.
- *
- *  EnumWindows returns hundreds of windows that no user would call open: invisible shells,
- *  tool windows, message-only windows, and — the one that catches everybody — UWP apps that
- *  are suspended but still "visible", parked by DWM in a cloaked state. */
+/** The filter, plus the owner walk Alt-Tab itself uses. EnumWindows returns hundreds of
+ *  windows nobody would call open: invisible shells, tool windows, message-only windows,
+ *  and UWP apps suspended but still "visible", parked by DWM in a cloaked state. */
 function isSwitchable(hwnd: Hwnd): boolean {
   if (hwnd === 0 || hwnd === shellWindow) return false
   if (!isWindow(hwnd) || !isWindowVisible(hwnd)) return false
@@ -217,14 +215,10 @@ function isSwitchable(hwnd: Hwnd): boolean {
   const style = getExStyle(hwnd)
   if (style & WS_EX_TOOLWINDOW) return false
   if (style & WS_EX_NOACTIVATE) return false
-  // Click-through. A window that is skipped in hit-testing is not something anyone switches
-  // to — it is furniture drawn over the desktop, and Ezzy's own dot is built exactly this
-  // way. Cluely's assistant overlay is the case that made this necessary: a visible, titled,
-  // full-screen WS_EX_TRANSPARENT window that lives as long as its process does. It passed
-  // every other test here, so "Cluely" sat in the list whenever the app was running — even
-  // after it had been closed to tray — SetForegroundWindow had nothing to focus when the row
-  // was clicked, and the app was excluded from the APPS section for looking like it was
-  // already switchable.
+  // Click-through — furniture drawn over the desktop, not something anyone switches to
+  // (Ezzy's own dot is built the same way). Without this, a visible full-screen overlay
+  // window built click-through (e.g. Cluely's) sat in the list with nothing for
+  // SetForegroundWindow to focus when its row was clicked.
   if (style & WS_EX_TRANSPARENT) return false
 
   if (getWindowTitle(hwnd) === '') return false
@@ -315,24 +309,10 @@ function seedFromSweep(): void {
   }
 }
 
-/** The cached list, MRU-ordered, verified.
- *
- *  Every entry is re-tested against `isSwitchable` on the way out, and that is deliberate
- *  even though the events above already test it on the way in. A window can stop qualifying
- *  with no event to announce it:
- *
- *   * Ex-styles change silently. Cluely creates its assistant overlay as an ordinary window
- *     and only then calls setIgnoreMouseEvents, which adds WS_EX_TRANSPARENT afterwards.
- *     Ezzy's CREATE handler had already cached it in the instant before that, no WinEvent
- *     fires for a style change, and the overlay's title never changes — so `reconsider` was
- *     never called again and a click-through window sat in the list for as long as Cluely
- *     ran. Measured: focusing that row succeeded, in 15ms, and did nothing a user could see.
- *   * A window belonging to a process that was terminated rather than closed may never
- *     produce EVENT_OBJECT_DESTROY at all.
- *
- *  There is no set of subscriptions that closes both. Verifying at read time closes all of
- *  them at once, and it is not the EnumWindows sweep the plan forbids — it walks the handles
- *  already cached, a dozen or two, not the desktop. Measured cost is logged below. */
+/** The cached list, MRU-ordered, verified. Re-tested against `isSwitchable` on the way
+ *  out — a window can stop qualifying with no event to announce it (an ex-style set after
+ *  creation fires no WinEvent; a terminated process may never fire EVENT_OBJECT_DESTROY).
+ *  Cheap: this walks only the handles already cached, not the desktop. */
 export function listWindows(): EzzyWindow[] {
   const startedAt = performance.now()
   const windows: EzzyWindow[] = []

@@ -10,16 +10,10 @@ interface Props {
   onChange: (hotkey: string) => void
 }
 
-/** The hotkey recorder.
- *
- *  The hotkey has to be configurable from day one — Alt+Space is the Windows system
- *  menu and every launcher on the machine wants it — and until this window existed the only
- *  way to change it was to hand-edit config.json.
- *
- *  Recording rather than a dropdown: nobody knows the Electron accelerator string for the key
- *  they have in mind, and everybody can press it. The one rule enforced here is that a
- *  shortcut needs a modifier, because a bare key registered globally would be swallowed
- *  system-wide — you would lose the letter B everywhere on the machine. */
+/** The hotkey recorder. Recording rather than a dropdown — nobody knows the Electron
+ *  accelerator string for the key they have in mind, but everybody can press it. The
+ *  one rule enforced here is that a shortcut needs a modifier: a bare key registered
+ *  globally would be swallowed system-wide, losing that letter everywhere. */
 function HotkeyField({ hotkey, active, error, onChange }: Props): React.JSX.Element {
   const [recording, setRecording] = useState(false)
   const [warning, setWarning] = useState<string | null>(null)
@@ -53,9 +47,8 @@ function HotkeyField({ hotkey, active, error, onChange }: Props): React.JSX.Elem
   const message = warning ?? error
   const fallenBack = active !== null && active !== hotkey
 
-  // The control only. The row around it — its name and its description — belongs to the
-  // settings list, which declares every setting as data so the search can filter them; a
-  // component that drew its own row would be findable on its page and invisible to the search.
+  // The control only — the row around it belongs to the settings list, which declares
+  // every setting as data so the search can filter it too.
   return (
     <>
       {recording && (

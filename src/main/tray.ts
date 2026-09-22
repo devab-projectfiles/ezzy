@@ -16,15 +16,10 @@ let quit: () => void = () => {}
  *  once per update rather than on every status change that follows it. */
 let announcedUpdate: string | null = null
 
-/** Which way Windows paints the taskbar, which is the only thing behind the tray icon.
- *
- *  Deliberately not `nativeTheme.shouldUseDarkColors`: index.ts pins `themeSource` to 'dark'
- *  so Ezzy's own surfaces never follow the OS, and that pin makes the flag permanently true.
- *  Windows also tracks the taskbar's theme separately from the one it hands to apps —
- *  `SystemUsesLightTheme` is the taskbar, `AppsUseLightTheme` is everything else — and only
- *  the first describes what our icon sits on. Electron exposes neither, so it comes from the
- *  registry.
- */
+/** Which way Windows paints the taskbar. Not `nativeTheme.shouldUseDarkColors` —
+ *  index.ts pins `themeSource` to 'dark', making that flag permanently true, and Windows
+ *  tracks the taskbar's theme (`SystemUsesLightTheme`) separately from apps
+ *  (`AppsUseLightTheme`) anyway. Electron exposes neither, so it comes from the registry. */
 function taskbarIsLight(): boolean {
   try {
     const output = execFileSync(
@@ -80,13 +75,10 @@ export function refreshTray(): void {
       { type: 'separator' },
       { label: 'Show', click: () => showDot() },
       { label: 'Reset dot position', click: () => resetDotPosition() },
-      // Chunk E's two checkbox stopgaps lived here because there was no settings window yet.
-      // There is one now, and it holds every setting rather than the two that
-      // happened to be worth a menu item.
       { label: 'Settings…', click: () => openSettingsWindow() },
       { type: 'separator' },
-      // Ezzy is a tray app with no console, so a user with a bug has nothing to attach unless
-      // the log file is reachable from the one menu they can always find.
+      // A tray app with no console needs the log file reachable from the one menu a
+      // user with a bug can always find.
       { label: 'Open log file', click: () => void openLogFile() },
       update.kind === 'ready'
         ? { label: `Restart to update to ${update.version}`, click: () => installUpdate() }

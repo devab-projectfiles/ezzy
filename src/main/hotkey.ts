@@ -64,10 +64,9 @@ export function registerHotkey(onTrigger: () => void): HotkeyResult {
   return apply()
 }
 
-/** Re-register against the config as it stands now — the settings window changing the hotkey
- *. The result says whether the OS actually gave us what was asked for, which is
- *  what the window reports back: a hotkey another app already owns has to say so, or the user
- *  is left pressing a key that silently belongs to something else. */
+/** Re-register against the config as it stands now. The result says whether the OS
+ *  actually gave us what was asked for, so the settings window can report back — a
+ *  hotkey another app already owns has to say so. */
 export function reapplyHotkey(): HotkeyResult {
   return apply()
 }
@@ -115,11 +114,9 @@ function tryRegister(accelerator: string): boolean {
  *  the repeats are dropped: the press is over when the key comes back up, not before. */
 function onHotkey(): void {
   if (holdPoll) return
-  // The microphone first, the panel second. Opening the audio device is the one thing on this
-  // path that is already costing the user words — a cold device takes 225-960ms and records
-  // nothing while it opens — and showing the panel is a window show, a bounds calculation and
-  // two IPC sends that would otherwise all happen in front of it. A tap notices no difference;
-  // a hold gets its head start back.
+  // The microphone first, the panel second — opening the audio device already costs the
+  // user words (225-960ms, recording nothing), and the panel show is a window show, a
+  // bounds calculation and two IPC sends that would otherwise sit in front of it.
   if (holdKey !== null) hold?.onPress()
   trigger()
   if (holdKey === null) return

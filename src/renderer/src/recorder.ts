@@ -1,127 +1,77 @@
-/** The microphone half of push-to-talk.
+/** The microphone half of push-to-talk. Runs in the dot window, which draws none of it —
+ *  `getUserMedia` has no main-process equivalent, and the dot is the only window always alive.
  *
- *  This runs in the **dot** window, which draws none of it. `getUserMedia` is a web API with no
- *  main-process equivalent, so recording has to happen in a renderer, and the dot is the only
- *  one that is always alive — the search bar exists only while the panel is open, which is not
- *  a lifetime you can hold a microphone across.
+ *  Captures raw PCM rather than using MediaRecorder, since whisper-server reads WAV and
+ *  MediaRecorder produces WebM/Opus (decoding that would mean shipping ffmpeg).
  *
- *  It captures raw PCM rather than using MediaRecorder, because whisper-server reads WAV and
- *  MediaRecorder produces WebM/Opus. Decoding that would mean shipping ffmpeg (the server's
- *  `--convert` flag needs it); writing a 44-byte WAV header instead costs nothing.
- *
- *  The microphone opens when the hotkey goes *down*, not when the hold is recognised 350ms
- *  later: opening a device takes 300-960ms here, and a user who starts talking as they press
- *  loses their first word to it. A press that turns out to be a tap is cancelled — the buffer
- *  is dropped and the device closed without anything being sent anywhere.
- *
- *  It is never held open between commands. The Windows recording indicator should be on
- *  exactly while Ezzy has the microphone, because that indicator is the user's only real
- *  guarantee about an app like this one. */
+ *  The mic opens on key-down, not when the hold is recognised 350ms later — opening a
+ *  device takes 300-960ms, and a tap is cancelled with the buffer dropped and nothing sent.
+ *  Never held open between commands beyond KEEP_WARM_MS, since Windows' recording indicator
+ *  is the user's only real guarantee about an app like this one. */
 
 import { isSpeaking } from './speech'
 
-/** What whisper wants: 16kHz mono. The AudioContext resamples the device's own rate for us. */
+/** What whisper wants: 16kHz mono. */
 const SAMPLE_RATE = 16_000
 
-/** ScriptProcessor's buffer, in frames — 64ms at 16kHz.
- *
- *  This is the granularity of everything the recorder can lose. A block is only handed over
- *  once it is full, so up to one block goes missing at each end of a recording, and a press
- *  shorter than one block records nothing at all — measured, at 4096 frames (256ms) a brief
- *  press on a cold device came back empty. Copying 1024 floats fifteen times a second is not
- *  a cost worth weighing against that. */
+/** ScriptProcessor's buffer, in frames — 64ms at 16kHz. The granularity of everything the
+ *  recorder can lose: up to one block at each end of a recording, and a press shorter than
+ *  one block records nothing (measured empty at 4096 frames on a cold device). */
 const BUFFER_FRAMES = 1024
 
-/** How long the device stays open after a command.
- *
- *  Opening it costs 225-400ms even with echo cancellation off, and that time comes out of the
- *  start of the recording — measured, a 2000ms press captured 1536ms of audio. Someone giving
- *  two commands in a row should not pay it twice, so the graph is left running for a while and
- *  the second command captures every syllable.
- *
- *  Twenty seconds, not indefinitely: Windows shows a microphone indicator for as long as the
- *  device is open, and it should go out shortly after Ezzy stops using it. A press that turns
- *  out to be a tap closes it immediately rather than starting this timer at all. */
+/** How long the device stays open after a command. Opening it costs 225-400ms even with
+ *  echo cancellation off (measured: a 2000ms press captured only 1536ms without this), so a
+ *  second command in a row should not pay it twice. 20s, not indefinitely, since Windows'
+ *  mic indicator should go out shortly after Ezzy stops using it. */
 const KEEP_WARM_MS = 20_000
 
-/** How much of the audio from *before* the key went down is kept.
- *
- *  Half a second. It exists because even a warm graph loses the start of an utterance: the
- *  press has to cross IPC and it lands somewhere inside a block that has already begun.
- *  Measured, a warm 2000ms press captured 1792ms of itself without this and 2560ms with it.
- *
- *  Only ever filled while the device is already open for a command that just ran, and thrown
- *  away with everything else when it closes — and emptied outright while Ezzy is speaking,
- *  since the half second before a press is exactly where its own confirmation would be. */
+/** How much audio from before the key went down is kept. 500ms, because even a warm graph
+ *  loses the start of an utterance to the press crossing IPC (measured: 1792ms captured of
+ *  a warm 2000ms press without this, 2560ms with it). Emptied while Ezzy is speaking, since
+ *  that half second is exactly where its own confirmation would be. */
 const PREROLL_MS = 500
 const PREROLL_BLOCKS = Math.ceil((PREROLL_MS / 1000) * (SAMPLE_RATE / BUFFER_FRAMES))
 
-/** Hands-free capture, for the mic button. Voice was given a key to hold; a click has
- *  no equivalent. The recorder decides when the sentence ended, from the signal it is already
- *  copying block by block — no analyser node, no library, no model.
- *
- *  The threshold is measured rather than assumed, because "loud" depends on the room, the
- *  microphone and Chromium's own gain control. The first few blocks are taken as the noise
- *  floor and speech has to clear a multiple of it — a fixed number would either miss a quiet
- *  voice on a laptop mic or hear a fan as talking. */
+/** Hands-free end-of-utterance detection for the mic button, from the signal already being
+ *  copied block by block — no analyser node, no model. The threshold is measured per session
+ *  rather than fixed, since "loud" depends on the room and the mic: the first few blocks are
+ *  taken as the noise floor and speech has to clear a multiple of it. */
 const FLOOR_BLOCKS = 5
 const FLOOR_MULTIPLE = 3.5
-/** Below this, nothing counts as speech however quiet the room is. A near-silent buffer scaled
- *  up is exactly what whisper invents sentences out of — see `SILENCE` in `gainFor`. */
+/** Below this, nothing counts as speech however quiet the room is — see SILENCE in gainFor. */
 const MIN_SPEECH_RMS = 0.012
 
-/** The quietest a block can be and still be somebody talking.
- *
- *  Lower than MIN_SPEECH_RMS on purpose, and the two are not in disagreement — they answer
- *  different questions. That one decides when to STOP recording and can afford to be
- *  conservative, because being wrong costs a moment of extra microphone. This one decides
- *  whether the user is answered at all, and being wrong costs them a command they gave.
- *
- *  Set from measurement, twice. At 0.005 a real "open Skool" — quietly spoken, two words —
- *  cleared it in 3 blocks of 44 and was refused for want of a fourth. This machine's room sits
- *  at 0.0008, so the relative test is doing the work either way and this only has to sit above
- *  a room and below a murmur.
- *
- *  It errs low deliberately. A wrong yes costs one transcription that the silence-artefact
- *  list then refuses; a wrong no costs the user a command they actually gave, and tells them
- *  they said nothing when they did. Those are not the same price. */
+/** The quietest a block can be and still be somebody talking, for the SEPARATE question of
+ *  whether the recording should be answered at all (MIN_SPEECH_RMS decides when to stop
+ *  recording). Set below it deliberately: a wrong yes costs one wasted transcription, a
+ *  wrong no costs the user a command they actually gave. Measured twice — at 0.005 a real
+ *  quiet "open Skool" cleared it in only 3 of 4 required blocks and was refused; this
+ *  machine's room sits at 0.0008, so the relative test does the real work either way. */
 const AUDIBLE_RMS = 0.003
 
-/** How far above the room a block has to be to be a voice rather than the room getting on
- *  with itself. The same multiple the hands-free floor uses, for the same reason: "loud"
- *  depends on the room, the microphone and Chromium's gain control, and a fixed number either
- *  misses a quiet voice or hears a fan as talking. */
+/** How far above the room a block must be to be a voice. Same multiple as the hands-free
+ *  floor, for the same reason. */
 const SPEECH_OVER_ROOM = 3.5
 
-/** Which slice of a recording is taken to be the room.
- *
- *  The quiet fifth, not the average. A push-to-talk hold can be mostly speech — the user
- *  presses, talks, releases — and an average would then BE the speaker's voice, which nothing
- *  can rise 3.5x above, so every command would come back as silence. A low percentile is the
- *  room whether or not anyone was talking over it. */
+/** Which slice of a recording is taken to be the room: the quiet fifth, not the average — a
+ *  hold can be mostly speech, so the average would be the speaker's own voice and nothing
+ *  could clear 3.5x above it. */
 const ROOM_PERCENTILE = 0.2
 
-/** How many blocks have to clear the threshold before a recording counts as somebody
- *  talking. Four of them is ~256ms of sound — longer than a click, a chair or a door, shorter
- *  than any word anyone says.
- *
- *  They do not have to be consecutive, deliberately: a command is louder in some places than
- *  others, and the question being asked is "was there a voice in here at all", not "was there
- *  a continuous one". Erring towards yes is right — the cost of a wrong yes is one wasted
- *  transcription, and the cost of a wrong no is a command that was given and ignored. */
+/** Blocks that must clear the threshold before a recording counts as speech — four is
+ *  ~256ms, longer than a click or a door, shorter than any spoken word. Not required to be
+ *  consecutive: the question is "was there a voice at all", and erring toward yes costs one
+ *  wasted transcription against a command given and ignored. */
 const SPEECH_BLOCKS = 4
 
-/** How much quiet ends a sentence. Long enough to survive the pause between words and before
- *  a name — "switch to … Antigravity" — and short enough that the command does not sit there
- *  after the user has plainly finished. */
+/** How much quiet ends a sentence — long enough to survive the pause before a name
+ *  ("switch to … Antigravity"), short enough not to linger after the user has finished. */
 const TRAILING_SILENCE_MS = 900
 
-/** If nothing that sounds like speech ever arrives, give up rather than hold the microphone.
- *  The main process reports the empty recording as "I didn't catch that". */
+/** If nothing that sounds like speech ever arrives, give up rather than hold the mic. */
 const NO_SPEECH_MS = 4_000
 
-/** Nobody dictates a launcher command for this long, and a recording that never ends is a
- *  microphone that never closes. */
+/** Nobody dictates a launcher command for this long. */
 const MAX_UTTERANCE_MS = 15_000
 
 const BLOCK_MS = (BUFFER_FRAMES / SAMPLE_RATE) * 1000
@@ -131,26 +81,25 @@ let source: MediaStreamAudioSourceNode | null = null
 let processor: ScriptProcessorNode | null = null
 let stream: MediaStream | null = null
 let chunks: Float32Array[] = []
-/** The last few blocks to come through a warm-but-idle graph. See PREROLL_BLOCKS. */
+/** The last few blocks through a warm-but-idle graph. See PREROLL_BLOCKS. */
 let preroll: Float32Array[] = []
 let idleTimer: ReturnType<typeof setTimeout> | null = null
-/** Whether the key is still held. Distinct from whether the graph is running: the release can
- *  land while `getUserMedia` is still being granted, and then nothing should start at all. */
+/** Whether the key is still held. Distinct from the graph running: a release can land while
+ *  `getUserMedia` is still being granted, and then nothing should start at all. */
 let wanted = false
-/** Set when the session was started by the mic button, which has no release: the recorder ends
- *  it itself. Null for a held hotkey, which ends when the key comes up. */
+/** Set when the session was started by the mic button (no release, so the recorder ends it
+ *  itself); null for a held hotkey, which ends when the key comes up. */
 let autoStop: AutoStop | null = null
-/** Whether this session has already told the main process that audio is arriving. One message
- *  per session, on the first block that is genuinely captured — see `announce`. */
+/** One "mic live" message per session, on the first block genuinely captured. */
 let announced = false
 
 interface AutoStop {
   startedAt: number
-  /** RMS of the first FLOOR_BLOCKS blocks, averaged — the room with nobody talking. */
+  /** RMS of the first FLOOR_BLOCKS blocks — the room with nobody talking. */
   floor: number[]
-  /** What a block has to beat to count as speech. Fixed once the floor is known. */
+  /** What a block has to beat to count as speech, fixed once the floor is known. */
   threshold: number
-  /** Whether anything has yet cleared it. Until it has, silence means "has not started". */
+  /** Whether anything has cleared it yet. Until it has, silence means "not started". */
   heard: boolean
   /** Consecutive quiet blocks since the last loud one. */
   quiet: number
@@ -175,15 +124,11 @@ async function start(handsFree = false): Promise<void> {
   if (idleTimer) clearTimeout(idleTimer)
   idleTimer = null
 
-  // Still warm from the last command: the graph never stopped, it was only ignoring what came
-  // through it. This is the path that costs nothing — and the half second it has been holding
-  // in the pre-roll covers the moment between the key going down and this running.
+  // Still warm from the last command — the graph never stopped, it was only being ignored.
+  // The pre-roll it has been holding covers the moment between key-down and this running.
   if (context && processor && stream?.active) {
     chunks = preroll
     preroll = []
-    // Nothing to wait for: the graph never stopped, and the next block is at most 64ms away.
-    // Saying so now rather than on that block is what keeps a warm press from flashing
-    // "Getting ready..." for a frame before it says "Listening".
     announce()
     return
   }
@@ -194,25 +139,12 @@ async function start(handsFree = false): Promise<void> {
     stream = await navigator.mediaDevices.getUserMedia({
       audio: {
         channelCount: 1,
-        // Echo cancellation is off, and it stays off for two measured reasons rather than one.
-        //
-        // The first is latency: with AEC on, opening the device took 720-870ms against
-        // 225-400ms without, and every millisecond of that is a millisecond of the user's
-        // first word on the floor.
-        //
-        // The second is that it does not do the job people expect of it. Re-measured with
-        // music playing from Spotify and nobody speaking: with AEC ON the microphone still
-        // captured the music — 19 of 37 blocks over the speech threshold — and whisper
-        // transcribed it as "Family Foundation of China". With it OFF, 20 of 43 and "Copilot,
-        // the mic is...". No improvement, and 577ms to open against 350ms.
-        //
-        // That is structural, not a tuning problem. Chromium cancels against the audio IT
-        // renders, and Spotify is a different process, so there is no reference signal to
-        // subtract. Music is handled by pausing it while listening instead — see
-        // `duckForListening` in commands/playback.ts.
-        //
-        // Noise suppression and gain control cost nothing measurable and both help in the
-        // rooms this is actually used in, so they stay.
+        // Echo cancellation stays off. Measured: it costs 720-870ms to open a device against
+        // 225-400ms without, and it does not do its job anyway — with music playing and
+        // nobody speaking, AEC-on still let 19/37 blocks read as speech ("Family Foundation
+        // of China"), AEC-off let through 20/43 ("Copilot, the mic is..."). Structural:
+        // Chromium cancels against audio IT renders, and Spotify is a different process.
+        // Music is handled by pausing it instead — see duckForListening in playback.ts.
         echoCancellation: false,
         noiseSuppression: true,
         autoGainControl: true
@@ -231,38 +163,30 @@ async function start(handsFree = false): Promise<void> {
   }
 
   context = new AudioContext({ sampleRate: SAMPLE_RATE })
-  // Chromium starts an AudioContext suspended unless the page has been interacted with, and
-  // none of Ezzy's windows ever are — the dot is click-through and this one is never clicked.
-  // A suspended context runs no graph at all: measured, the first recording came back as zero
-  // samples with no error anywhere, which looks exactly like a microphone that is not there.
+  // Chromium starts an AudioContext suspended until the page is interacted with, and none
+  // of Ezzy's windows ever are — a suspended context runs no graph at all (measured: the
+  // first recording came back as zero samples with no error).
   if (context.state === 'suspended') await context.resume()
   source = context.createMediaStreamSource(stream)
-  // Deprecated in favour of AudioWorklet, and still the right tool here: a worklet needs its
-  // own module loaded from a URL, which under this window's `default-src 'self'` CSP means an
-  // extra build entry for twenty lines of copying floats.
+  // AudioWorklet needs its own module loaded from a URL, which under this window's CSP
+  // means an extra build entry for twenty lines of copying floats.
   processor = context.createScriptProcessor(BUFFER_FRAMES, 1, 1)
   processor.onaudioprocess = (event) => {
-    // Copied, not referenced: the event's buffer is reused for the next block.
+    // Copied, not referenced — the event's buffer is reused for the next block.
     const block = new Float32Array(event.inputBuffer.getChannelData(0))
-    // Ezzy is talking, so this block is Ezzy. Dropped rather than recorded: with echo
-    // cancellation off the confirmation comes back in through the microphone, and a recording
-    // that opens with the tail of "Switching to Chrome" is transcribed as exactly that and
-    // then matched against the commands as one sentence with whatever the user said next.
-    //
-    // A dropped block is safe for everything downstream. A gap in the audio is a gap, and the
-    // hands-free timers below are driven by the clock rather than by the block count.
     if (wanted) {
-      // No tail here: the press has already cut the confirmation off, and waiting out a tail
-      // that has nothing left to play would spend the user's first word on it.
+      // Ezzy talking is dropped rather than recorded — with AEC off it re-enters through
+      // the mic, and a recording opening with its own confirmation's tail gets transcribed
+      // as part of the next sentence. No tail here: the press already cut it off.
       if (isSpeaking()) return
       announce()
       chunks.push(block)
       if (autoStop && endOfUtterance(block, autoStop)) void stop(true)
       return
     }
-    // Between commands, while the device is still open. Kept only long enough to cover the
-    // start of the next one — and only when the room is the user's. Everything held here was
-    // recorded before anything was pressed, so there is no cost to being strict about it.
+    // Between commands, kept only to cover the start of the next one, and only when the
+    // room is the user's — everything held here predates any press, so being strict costs
+    // nothing.
     if (isSpeaking(true)) {
       preroll = []
       return
@@ -271,17 +195,13 @@ async function start(handsFree = false): Promise<void> {
     if (preroll.length > PREROLL_BLOCKS) preroll.shift()
   }
 
-  // A ScriptProcessorNode only runs while it is connected to the destination, so the graph has
-  // to reach the speakers — through a silent gain, or the microphone would be played back into
-  // the room as it is recorded.
+  // A ScriptProcessorNode only runs while connected to the destination, so the graph must
+  // reach the speakers through a silent gain rather than play the mic back into the room.
   const silence = context.createGain()
   silence.gain.value = 0
   source.connect(processor)
   processor.connect(silence)
   silence.connect(context.destination)
-  // Every stage is measured. Opening the device is the one part of the voice
-  // path that happens while the user is still talking, so its cost is the cost of a clipped
-  // first word. Forwarded to the main process's --verbose log by windows.ts.
   console.log(`microphone open in ${(performance.now() - startedAt).toFixed(0)}ms`)
 }
 
@@ -291,54 +211,41 @@ async function stop(send: boolean): Promise<void> {
   autoStop = null
   const recorded = chunks
   chunks = []
-  // A tap. Nothing recorded during it is looked at, encoded, or sent, and the device goes
-  // straight back — nobody who was not asking for voice should be left with an indicator on.
+  // A tap — nothing recorded during it is looked at, encoded, or sent.
   if (!send) {
     release()
     return
   }
 
-  // A graph that delivered nothing at all. Seen once in testing, on a cold device while
-  // another process was taking the speakers — a ScriptProcessorNode is pulled by the audio
-  // *output*, so an output device that stalls stops the input arriving with it.
-  //
-  // The important part is not to keep it: a graph in this state would stay warm for the next
-  // twenty seconds and swallow every command given in them. Tear it down, say so, and let the
-  // next press build a new one. The main process reports the empty recording to the user.
+  // A graph that delivered nothing at all — seen once, on a cold device while another
+  // process held the speakers (a ScriptProcessorNode is pulled by the output). Torn down
+  // rather than kept warm, or it would swallow every command for the next 20s.
   if (recorded.length === 0) {
     console.error(`[ezzy] the audio graph delivered nothing (context ${context?.state})`)
     release()
   } else {
     keepWarm()
   }
-  // Whether anybody was talking is decided HERE, and it has to be: this is the last place the
-  // real levels exist. `encodeWav` scales a quiet recording up to fill the range, so by the
-  // time the main process has the bytes, a silent room and a spoken sentence are the same
-  // height — and whisper will write a confident sentence over either of them.
+  // Decided here, on the real levels — encodeWav scales a quiet recording up to fill the
+  // range, after which a silent room and a spoken sentence are the same height.
   const spoke = hasSpeech(recorded)
 
-  // Sent even when it is a fraction of a second long, and sent even when nothing was said:
-  // the main process is waiting for exactly one answer per hold, and it is the one that turns
-  // any of this into something the user is told.
   const wav = encodeWav(recorded, spoke)
   const ms = (((wav.byteLength - 44) / 2 / SAMPLE_RATE) * 1000).toFixed(0)
   console.log(`recorded ${ms}ms${spoke ? '' : ' (no speech in it)'}`)
   window.ezzy.sendVoiceAudio(wav, spoke)
 }
 
-/** Tell the main process the microphone is live, once per session.
- *
- *  Sent on a captured block rather than when `getUserMedia` resolves, because the promise is
- *  only half of it: the AudioContext still has to be built, resumed and pulled, and a graph
- *  that is not running looks exactly like a microphone that is not there. A block in hand is
- *  the first moment "listening" is a true word. */
+/** Tells main the mic is live, once per session, on a captured block rather than when
+ *  `getUserMedia` resolves — the promise is only half of it; a block in hand is the first
+ *  moment "listening" is a true word. */
 function announce(): void {
   if (announced) return
   announced = true
   window.ezzy.reportMicLive()
 }
 
-/** Leave the device open for a moment in case another command follows. */
+/** Leaves the device open for a moment in case another command follows. */
 function keepWarm(): void {
   if (idleTimer) clearTimeout(idleTimer)
   idleTimer = setTimeout(() => {
@@ -347,7 +254,7 @@ function keepWarm(): void {
   }, KEEP_WARM_MS)
 }
 
-/** Tear the graph down and let go of the device. */
+/** Tears the graph down and lets go of the device. */
 function release(): void {
   if (idleTimer) clearTimeout(idleTimer)
   idleTimer = null
@@ -365,11 +272,9 @@ function release(): void {
   stream = null
 }
 
-/** Has the speaker finished? Called for every 64ms block of a hands-free recording.
- *
- *  Three ways to be done, and the order matters: a sentence that ended, a sentence that never
- *  started, and one that will not stop. Only the first is the good case; the other two exist
- *  so the microphone always closes on its own. */
+/** Has the speaker finished? Called per 64ms block of a hands-free recording. Three ways to
+ *  be done — a sentence that ended, one that never started, one that will not stop — so the
+ *  microphone always closes on its own. */
 function endOfUtterance(block: Float32Array, session: AutoStop): boolean {
   const elapsed = performance.now() - session.startedAt
   if (elapsed > MAX_UTTERANCE_MS) {
@@ -379,8 +284,8 @@ function endOfUtterance(block: Float32Array, session: AutoStop): boolean {
 
   const level = rms(block)
 
-  // The room, before anyone speaks. Taken from the first blocks of THIS recording rather than
-  // remembered, because the noise floor of a room changes and a stale one is worse than none.
+  // The room, taken from this recording's own first blocks rather than remembered — a
+  // stale noise floor is worse than none.
   if (session.floor.length < FLOOR_BLOCKS) {
     session.floor.push(level)
     if (session.floor.length === FLOOR_BLOCKS) {
@@ -402,8 +307,8 @@ function endOfUtterance(block: Float32Array, session: AutoStop): boolean {
   session.quiet++
   const quietMs = session.quiet * BLOCK_MS
   if (!session.heard) {
-    // Nothing has been said at all yet. This is a different clock from the one below: waiting
-    // for someone to start is not the same as deciding they have stopped.
+    // A different clock from the one below — waiting for someone to start is not the same
+    // as deciding they have stopped.
     if (elapsed < NO_SPEECH_MS) return false
     console.log('hands-free: nothing was said, giving the microphone back')
     return true
@@ -413,17 +318,10 @@ function endOfUtterance(block: Float32Array, session: AutoStop): boolean {
   return true
 }
 
-/** Was anybody talking during this recording?
- *
- *  Measured before `encodeWav`'s gain, while the levels are still the ones the room actually
- *  produced. Relative to that room rather than against a fixed number, because a fixed number
- *  is a rule about how loudly the user is required to speak — and the whole complaint this
- *  answers was having to raise your voice to be heard. A quiet voice in a quiet room clears
- *  3.5x its room easily; the absolute floor underneath is only there so that a silent room
- *  cannot clear a multiple of its own silence.
- *
- *  Logged in full, because the next time a real command is called silence this line is the
- *  only thing that can say which half of the test refused it. */
+/** Was anybody talking? Measured before encodeWav's gain, relative to the room rather than
+ *  a fixed number — a fixed number is a rule about how loudly the user must speak, which is
+ *  the exact complaint this exists to fix. Logged in full: the spread across blocks is what
+ *  distinguishes a room from a murmur, not any single number. */
 function hasSpeech(blocks: Float32Array[]): boolean {
   if (blocks.length === 0) return false
   const levels = blocks.map(rms)
@@ -432,9 +330,6 @@ function hasSpeech(blocks: Float32Array[]): boolean {
   const threshold = Math.max(room * SPEECH_OVER_ROOM, AUDIBLE_RMS)
   let loud = 0
   for (const level of levels) if (level >= threshold) loud++
-  // The spread, not just the verdict. Tuning this from one number per recording is what made
-  // it take two passes; a room and a murmur differ in how MANY blocks are loud, and that is
-  // only visible as a distribution. Anyone changing the constants above should read these.
   const over = (at: number): number => levels.filter((level) => level >= at).length
   console.log(
     `speech test: room ${room.toFixed(4)}, loudest ${sorted[sorted.length - 1].toFixed(4)}, ` +
@@ -450,20 +345,12 @@ function rms(block: Float32Array): number {
   return Math.sqrt(sum / block.length)
 }
 
-/** Quiet recordings transcribe badly, and a laptop's built-in microphone two feet from the
- *  speaker's mouth is quiet. Chromium's gain control helps but is conservative.
- *
- *  This matters more than it looks, because the WAV is 16-bit. A voice peaking at 0.015 uses
- *  about 490 of the 32,767 values available to it — nine bits of the sixteen — and the rest is
- *  thrown away at encode time. Scaling it up first is not cosmetic; it is the difference
- *  between handing whisper the recording and handing it a coarse copy of the recording. It
- *  does not improve the signal-to-noise ratio, which is why it is not a substitute for
- *  speaking up, but it stops the encoder making things worse.
- *
- *  The SILENCE floor exists because scaling a near-empty buffer up is exactly what whisper
- *  invents sentences out of — but it only applies when nothing was said. A recording the
- *  speech test has already vouched for is amplified however quiet it is, and that is the whole
- *  point: a quiet voice used to be left at nine bits precisely because it was quiet. */
+/** Scales a quiet recording up before it is written to 16-bit PCM — a voice peaking at
+ *  0.015 only uses ~9 of the 16 available bits, and the rest is thrown away at encode time.
+ *  Does not improve signal-to-noise (not a substitute for speaking up), but stops the
+ *  encoder making things worse. SILENCE guards against amplifying a near-empty buffer into
+ *  exactly what whisper invents sentences out of — it only applies when nothing was said; a
+ *  recording the speech test has vouched for is amplified however quiet it is. */
 const HEADROOM = 0.9
 const SILENCE = 0.02
 const MAX_GAIN = 20
@@ -510,8 +397,8 @@ function encodeWav(blocks: Float32Array[], spoke: boolean): ArrayBuffer {
   let offset = 44
   for (const block of blocks) {
     for (const sample of block) {
-      // Clamped after the gain and before scaling: the web audio range is nominally -1..1 but
-      // a loud room does overshoot it, and wrapping a sample round is an audible click.
+      // Clamped after the gain, before scaling: web audio's range is nominally -1..1 but a
+      // loud room can overshoot it, and wrapping a sample round is an audible click.
       const clamped = Math.max(-1, Math.min(1, sample * gain))
       view.setInt16(offset, clamped < 0 ? clamped * 0x8000 : clamped * 0x7fff, true)
       offset += 2
@@ -523,8 +410,7 @@ function encodeWav(blocks: Float32Array[], spoke: boolean): ArrayBuffer {
 /** The DOMException never crosses the bridge — only which of the three failures it was. */
 function classify(error: unknown): 'denied' | 'no-device' | 'failed' {
   const name = error instanceof DOMException ? error.name : ''
-  // Windows Settings > Privacy > Microphone blocks this silently, and Chromium reports the
-  // block as an ordinary permission denial.
+  // A mic blocked in Windows Settings reports as an ordinary permission denial.
   if (name === 'NotAllowedError' || name === 'SecurityError') return 'denied'
   if (name === 'NotFoundError' || name === 'OverconstrainedError') return 'no-device'
   console.error('[ezzy] could not open the microphone:', error)

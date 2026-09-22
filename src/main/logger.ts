@@ -1,17 +1,10 @@
-/** The log file users attach to issues.
+/** The log file users attach to issues. Ezzy runs without a console — a tray app,
+ *  usually started by Windows at login — so `console` is teed to a file rather than
+ *  replaced: everything the app already logs lands there for free, and stdout still
+ *  works when a terminal is attached.
  *
- *  Ezzy runs without a console: it is a tray app, it is usually started by Windows at login,
- *  and by the time anyone notices a bug the interesting output is long gone. Expect three
- *  embarrassing bugs in the first 48 hours, and the only way to act on those reports is if the
- *  reporter can attach something.
- *
- *  So `console` is teed to a file rather than replaced: everything the app already logs —
- *  including `verbose.ts` under `--verbose` — lands there for free, and stdout still works when
- *  there is a terminal attached. Nothing new has to remember to call this.
- *
- *  Written synchronously and deliberately. A crash is exactly when the last line matters most,
- *  and an async write is the line that never gets flushed; at a few hundred lines a session the
- *  cost does not show up anywhere. */
+ *  Written synchronously and deliberately — a crash is exactly when the last line
+ *  matters most, and an async write is the one that never gets flushed. */
 
 import { app, shell } from 'electron'
 import { appendFileSync, mkdirSync, renameSync, statSync, unlinkSync } from 'fs'
@@ -28,11 +21,10 @@ let bytes = 0
 let writing = false
 
 export function logFilePath(): string {
-  // userData resolves to.../Ezzy — the project rules is explicit that it is not overridden.
   return path ?? join(app.getPath('userData'), 'logs', 'ezzy.log')
 }
 
-/** Call before anything else in `whenReady`: what happens during startup is what tends to be
+/** Call before anything else in `whenReady` — what happens during startup tends to be
  *  worth reading afterwards. */
 export function startLogging(): void {
   if (path) return
@@ -50,9 +42,8 @@ export function startLogging(): void {
   write('info', [`--- Ezzy ${app.getVersion()} started ${new Date().toISOString()} ---`])
 }
 
-/** An uncaught error does not take the process down on its own in Electron, and Ezzy should
- *  not take itself down over one either — a tray app that vanishes is a worse bug than
- *  whatever threw. It is written down instead, which is the whole point of the file. */
+/** Ezzy should not take itself down over an uncaught error — a tray app that vanishes
+ *  is a worse bug than whatever threw. Written down instead. */
 function watchForCrashes(): void {
   process.on('uncaughtException', (err) => {
     console.error('[ezzy] uncaught exception:', err.stack ?? err.message)

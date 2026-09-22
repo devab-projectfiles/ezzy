@@ -1,10 +1,6 @@
-/** Starting things.
- *
- *  Three ways in, in the order the plan gives for resolving `open X`: an indexed app, a file path,
- *  a URL. Focusing a live window is the fourth and it is the one thing not here — that is
- *  `focus.ts`, because it is a different problem with a different failure mode.
- *
- *  All three go through Explorer, and that is the whole design of this file. See `handOff`. */
+/** Starting things. Three ways in: an indexed app, a file path, a URL. Focusing a live
+ *  window is a fourth and lives in focus.ts instead — a different problem, a different
+ *  failure mode. All three here go through Explorer; see `handOff`. */
 
 import { execFile } from 'child_process'
 import { existsSync, statSync } from 'fs'
@@ -17,36 +13,26 @@ import { findApp } from './app-index'
 import { log } from './verbose'
 
 /** Hand one thing to the Windows shell to open: a shortcut, a folder, a file, an
- *  `https://` URL, or a `shell:AppsFolder\<AppID>` for a Store app.
+ *  `https://` URL, or `shell:AppsFolder\<AppID>` for a Store app.
  *
- *  **Why Explorer and not `shell.openPath` / `shell.openExternal`.** Both of those call
- *  ShellExecute inside our own process, and ShellExecute passes the *caller's* environment
- *  block to the child. Ezzy's environment is not a neutral one: in dev, electron-vite sets
- *  `NODE_ENV=development` and `ELECTRON_RENDERER_URL=http://localhost:5173` in the main
- *  process, and those get inherited by everything Ezzy starts. Roughly half of this
- *  machine's Start Menu is Electron apps, and an Electron app that branches on `NODE_ENV`
- *  then tries to load a dev server that is not there.
+ *  Not `shell.openPath` / `shell.openExternal` — both call ShellExecute in our own
+ *  process, which passes OUR environment to the child. Ezzy's is not neutral: dev sets
+ *  `NODE_ENV` and `ELECTRON_RENDERER_URL`, and about half this machine's Start Menu is
+ *  Electron apps that branch on those. Measured on Cluely: launched via `shell.openPath`
+ *  it came up as a blank window with no overlay at all; launched through Explorer (from a
+ *  shell with those variables deliberately set) it came up correctly.
  *
- *  Measured on Cluely, 2026-08-24: launched by `shell.openPath` it came up as a blank white
- *  1199x786 window and never created its overlay at all; launched through Explorer — from a
- *  shell where `NODE_ENV` and `ELECTRON_RENDERER_URL` were deliberately set — it came up
- *  correctly, overlay and all. It looked for a while like Ezzy was suppressing another app's
- *  overlay by z-order or by its window hooks. It was not. It was this.
+ *  `explorer.exe` is already running, so a second one forwards the request to the
+ *  existing shell process and exits — the app is started by Explorer and inherits its
+ *  clean environment, the same as launching from Windows search does.
  *
- *  `explorer.exe` is already running, so a second one forwards the request to the existing
- *  shell process and exits; the app is started by Explorer and inherits Explorer's clean
- *  user environment. This is what the Start Menu itself does, which is why launching from
- *  Windows search always worked.
+ *  Passed as an argv element, never a command line, so nothing here is parsed by a shell —
+ *  callers must have validated it first (`findApp` resolves against the index,
+ *  `resolveDirect` only ever produces an `http(s)` URL or an existing path).
  *
- *  The argument is passed as an argv element rather than a command line, so nothing here is
- *  ever parsed by a shell. Callers must have validated it first — `findApp` resolves ids
- *  against the index and `resolveDirect` only ever produces an `http(s)` URL or a path that
- *  exists.
- *
- *  The cost: Explorer detaches immediately and its exit code says nothing about whether the
- *  app started, so a clean spawn is as much confirmation as there is to have. That is worse
- *  than `openPath`, which returns an error string — but a launcher that silently breaks the
- *  apps it launches is worse still. */
+ *  The cost: Explorer detaches immediately, so a clean spawn is the only confirmation
+ *  there is — worse than `openPath`'s error string, but better than a launcher that
+ *  silently breaks the apps it starts. */
 function handOff(what: string, label: string): Promise<boolean> {
   return new Promise((resolve) => {
     const child = execFile('explorer.exe', [what], { windowsHide: true })
@@ -61,60 +47,46 @@ function handOff(what: string, label: string): Promise<boolean> {
   })
 }
 
-/** Launch an indexed app by the id the renderer sent back. The id is resolved against the
- *  index rather than used as a path, so an id that did not come from us launches nothing. */
+/** Launch an indexed app by the id the renderer sent back — resolved against the index
+ *  rather than used as a path, so an id that did not come from us launches nothing. */
 export async function launchApp(id: string): Promise<boolean> {
   const entry = findApp(id)
   if (!entry) {
     console.error(`[ezzy] refused to launch an unknown app: ${id}`)
     return false
   }
-  // A Store app has no file to open: it lives in a shell namespace, and `shell:AppsFolder\`
-  // is the documented way in. Explorer is what resolves that namespace, which is the other
-  // reason everything goes through it here.
+  // A Store app has no file to open — `shell:AppsFolder\` is the documented way in, and
+  // Explorer is what resolves that namespace.
   const what =
     entry.launch.kind === 'shortcut' ? entry.launch.path : `shell:AppsFolder\\${entry.launch.appId}`
   return handOff(what, entry.name)
 }
 
-/** Windows' microphone privacy page. Through Explorer like everything else here — a
- *  `ms-settings:` URI is a shell namespace target, which is exactly what Explorer resolves,
- *  and it keeps the Settings app off our environment block. */
+/** Windows' microphone privacy page, through Explorer like everything else here. */
 export async function openMicrophoneSettings(): Promise<boolean> {
   return handOff('ms-settings:privacy-microphone', 'microphone settings')
 }
 
-/** Open a shell target the main process built itself — an `ms-settings:` page, the
- *  `ms-availablenetworks:` flyout (FEATURE-system-commands.md).
+/** A shell target built in this codebase — an `ms-settings:` page, a flyout URI — through
+ *  Explorer for the same reason as above.
  *
- *  Through Explorer, like `openMicrophoneSettings` above and for the same reason: these are
- *  shell namespace targets, which is precisely what Explorer resolves, and it keeps the
- *  Settings app off our environment block.
- *
- *  **Not for search URLs.** Explorer silently drops any URI carrying a query string — see
- *  `openProtocolUri`, which exists for those. Everything passed here is a fixed URI from a
- *  table in this codebase, with nothing of the user's in it. */
+ *  Not for search URLs: Explorer silently drops any URI carrying a query string (see
+ *  `openProtocolUri`). Everything passed here is a fixed URI with nothing of the user's in it. */
 export async function openShellTarget(uri: string, label: string): Promise<boolean> {
   return handOff(uri, label)
 }
 
 /** Open a URL inside an installed browser app window rather than as a tab.
-
  *
- *  Windows has no idea these exist: a Chrome or Edge "app" is a shortcut in the Start Menu
- *  that launches the browser with `--app-id=…`, so the browser owns the decision about where
- *  a link opens. It is supposed to make that decision itself — an installed app with "open
- *  supported links in this app" enabled captures its own URLs — and on this machine it does
- *  not, with the setting on. Chrome never recorded the app under `web_apps.web_app_ids`, which
- *  is where that preference lives, so there is nothing for it to act on.
+ *  A Chrome/Edge "app" is a Start Menu shortcut launching the browser with `--app-id=…`,
+ *  so the browser decides where a link opens — and on this machine, with "open supported
+ *  links in this app" enabled, it does not act on it, since Chrome never recorded the app
+ *  under `web_apps.web_app_ids`.
  *
- *  So Ezzy asks for the app window directly. `--app=<url>` opens one frameless window on
- *  exactly that URL, in the profile the shortcut names, which is the same profile the user is
- *  signed into.
- *
- *  Returns false when no such app is installed, which is the signal to open a tab as before.
- *  Chrome-family only — `--app=` is a Chromium flag, and a Firefox default browser simply has
- *  no app windows to open. */
+ *  So this asks for the app window directly: `--app=<url>` opens one frameless window on
+ *  exactly that URL, in the profile the shortcut names. Returns false when no such app is
+ *  installed (the signal to open a tab instead). Chrome-family only — `--app=` is a
+ *  Chromium flag. */
 export async function openUrlInWebApp(
   appName: string,
   url: string,
@@ -142,30 +114,22 @@ interface WebApp {
   exe: string
   /** The browser profile the app was installed under, or null when it did not say. */
   profile: string | null
-  /** The shortcut this came from. Kept so the answer can be re-checked rather than trusted. */
+  /** The shortcut this came from — kept so the answer can be re-checked, not trusted. */
   shortcut: string
 }
 
-/** Remembered between commands, but never trusted on its own.
- *
- *  The first version cached the lookup for the life of the process and that was wrong in a way
- *  a user found immediately: they uninstalled the app, asked for a search, and still got an app
- *  window. `--app=<url>` is not "launch the installed app" — it opens app mode for ANY url —
- *  so a stale entry does not fail, it silently keeps working for an app that is gone.
- *
- *  So the cache holds the shortcut it came from and that file is checked on every use. A miss
- *  is not cached at all: a scan is two directory reads, and caching "no app" would mean
- *  installing one had no effect until Ezzy restarted. */
+/** Remembered between commands but never trusted alone: `--app=<url>` is not "launch the
+ *  installed app", it opens app mode for ANY url, so a stale entry would not fail after an
+ *  uninstall — it would silently keep opening an app window for one that is gone. So the
+ *  shortcut file is checked on every use, and a miss is never cached (a scan is two
+ *  directory reads; caching "no app" would delay a fresh install until restart). */
 const webApps = new Map<string, WebApp>()
 
-/** The Start Menu shortcut a browser writes when a site is installed as an app.
- *
- *  Read with `shell.readShortcutLink` rather than by parsing the binary .lnk — Electron has
- *  it, it is Windows-only, and this whole file already is. */
+/** The Start Menu shortcut a browser writes when a site is installed as an app. Read with
+ *  `shell.readShortcutLink` rather than by parsing the .lnk binary — Electron already has
+ *  it, and this file is Windows-only besides. */
 async function findWebApp(appName: string): Promise<WebApp | null> {
   const cached = webApps.get(appName)
-  // One `stat` against the shortcut, which is what uninstalling removes. Microseconds, and it
-  // is the difference between "this app is installed" and "it was, once".
   if (cached && existsSync(cached.shortcut)) return cached
   if (cached) {
     log(`the ${appName} app is gone; its shortcut no longer exists`)
@@ -190,13 +154,12 @@ async function findWebApp(appName: string): Promise<WebApp | null> {
       if (!entry.slice(0, -4).toLowerCase().includes(appName.toLowerCase())) continue
       try {
         const link = shell.readShortcutLink(join(root, entry))
-        // `--app-id=` is what separates an installed web app from an ordinary browser
-        // shortcut. Without it this is just a link to the browser itself.
+        // Separates an installed web app from an ordinary browser shortcut.
         if (!link.args?.includes('--app-id=')) continue
         const profile = /--profile-directory="?([^"\s]+)"?/.exec(link.args ?? '')
         found = {
-          // The shortcut points at chrome_proxy.exe, which exists to give the app its own
-          // taskbar identity. The flags go to the browser beside it.
+          // The shortcut points at chrome_proxy.exe (for its own taskbar identity); the
+          // flags go to the browser beside it.
           exe: join(dirname(link.target), 'chrome.exe'),
           profile: profile ? profile[1] : null,
           shortcut: join(root, entry)
@@ -218,27 +181,19 @@ async function findWebApp(appName: string): Promise<WebApp | null> {
 }
 
 /** Open a URI through the handler its scheme is registered to — `spotify:search:…`, or a
- *  search URL that has to reach the default browser intact (FEATURE-media-search.md).
+ *  search URL that has to reach the default browser intact.
  *
- *  **Explorer cannot deliver either of those, and both were measured.**
+ *  Explorer cannot deliver either, both measured: a custom scheme like `spotify:` exits 1
+ *  with nothing happening, and a URL with a query string opens nothing at all (Explorer
+ *  takes its argument as a shell path, and `?` is not legal in one — `openDirect`'s URL
+ *  rung has the same limitation).
  *
- *  - A custom scheme: handed `spotify:search:…` Explorer exits 1 and nothing happens, checked
- *    against a running Spotify whose search never changed. `ms-settings:display` through the
- *    same call opens Settings, so this is the scheme, not the mechanism.
- *  - **A URL with a query string.** `https://example.com/` opens a tab;
- *    `https://example.com/?q=x` opens nothing at all. Explorer takes its argument as a shell
- *    path, and `?` is not legal in one. Every search URL in this app is a query string, so
- *    `handOff` is simply not available to them — note that `openDirect`'s URL rung has the
- *    same limitation, which is out of scope here but is not a difference in intent.
+ *  ShellExecute does deliver it, which is what `shell.openExternal` would use — and
+ *  handing the child our environment is the exact thing this file exists to avoid. So the
+ *  handler is read from the registry and run directly, with the dev variables stripped.
  *
- *  ShellExecute does deliver it, which is what `shell.openExternal` would use — and that is
- *  the one thing this file exists to avoid, because ShellExecute hands the child OUR
- *  environment. So we do what Windows would have done, ourselves: read the handler the scheme
- *  is registered to and run it, with the dev variables stripped out. Verified: Spotify
- *  navigated to a two-word search with its query intact.
- *
- *  Returns false when nothing is registered for the scheme, which is also the answer to "is
- *  that app installed" — the caller falls back to the web on the same signal. */
+ *  Returns false when nothing is registered, which doubles as "is that app installed" —
+ *  the caller falls back to the web on the same signal. */
 export async function openProtocolUri(
   scheme: string,
   uri: string,
@@ -254,9 +209,9 @@ export async function openProtocolUri(
   return new Promise((resolve) => {
     const child = execFile(
       exe,
-      // Every handler spells its argument differently — Spotify wants `--protocol-uri="%1"`,
-      // others just `"%1"`. Substituting into the registered template rather than hardcoding
-      // one app's flag is what keeps this working across an update that changes it.
+      // Every handler spells its argument differently (Spotify wants
+      // `--protocol-uri="%1"`, others just `"%1"`) — substituted into the registered
+      // template rather than hardcoded, so an update that changes it still works.
       args.map((arg) => arg.replace('%1', uri)),
       { windowsHide: true, env: shellEnvironment() }
     )
@@ -271,17 +226,12 @@ export async function openProtocolUri(
   })
 }
 
-/** The command line a scheme opens with, resolved the way Windows resolves it, or null if
- *  nothing is registered.
+/** The command line a scheme opens with, resolved the way Windows resolves it, or null.
  *
- *  **UserChoice first, and that is not a detail.** `HKCR\https` is the machine-wide fallback — on
- *  this machine it names Edge — while the browser the user actually picked lives in their own
- *  UserChoice key as a ProgId (`ChromeHTML`). Going straight to HKCR launched a browser the
- *  user does not use, which then opened no window at all. A launcher that ignores your default
- *  browser is worse than one that cannot open the link.
- *
- *  A custom scheme like `spotify:` normally has no UserChoice entry and falls through to the
- *  scheme's own key, which is where its installer put it. */
+ *  UserChoice first: `HKCR\https` is only the machine-wide fallback, while the browser the
+ *  user actually picked lives in their own UserChoice key as a ProgId — going straight to
+ *  HKCR launched a browser they do not use, which opened no window at all. A custom scheme
+ *  like `spotify:` normally has no UserChoice entry and falls through to its own key. */
 async function registeredHandler(scheme: string): Promise<string | null> {
   const progId = await registryValue(
     `HKCU\\Software\\Microsoft\\Windows\\Shell\\Associations\\UrlAssociations\\${scheme}\\UserChoice`,
@@ -298,7 +248,7 @@ function registryValue(key: string, name: string | null): Promise<string | null>
     execFile(
       'reg.exe',
       ['query', key, ...(name === null ? ['/ve'] : ['/v', name])],
-      // Bounded: a wedged `reg` must not hold a voice command open. The answer costs ~20ms.
+      // Bounded — a wedged `reg` must not hold a voice command open.
       { windowsHide: true, timeout: 2_000 },
       (error, stdout) => {
         if (error) {
@@ -313,11 +263,8 @@ function registryValue(key: string, name: string | null): Promise<string | null>
   })
 }
 
-/** Our environment with the variables electron-vite and Electron add to it removed.
- *
- *  This is the same bug the note on `handOff` is about, met from the other side: Explorer gets
- *  us a clean environment for free, and spawning a handler ourselves does not. `NODE_ENV` and
- *  `ELECTRON_RENDERER_URL` are what broke another Electron app when it inherited them, and
+/** Our environment with the variables electron-vite and Electron add to it removed —
+ *  Explorer gets us a clean one for free, spawning a handler ourselves does not.
  *  `ELECTRON_RUN_AS_NODE` makes an Electron child boot as bare Node with no window at all. */
 function shellEnvironment(): NodeJS.ProcessEnv {
   const env = { ...process.env }
@@ -327,9 +274,8 @@ function shellEnvironment(): NodeJS.ProcessEnv {
   return env
 }
 
-/** A registered command line split into argv, respecting double quotes. `"C:\u2026\Spotify.exe"
- *  --protocol-uri="%1"` becomes two elements, the second still carrying its `%1` — the quotes
- *  are the registry's own escaping and `execFile` does its own, so they come off here. */
+/** A registered command line split into argv, respecting double quotes — the registry's
+ *  own escaping, which `execFile` does not need since it does its own. */
 function tokenise(command: string): string[] {
   const tokens: string[] = []
   let current = ''
@@ -356,19 +302,17 @@ function tokenise(command: string): string[] {
 
 // ------------------------------------------------------------- paths and URLs
 
-/** What `resolveDirect` worked out, kept so the renderer can ask to open "the direct row"
+/** What `resolveDirect` worked out, so the renderer can ask to open "the direct row"
  *  without naming a target — nothing it sends can widen this into "open any path". */
 interface ResolvedDirect {
   target: DirectTarget
-  /** The absolute path or the fully-qualified URL actually handed to the shell. */
+  /** The absolute path or fully-qualified URL actually handed to the shell. */
   resolved: string
 }
 
 let current: ResolvedDirect | null = null
 
-/** Bare hostnames worth offering as a URL. Deliberately a shape test rather than a TLD list:
- *  a two-plus-letter last label with no spaces is what people type when they mean a website,
- *  and anything else falls through to being an ordinary search term. */
+/** Bare hostnames worth offering as a URL — a shape test, not a TLD list. */
 const BARE_HOST = /^[a-z0-9-]+(\.[a-z0-9-]+)+(:\d+)?([/?#].*)?$/i
 
 /** Windows path shapes: a drive letter, a UNC root, a `~` home reference, or `%VAR%`. */
@@ -377,11 +321,9 @@ const UNC_PATH = /^\\\\[^\\]/
 const HOME_PATH = /^~[\\/]/
 const ENV_PATH = /^%[^%]+%/
 
-/** Decide whether the query names something directly. Called on every keystroke, so the one
- *  filesystem call it can make is a single `stat` — well inside the 16ms budget.
- *
- *  Returns null far more often than not, and that is the point: this is a fallback for when
- *  the index has nothing, not a competitor to it. */
+/** Decide whether the query names something directly. Called on every keystroke, so the
+ *  one filesystem call it can make is a single `stat`, well inside the 16ms budget.
+ *  Returns null far more often than not — a fallback for when the index has nothing. */
 export function resolveDirect(query: string): DirectTarget | null {
   const text = query.trim()
   current = null
@@ -406,8 +348,8 @@ function asUrl(text: string): string | null {
   if (/\s/.test(text)) return null
   if (/^https?:\/\//i.test(text)) {
     try {
-      // A scheme alone is not a URL — "http://" on its own parses in some runtimes and
-      // opens a browser on nothing.
+      // A scheme alone is not a URL — "http://" parses in some runtimes and opens a
+      // browser on nothing.
       return new URL(text).hostname === '' ? null : text
     } catch {
       return null
@@ -432,8 +374,8 @@ function asExistingPath(text: string): string | null {
   const full = normalize(candidate)
   if (!isAbsolute(full)) return null
   try {
-    // Sync on purpose: one stat per keystroke is microseconds, and making it async would
-    // mean the row appearing a frame after the rest of the results.
+    // Sync on purpose — one stat per keystroke is microseconds, and async would mean the
+    // row appearing a frame after the rest of the results.
     statSync(full)
     return full
   } catch {
@@ -442,13 +384,10 @@ function asExistingPath(text: string): string | null {
   }
 }
 
-/** Open whatever `resolveDirect` last worked out.
- *
- *  A URL goes through Explorer too, for the same reason as an app: the default browser may
- *  not be running yet, and if it is an Electron one — this machine has Comet installed —
- *  then `shell.openExternal` would start it with Ezzy's environment and break it exactly the
- *  way it broke Cluely. `asUrl` only ever produces an `http(s)` URL, so nothing else can
- *  reach Explorer through here. */
+/** Open whatever `resolveDirect` last worked out. A URL goes through Explorer too, for
+ *  the same reason as an app — the default browser may not be running yet, and if it is
+ *  an Electron one, `shell.openExternal` would start it with Ezzy's environment. `asUrl`
+ *  only ever produces an `http(s)` URL, so nothing else can reach Explorer through here. */
 export async function openDirect(): Promise<boolean> {
   const direct = current
   if (!direct) return false

@@ -1,22 +1,13 @@
-/** Windows settings pages and saved WiFi networks (FEATURE-system-commands.md).
+/** Windows settings pages and saved WiFi networks. Two commands, registry data like
+ *  everything else — no new dependencies, no elevation, nothing here the user could not
+ *  do themselves in the Settings app.
  *
- *  Two commands, registry data like everything else. No new dependencies, no
- *  elevation, and nothing here that the user could not do themselves in the Settings app —
- *  which is the whole scope: Ezzy gets you to the page or joins a network Windows already
- *  knows. It never handles a password, adds a profile, or touches a radio.
- *
- *  **On not shadowing `open X`.** The feature note's worry is that a settings command sitting
- *  in front of the launcher eats "open chrome", and its answer is to register afterwards and
- *  fall through on a miss. The registry has no fall-through — the first pattern to match owns
- *  the utterance — so that answer is not available, and a settings command registered after
- *  `open` would simply never run.
- *
- *  The fix is to make shadowing impossible rather than recoverable: the pattern carries the
- *  page names inside it, so "open bluetooth" matches and "open chrome" is not even a candidate.
- *  A closed list of eleven pages does the job a fuzzy match was meant to do, without a
- *  threshold that could one day decide "Notion" is close enough to "networks". The cost is that
- *  a name outside the list is not recognised, which is why the list carries the ways people
- *  actually say these — including the two-word spellings whisper produces. */
+ *  On not shadowing `open X`: the registry has no fall-through, so a settings command
+ *  registered after `open` would simply never run. The fix is to make shadowing
+ *  impossible rather than recoverable — the pattern carries the page names inside it, so
+ *  "open bluetooth" matches and "open chrome" is not even a candidate. A closed list of
+ *  eleven pages does the job a fuzzy match was meant to do, without a threshold that
+ *  could one day decide "Notion" is close enough to "networks". */
 
 import { openShellTarget } from '../launcher'
 import { log } from '../verbose'
@@ -24,8 +15,8 @@ import { hidePanel } from '../windows'
 import { connectTo, currentNetwork, matchProfile, refreshProfiles, savedProfiles } from '../wifi'
 import { CommandContext, register } from './registry'
 
-/** Windows exposes a URI for every Settings page. One lookup table, and `ms-availablenetworks:`
- *  which is the WiFi flyout rather than a page. */
+/** Windows exposes a URI for every Settings page — one lookup table, plus
+ *  `ms-availablenetworks:`, the WiFi flyout rather than a page. */
 const SETTINGS_PAGES: Record<string, string> = {
   wifi: 'ms-settings:network-wifi',
   bluetooth: 'ms-settings:bluetooth',
@@ -40,9 +31,9 @@ const SETTINGS_PAGES: Record<string, string> = {
   networks: 'ms-availablenetworks:'
 }
 
-/** What people say, mapped to the page they mean. The spoken form is what matters here, not
- *  the name Microsoft gave the page: nobody asks for "batterysaver", and whisper writes
- *  "bluetooth" as two words often enough to be worth a line. */
+/** What people say, mapped to the page they mean — the spoken form, not the name
+ *  Microsoft gave it (nobody asks for "batterysaver"), including the two-word spellings
+ *  whisper writes for "bluetooth" often enough to be worth a line. */
 const ALIASES: Record<string, keyof typeof SETTINGS_PAGES> = {
   wifi: 'wifi',
   'wi fi': 'wifi',
@@ -80,9 +71,8 @@ const ALIASES: Record<string, keyof typeof SETTINGS_PAGES> = {
   'wifi list': 'networks'
 }
 
-/** Built from the alias table so the two cannot drift: a name that is not in there cannot
- *  match, and one that is cannot be missed. Longest first, so "windows update" wins over
- *  "update" rather than leaving " windows" stranded in front of it. */
+/** Built from the alias table so the two cannot drift. Longest first, so "windows
+ *  update" wins over "update" rather than leaving " windows" stranded in front of it. */
 const SETTINGS_NAMES = Object.keys(ALIASES)
   .sort((a, b) => b.length - a.length)
   .map((name) => name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
@@ -93,12 +83,10 @@ const OPEN_SETTINGS = new RegExp(
   `^(?:open|show|show me|go to|take me to|launch)\\s+(?:the\\s+)?(?:settings\\s+)?(${SETTINGS_NAMES})(?:\\s+(?:settings?|page|panel))?$`
 )
 
-/** "connect to wifi", "connect wi-fi", "join a network", "connect me to the internet".
- *
- *  A request to connect that names no network. It has to be its own pattern and it has to come
- *  first, because WIFI_CONNECT's `(.+?)` happily takes "wifi" as the name of a network and
- *  answers a perfectly reasonable request with "I don't have a saved network called wifi" —
- *  which is true, and useless. The answer to "connect to wifi" is the list. */
+/** "connect to wifi", "connect wi-fi", "join a network", "connect me to the internet" — a
+ *  request naming no network. Registered before WIFI_CONNECT, whose `(.+?)` would
+ *  otherwise take "wifi" as a network name and answer "I don't have a saved network
+ *  called wifi", which is true and useless — the real answer here is the list. */
 const WIFI_LIST =
   /^(?:connect|reconnect|join)(?:\s+(?:to|me\s+to))?\s+(?:the\s+|a\s+|my\s+)?(?:wifi|wi\s?-?\s?fi|wireless|internet|network|networks)$/
 
@@ -120,8 +108,7 @@ export function registerSystemCommands(): void {
     run: async (groups, ctx) => {
       const page = ALIASES[groups[1]]
       const uri = SETTINGS_PAGES[page]
-      // Through Explorer, which is exactly what an `ms-settings:` URI is for — a shell
-      // namespace target. openMicrophoneSettings has done this since chunk D.
+      // Through Explorer, exactly what an `ms-settings:` URI is for.
       if (!(await openShellTarget(uri, `${page} settings`))) {
         ctx.failed(`I couldn’t open ${page} settings`)
         return
@@ -130,9 +117,7 @@ export function registerSystemCommands(): void {
     }
   })
 
-  // Before `wifi-connect`, which would read "wifi" as the name of a network to look for. The
-  // registry has no fall-through, so the pattern that means something more specific has to be
-  // registered ahead of the one that would swallow it.
+  // Before wifi-connect, which would otherwise read "wifi" as the name of a network.
   register({
     id: 'wifi-list',
     takesTarget: false,
@@ -143,8 +128,8 @@ export function registerSystemCommands(): void {
     match: WIFI_LIST,
     describe: () => 'Here are the networks',
     run: async (_groups, ctx) => {
-      // The saved names go in the log rather than into the sentence: the flyout this opens is
-      // already showing them, along with the ones in range, which is more than Ezzy knows.
+      // The saved names go in the log, not the sentence — the flyout this opens already
+      // shows them, along with the ones in range, which is more than Ezzy knows.
       const saved = await savedProfiles()
       log(`wifi: showing the network list (${saved.length} saved)`)
       if (!(await openShellTarget(SETTINGS_PAGES.networks, 'the network list'))) {
@@ -181,10 +166,8 @@ async function joinNetwork(spoken: string, ctx: CommandContext): Promise<void> {
   }
 
   if (target === null) {
-    // Not a failure with an apology: the user asked to join something, and the list of what
-    // they can join is one keystroke away. the rule about the blocked microphone applies to
-    // every dead end — it has to lead somewhere. Guessing instead would risk joining a
-    // neighbour's saved network, which is a worse answer than a list.
+    // Not a failure with an apology — the list of what can be joined is one keystroke
+    // away, and guessing instead risks joining a neighbour's saved network.
     log(`wifi: nothing saved matches "${spoken}" (${saved.length} profiles)`)
     await openShellTarget(SETTINGS_PAGES.networks, 'the network list')
     hidePanel()
@@ -200,9 +183,9 @@ async function joinNetwork(spoken: string, ctx: CommandContext): Promise<void> {
 
   hidePanel()
   if (!(await connectTo(target))) {
-    // The radio is off, the network is out of range, or the saved key no longer works. Which
-    // of those it is cannot be read without parsing translated status text, and the answer is
-    // the same either way: show them the networks so they can see what the adapter can.
+    // The radio is off, the network is out of range, or the key no longer works — which
+    // cannot be read without parsing translated status text, so the answer is the same
+    // either way: show the networks so they can see what the adapter can.
     await openShellTarget(SETTINGS_PAGES.networks, 'the network list')
     ctx.failed(`I couldn’t connect to ${target}`)
   }

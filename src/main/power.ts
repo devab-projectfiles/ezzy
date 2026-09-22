@@ -1,17 +1,10 @@
-/** Sleeping, hibernating and shutting the machine down.
+/** Sleeping, hibernating and shutting the machine down — in their own file since these
+ *  three are the only commands in the app that cannot be undone.
  *
- *  Not in the plan's command set — asked for after chunk D, and the registry is where a request
- *  like this is supposed to land. It lives in its own file rather than in `builtin.ts`
- *  because "how does Windows go to sleep" is a different question from "what did the user
- *  say", and because these three are the only commands in the app that cannot be undone.
- *
- *  Two mechanisms, for the two things Windows treats differently:
- *
- *   * **Suspend** is a Win32 call (`SetSuspendState`), because there is no command-line tool
- *     that sleeps a machine — `shutdown.exe` has no flag for it.
- *   * **Shutdown** is `shutdown.exe`, because ExitWindowsEx requires the calling process to
- *     hold SE_SHUTDOWN_NAME and to enable it first. `shutdown.exe` does that dance already,
- *     and getting it wrong means a call that silently returns false. */
+ *  Two mechanisms: suspend is a Win32 call (`SetSuspendState`), since no command-line
+ *  tool sleeps a machine; shutdown is `shutdown.exe`, since ExitWindowsEx requires the
+ *  calling process to hold and enable SE_SHUTDOWN_NAME first, which `shutdown.exe`
+ *  already does — getting that dance wrong means a call that silently returns false. */
 
 import { execFile } from 'child_process'
 import { log } from './verbose'
@@ -28,14 +21,9 @@ export function hibernateMachine(): boolean {
   return suspend(true)
 }
 
-/** Shut the machine down.
- *
- *  `/t 0` — immediately, which is what "shut down the pc" means. There is no confirmation step
- *  and no undo; the only guard is that the phrase has to be said in full, and a spoken command
- *  that is not understood does nothing rather than something approximate.
- *
- *  Windows still closes applications the ordinary way, so anything with unsaved work gets to
- *  put its dialog up and stop the shutdown itself. */
+/** Shut the machine down, immediately (`/t 0`). No confirmation step and no undo — the
+ *  only guard is that the phrase has to be said in full. Windows still closes
+ *  applications the ordinary way, so unsaved work gets its own dialog to stop it. */
 export function shutDownMachine(): Promise<boolean> {
   log('shutting the machine down')
   return run(['/s', '/t', '0'])

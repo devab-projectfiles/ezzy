@@ -125,9 +125,8 @@ export function registerIpc(): void {
   // see toggleListening for why a click cannot simply reuse press-and-release.
   ipcMain.on(IPC.toggleVoice, () => toggleListening())
 
-  // ---------------------------------------------------------------- chunk F
-  // Ezzy reads no gestures. Windows maps a three-finger tap to a shortcut, and this is
-  // the page where that is done — which is the whole of Ezzy's gesture support.
+  // Ezzy reads no gestures — Windows maps a three-finger tap to a shortcut, and this is
+  // the page where that is done.
   ipcMain.on(IPC.openTouchpadSettings, () => {
     void openShellTarget('ms-settings:devices-touchpad', 'touchpad settings')
   })
@@ -161,11 +160,8 @@ export function registerIpc(): void {
     if (picked.canceled || path === undefined) return null
     return { id: randomUUID(), name: basename(path, extname(path)), path }
   })
-  // Reads the file and hands its text back, nothing more. The cleaning happens in the
-  // settings renderer, which has a parser: there is no DOM here, so anything this process
-  // could do to SVG markup would be regex work against a format regexes cannot parse.
-  // Reading is safe — markup is inert until something injects it, and the only injection is
-  // in the dot, which never sees a version that has not been through cleanLogo.
+  // Reads the file and hands its text back, nothing more — the cleaning happens in the
+  // settings renderer, which has a DOM parser; this process does not.
   ipcMain.handle(IPC.pickLogo, async (): Promise<PickedLogo> => {
     const picked = await dialog.showOpenDialog({
       title: 'Choose a mark for the dot',
@@ -190,10 +186,6 @@ export function registerIpc(): void {
   ipcMain.handle(IPC.checkPhrase, (_event, phrase: string) => phraseProblem(phrase))
   ipcMain.handle(IPC.setSettings, (_event, patch: Partial<EzzyConfig>) => {
     const result = applySettings(patch)
-    // Every window paints itself from the same tokens, so all of them hear about it — the
-    // settings window included, since the person changing it is looking at one.
-    // The registry keeps its own copy so `runCommand` stays a pure function of its text and
-    // the registered set; this is what keeps the two in step.
     if (patch.phrases !== undefined) setCustomPhrases(result.snapshot.config.phrases)
     if (patch.aliases !== undefined) setAliases(result.snapshot.config.aliases)
     if (patch.customApps !== undefined) setCustomApps()

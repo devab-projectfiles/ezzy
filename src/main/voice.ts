@@ -1,16 +1,8 @@
-/** Push-to-talk, end to end.
+/** Push-to-talk. Hold the hotkey, speak, let go: the panel is already open from the press, the
+ *  mic opens partway into the hold, and release sends the audio to whisper-server. A tap never
+ *  touches this file or loads a model — only a hold does.
  *
- *  Hold the hotkey, speak, let go: the panel is already open from the press, the microphone
- *  opens 350ms into the hold, and the release is what sends the audio to whisper-server and
- *  runs whatever came back.
- *
- *  Holding the *same* key that opens the panel is what makes this one gesture rather than two
- *  features. A tap opens the panel and never touches this file — the plan is explicit that the
- *  keyboard path must never touch whisper, and it does not: nothing here runs, and no model is
- *  even loaded, until the first time someone holds the key.
- *
- *  The recording itself happens in the dot's renderer, because `getUserMedia` is a web API and
- *  the main process does not have one. See `renderer/src/recorder.ts`. */
+ *  Recording happens in the dot's renderer (`getUserMedia` is a web API); see recorder.ts. */
 
 import { app } from 'electron'
 import { VoiceFailure, VoiceState } from '../shared/types'
@@ -40,33 +32,22 @@ import { listWindows } from './window-tracker'
 import { hidePanel, onPanelHidden, sendCapture, sendVoiceState, showPanelForVoice } from './windows'
 
 let state: VoiceState = { kind: 'idle' }
-/** The microphone is open and buffering. Set on the press, before it is known whether this
- *  will be a hold — see `armCapture`. */
+/** Mic is open and buffering, set on the press before it is known whether this is a hold. */
 let armed = false
 /** The press became a hold, so what is being buffered is a command. */
 let capturing = false
-/** Whether the recorder has reported that the microphone is actually delivering audio.
- *
- *  Reset at the start of every session and set by `reportMicLive`. A warm graph answers within
- *  one 64ms block; a cold one takes 225-960ms to open the device, and none of that time
- *  records anything. Which of the two happened is the difference between "Listening..." and
- *  "Getting ready...", and the user starts talking on the strength of that word. */
+/** Whether the recorder has confirmed the mic is delivering audio — a cold open takes
+ *  225-960ms, which is the difference between "Listening..." and "Getting ready...". */
 let micLive = false
-/** When the microphone was asked for, so the wait for it can be measured rather than guessed
- *  at. This is the number the whole `arming` state exists because of. */
+/** When the mic was requested, so the wait can be measured. */
 let armedAt = 0
-/** This session was started by the search bar's mic button rather than by holding the hotkey.
- *  A held key ends itself when it comes up; a click has to be ended by something, and the two
- *  things that can end it — a timeout and the panel closing — only apply to this case. */
+/** Started by the mic button (a click) rather than the hotkey (a hold) — a click has no
+ *  release to end it, unlike a held key. */
 let fromButton = false
-/** The ceiling on a hands-free recording lives in the recorder now (MAX_UTTERANCE_MS): it is
- *  the half that can see the microphone, so it is the half that can tell a long sentence from
- *  a forgotten one. */
-/** What the renderer hands back for one hold: the audio, and whether anybody was talking
- *  during it. The second half is measured from the signal — see `hasSpeech` in the recorder —
- *  because the transcript cannot answer it. Whisper never returns nothing; handed an empty
- *  room it invents a confident sentence out of the room tone, and "Subs by
- *  www.zeoranger.co.uk" then goes through the commands as if it had been said. */
+
+/** What the renderer hands back for one hold. `spoke` is measured from the signal (see
+ *  `hasSpeech` in the recorder) — whisper never returns nothing, so the transcript alone
+ *  cannot tell silence from speech. */
 interface Recording {
   wav: Buffer
   spoke: boolean
@@ -74,69 +55,43 @@ interface Recording {
 
 /** Resolves when the renderer hands the recording over, or when it says it cannot. */
 let pendingAudio: ((recording: Recording | null) => void) | null = null
-/** A microphone failure from a press that never became a hold. Held rather than announced:
- *  the user was opening the panel, not asking to speak. The next hold reports it instead of
- *  waiting four seconds for audio that cannot come. */
+/** A mic failure from a press that never became a hold — held rather than announced, and
+ *  reported on the next real hold instead. */
 let armFailure: VoiceFailure | null = null
 let clearStateTimer: ReturnType<typeof setTimeout> | null = null
-/** What whisper heard for the command currently in flight, or null before there is a
- *  transcript. Chunk E shows it: a mangled name is the commonest reason a command misses, and
- *  "I couldn't find Sigma" only makes sense next to the word that produced it. */
+/** What whisper heard for the command in flight, shown next to a miss. */
 let heard: string | null = null
 
-/** The renderer has to stop the stream, encode a WAV and send it. If that has not happened by
- *  now, something in it has failed in a way it did not report. */
+/** If the renderer has not sent audio by now, something failed silently. */
 const AUDIO_TIMEOUT_MS = 4_000
 
-/** Hands-free, the same wait covers the user thinking, speaking, and the recorder deciding
- *  they have finished — so it has to outlast the recorder's own ceilings rather than the few
- *  seconds an already-finished recording needs to arrive. */
+/** Covers thinking, speaking and the recorder's own end-of-utterance detection. */
 const HANDS_FREE_TIMEOUT_MS = 20_000
 
-/** How long an error stays on screen before the surface goes back to being a search bar.
- *  Long enough to read a short sentence, short enough not to be in the way of a retry. */
+/** How long an error stays on screen before reverting to the search bar. */
 const ERROR_MS = 4_000
 
-/** A confirmation is shorter-lived than a failure: the user asked for it, it happened, and the
- *  window they wanted is already in front of them. This is long enough to catch out of the
- *  corner of an eye and confirm what was heard, and no longer. */
+/** Shorter than an error — the window the user wanted is already in front of them. */
 const DONE_MS = 2_600
 
-/** A WAV header is 44 bytes and 16kHz mono PCM is 32,000 bytes a second, so this is a quarter
- *  of a second of audio. Below it the hold was a slip, not a command — usually a tap that
- *  crossed the hold threshold — and it is worth saying "I didn't catch that" without paying
- *  for a transcription first. */
+/** ~0.25s of 16kHz mono PCM. Below this the hold was a slip, not worth transcribing. */
 const MIN_AUDIO_BYTES = 44 + 8_000
 
-/** What is said when the microphone was open and nothing was said into it.
- *
- *  Deliberately not "I didn't catch that", which means "you spoke and I failed you" and
- *  invites the user to repeat themselves louder. Nothing was spoken, so the answer says so and
- *  says what to do instead. Kept inside the width the pill can draw — it clips rather than
- *  wraps, and the longest sentence it has ever had to hold is 37 characters. */
+/** Deliberately not "I didn't catch that" — nothing was said, so this says what to do
+ *  instead. Kept under 37 chars; the pill clips rather than wraps. */
 const NOTHING_HEARD = 'I didn’t hear anything — say a command'
 
-/** Whisper's prompt is capped by the model, not by us: the decoder's text context is 448
- *  tokens and whisper.cpp will carry at most half of that as prior text. Everything below is
- *  about spending ~200 tokens well, and the command phrasings in `examples` have first call on
- *  them — those are what bias it towards hearing a command at all.
- *
- *  So this cannot hold a machine's whole Start Menu, and the question is never "how do we fit
- *  140 names" but "which forty are worth a token". */
+/** Whisper's prompt context is ~448 tokens and whisper.cpp keeps at most half as prior
+ *  text — so this is "which forty names are worth a token", not "fit them all". */
 const PROMPT_NAMES = 40
-/** Trimmed from 400 to make room for the command sentences below.
- *
- *  The trade is deliberate and evidence-led: on the failures that prompted this, the app names
- *  were already coming through — "Spotify" was transcribed correctly every time — and the
- *  COMMAND around them was not. Eighty characters of extra app names were buying nothing next
- *  to four sentences that name the thing actually being got wrong. */
+/** Trimmed from 400 to leave room for the command-phrasing examples, which fix more misses
+ *  than extra app names do. */
 const PROMPT_MAX_CHARS = 320
 
 export function initVoice(): void {
   registerBuiltinCommands()
-  // After the commands exist and before anything can be said: the phrases name command ids,
-  // and `verifyExamples` checks the canonical each one rewrites to is still a phrasing its
-  // own command accepts.
+  // Runs after commands exist: verifies each phrase's canonical rewrite is still accepted
+  // by its own command.
   verifyExamples()
   setCustomPhrases(getConfig().phrases)
   watchHold({
@@ -144,9 +99,7 @@ export function initVoice(): void {
     onHold: () => void beginListening(),
     onRelease: (held) => void (held ? finishListening() : cancelCapture())
   })
-  // The panel going away takes the mic button with it, so a session it started has to end
-  // here. Dismissing the panel is not "send it" — the user closed the thing they were talking
-  // to — so the recording is thrown away rather than transcribed.
+  // Closing the panel takes the mic button's session with it — the recording is dropped.
   onPanelHidden(() => {
     if (!fromButton || !capturing) return
     log('voice: panel closed while listening, dropping the recording')
@@ -161,24 +114,15 @@ export function voiceState(): VoiceState {
   return state
 }
 
-/** The search bar's mic button, which is a click rather than a hold.
- *
- *  Push-to-talk has a natural end — you let go. A click does not, so the same button ends the
- *  utterance: first click opens the microphone, second sends what it heard. Everything after
- *  that is the hotkey's own path, unchanged; this only replaces the gesture.
- *
- *  The microphone is opened here rather than pre-armed, so unlike the hotkey there is no head
- *  start on `getUserMedia` — speak a beat after clicking, the way the button's own listening
- *  state tells you to. */
+/** The search bar's mic button — a click, not a hold. First click opens the mic, second
+ *  sends what it heard; unlike the hotkey there is no head start on `getUserMedia`. */
 export function toggleListening(): void {
   if (!getConfig().voice) {
-    // Silence is right for a hotkey hold, which the user may not have meant as one. A click on
-    // a microphone is unambiguous, so it gets an answer.
+    // A hotkey hold may not have been meant as one; a mic click is unambiguous.
     fail('Voice is off — turn it on in Settings')
     return
   }
-  // Clicked again during a session — only reachable by reopening the panel, since the click
-  // closes it. Treated as "I have finished", the same as letting go of the hotkey.
+  // Reachable only by reopening the panel mid-session; treated as "I'm done".
   if (capturing) {
     void finishListening()
     return
@@ -187,17 +131,12 @@ export function toggleListening(): void {
   void listenHandsFree()
 }
 
-/** The session is over, however it ended. */
 function endButtonSession(): void {
   fromButton = false
 }
 
-/** Voice has just been switched off in settings.
- *
- *  Turning it off has to give the memory back, or the switch is only a promise about future
- *  holds: whisper-server is ~300MB resident and nothing else ever stops it before quit. Any
- *  press in flight is cancelled too, so the microphone is not left open by a hold that was
- *  armed a moment before the switch was flipped. */
+/** Voice just switched off in Settings. Frees whisper-server's ~300MB now rather than just
+ *  refusing future holds, and cancels any press in flight. */
 export function releaseVoice(): void {
   if (getConfig().voice) return
   cancelCapture()
@@ -216,21 +155,15 @@ function setState(next: VoiceState): void {
   clearStateTimer = setTimeout(() => setState({ kind: 'idle' }), linger)
 }
 
-/** A command that could not be carried out. Chunk E: "a failed command is as clear as a
- *  successful one" — which is why this both draws it and says it out loud. Spoken matters more
- *  here than for a success: the user is looking at the app they expected to be switched away
- *  from, not at the dot. */
+/** A command that failed — drawn AND spoken, since the user is looking at the app they
+ *  expected to leave, not at the dot. */
 function fail(message: string, micBlocked = false): void {
   log(`voice: ${message}`)
   setState({ kind: 'error', message, micBlocked, heard: heard ?? undefined })
-  // A blocked microphone has to lead somewhere rather than to a dead button, and the
-  // button it leads to lives on the search bar. So this one failure brings the panel up even
-  // when the preference says voice should stay on the dot — a sentence about a blocked device
-  // with no way to act on it is exactly the dead end that rule is about.
+  // A blocked mic has to lead somewhere: brings the panel up even in quiet mode.
   if (micBlocked) {
     showPanelForVoice()
-    // The panel has just opened over the pill, so the message is routed again: the search bar
-    // takes it and the pill lets go of it.
+    // The panel just opened over the pill, so the message is re-sent for the search bar.
     sendVoiceState(state)
   }
   speak(message, 'failure')
@@ -238,35 +171,22 @@ function fail(message: string, micBlocked = false): void {
 
 // ------------------------------------------------------------------ listening
 
-/** The hotkey has gone down. Nobody knows yet whether this is a tap or a command, and that is
- *  exactly why the microphone opens here rather than 350ms later.
- *
- *  Measured: `getUserMedia` takes 300-960ms to hand back a stream. Starting it at the hold
- *  threshold meant the device was still opening while the user was already speaking, and the
- *  verb went missing — "open antigravity" arrived as "antigravity", which is most of what was
- *  behind commands being understood and then refused.
- *
- *  The cost is that Windows' microphone indicator blinks on every panel open, including taps
- *  that never record. Nothing is sent anywhere for a tap: `cancelCapture` throws the buffer
- *  away and closes the device. */
+/** The hotkey went down; nobody knows yet if this is a tap. The mic opens HERE rather than
+ *  at the hold threshold — measured 300-960ms to open, and starting later clipped the first
+ *  word ("open antigravity" arrived as "antigravity"). Costs a mic-indicator blink on every
+ *  tap, but nothing from a tap is ever sent (`cancelCapture` throws it away). */
 function armCapture(): void {
   if (armed || !getConfig().voice || !isVoiceInstalled() || !hasModel()) return
   armed = true
   micLive = false
   armedAt = performance.now()
-  // Silence the last confirmation HERE, on the press, rather than at the hold 350ms later.
-  //
-  // Echo cancellation is off — it tripled the time the device takes to open — so the
-  // microphone hears Ezzy's own voice out of the speakers, and the graph is still warm from
-  // the command that produced it. Hushing at the hold left those 350ms of Ezzy talking at the
-  // front of the recording, and whisper transcribed them faithfully: the end of its own last
-  // sentence, glued to the start of the user's new one, matched against as one command.
+  // Hushed on the press, not the hold: echo cancellation is off, so the mic hears Ezzy's
+  // own voice, and hushing later left the tail of the last reply glued to the new recording.
   hush()
-  // Before the whisper server, because this is the message that opens the device and every
-  // millisecond in front of it comes out of the user's first word.
+  // Before sendCapture — every ms here comes out of the user's first word.
   sendCapture('arm')
-  // Started here rather than at launch and left running afterwards — the "model load is the
-  // real latency". The first command of a session waits for it; the rest do not.
+  // Started here and left running — the first command of a session pays for the model
+  // load, the rest do not.
   startWhisperServer()
 }
 
@@ -274,28 +194,22 @@ function cancelCapture(): void {
   if (!armed) return
   armed = false
   capturing = false
-  // Nothing is paused by a press — only by a hold — but a hold can still be abandoned, and
-  // music left stopped by a launcher is worse than a command misheard.
+  // Nothing is paused by a press, only a hold — but a hold can be abandoned.
   restoreAfterListening()
   sendCapture('cancel')
 }
 
-/** Stop the music for as long as the recording lasts, if the user wants that.
- *
- *  Echo cancellation cannot do this and was measured twice not doing it — see
- *  `duckForListening`. This is the part that works. */
+/** Stops music for the recording, if enabled — echo cancellation cannot do this. */
 function quieten(): void {
   if (getConfig().duckMusic) duckForListening()
 }
 
 async function beginListening(source: 'hotkey' | 'mic-button' = 'hotkey'): Promise<void> {
   if (capturing) return
-  // Chunk F's voice switch. Off, a hold is just a long tap — no microphone, no download, no
-  // message. Saying "voice is off" here would be worse than silence: the user turned it off,
-  // and the panel the press already opened is exactly where they can type instead.
+  // Voice off: a hold is just a long tap, and the panel the press opened is already where
+  // they can type instead.
   if (!getConfig().voice) return
-  // Stop any confirmation still playing, before the microphone that is about to open hears
-  // Ezzy talking about the last command.
+  // Stop any confirmation before the mic that is about to open hears it.
   hush()
   heard = null
 
@@ -308,18 +222,11 @@ async function beginListening(source: 'hotkey' | 'mic-button' = 'hotkey'): Promi
     return
   }
 
-  // None of this applies when the mic BUTTON started it: the panel is already open, the user
-  // is looking at it, and they clicked something inside it. Closing it under them — which is
-  // what quiet mode does to a hotkey hold — would take away the thing they just used.
+  // Skipped when the mic BUTTON started it — the panel is already open and in use.
   if (source === 'hotkey') {
-    // Whether the panel comes up for this is the user's call (`voicePanel`). Off — the default
-    // — the dot's pill carries the whole exchange and nothing covers what you were reading. On,
-    // it is chunk D's behaviour: the hold may have arrived on a closed panel, or on one the
-    // press just closed, so it has to be brought back up for the search bar to report on.
+    // voicePanel off (default): the pill carries the exchange. On: the panel comes back up
+    // for the search bar to report. Quiet mode has to CLOSE a panel the press just opened.
     if (getConfig().voicePanel) showPanelForVoice()
-    // Quiet mode has to CLOSE a panel rather than not open one: the press toggles it before
-    // anyone knows this is a hold, and that is deliberate — the plan gives the tap a 50ms budget from
-    // the press, so the panel cannot wait 350ms to find out what kind of press it was.
     else hidePanel()
   }
 
@@ -328,8 +235,7 @@ async function beginListening(source: 'hotkey' | 'mic-button' = 'hotkey'): Promi
     return
   }
 
-  // The microphone has been buffering since the press; this only decides that what it has is
-  // going to be a command.
+  // The mic has been buffering since the press; this only commits to it being a command.
   if (!armed) armCapture()
   if (!armed && armFailure !== null) {
     reportFailure(armFailure)
@@ -337,8 +243,8 @@ async function beginListening(source: 'hotkey' | 'mic-button' = 'hotkey'): Promi
   }
   capturing = true
   quieten()
-  // "Listening" only if the device has already answered. Otherwise the surface says it is
-  // getting ready, and `reportMicLive` promotes it the moment audio starts arriving.
+  // "Listening" only if the device has already answered; otherwise "getting ready" until
+  // reportMicLive promotes it.
   setState({ kind: micLive ? 'listening' : 'arming' })
 }
 
@@ -358,12 +264,9 @@ async function finishListening(): Promise<void> {
   await transcribeAndRun(await audioFromRenderer(), releasedAt)
 }
 
-/** Hands-free: the mic button's session, ended by the recorder rather than by a key coming up.
- *
- *  The panel is closed on the way in, which is what was asked for and is also what the hotkey
- *  does in its default quiet mode — the dot's pill carries listening, thinking and the answer,
- *  so nothing has to stay on screen for the user to talk to. Nothing is clicked to finish: the
- *  recorder listens for the end of the sentence and sends, and the command runs from that. */
+/** The mic button's session, ended by the recorder rather than a key release. Panel closes
+ *  on the way in; nothing is clicked to finish — the recorder detects end-of-sentence and
+ *  sends. */
 async function listenHandsFree(): Promise<void> {
   if (capturing) {
     endButtonSession()
@@ -381,8 +284,8 @@ async function listenHandsFree(): Promise<void> {
     endButtonSession()
     return
   }
-  // Out of the way first, so the user is talking to the dot rather than to a window sitting
-  // over what they were reading.
+  // Closed first, so the user is talking to the dot, not a window over what they were
+  // reading.
   hidePanel()
   if (!hasModel()) {
     void fetchModel()
@@ -401,8 +304,7 @@ async function listenHandsFree(): Promise<void> {
 
   const recording = await audioFromRenderer(HANDS_FREE_TIMEOUT_MS)
   restoreAfterListening()
-  // The recorder decides when the sentence ended, so this is the first moment the main process
-  // knows it has — which is exactly when "listening" becomes "thinking".
+  // The recorder decides when the sentence ended — this is the first moment main knows.
   const finishedAt = performance.now()
   capturing = false
   armed = false
@@ -413,16 +315,13 @@ async function listenHandsFree(): Promise<void> {
 
 /** Everything both gestures do once there is a recording: transcribe it and run what it says. */
 async function transcribeAndRun(recording: Recording | null, releasedAt: number): Promise<void> {
-  // A capture failure reports itself through `reportCaptureFailure`, which has already put a
-  // more specific message on screen than anything that could be said here.
+  // A capture failure already reported its own message via reportCaptureFailure.
   if (!recording || recording.wav.length < MIN_AUDIO_BYTES) {
     if (state.kind === 'thinking') fail('I didn’t catch that')
     return
   }
 
-  // Nobody spoke. Answered here rather than after transcribing, because transcribing silence
-  // does not produce silence — it produces a sentence, and a sentence gets acted on. This is
-  // also the cheapest possible answer: the recording is never sent anywhere.
+  // Silence still transcribes to a sentence that gets acted on, so this is checked first.
   if (!recording.spoke) {
     log('voice: the recording holds no speech')
     fail(NOTHING_HEARD)
@@ -430,17 +329,13 @@ async function transcribeAndRun(recording: Recording | null, releasedAt: number)
   }
   const wav = recording.wav
 
-  // The server may still be loading the model, which on the first command of a session is the
-  // longest part of the wait. Waiting is right: the alternative is telling the user their
-  // command failed a second before it would have worked.
+  // The server may still be loading the model on the first command of a session.
   if (!(await whenReady())) {
     fail('The speech engine didn’t start')
     return
   }
 
-  // Logged in full, because it is the only way to see what whisper was actually told. The app
-  // index reached this in alphabetical order for a long time, which silently truncated it at
-  // D and left the names most in need of help out — invisible, because nothing ever printed it.
+  // Logged in full — the only way to see what whisper was actually told.
   const prompt = whisperPrompt()
   log(`voice: prompt "${prompt}"`)
   const raw = await transcribe(wav, prompt)
@@ -455,18 +350,14 @@ async function transcribeAndRun(recording: Recording | null, releasedAt: number)
     fail('I didn’t catch that')
     return
   }
-  // The signal test above catches most of it. This catches the rest: a cough, a chair or a
-  // door is enough audio to look like speech, and what whisper writes over it is one of a
-  // small set of sentences from the subtitle tracks it was trained on. `heard` is left unset
-  // for these on purpose — quoting the invention back would present it as something the user
-  // might have said.
+  // Catches what the signal test misses (a cough, a door). `heard` stays unset for these,
+  // so a made-up sentence is never quoted back as something the user said.
   if (isSilenceArtefact(text)) {
     log(`voice: "${text}" is what whisper writes over a room, not a command`)
     fail(NOTHING_HEARD)
     return
   }
-  // The normalised form, not the raw one: it is what the commands were matched against, so it
-  // is the honest answer to "what did you think I said".
+  // The normalised form — it is what commands were actually matched against.
   heard = text
 
   const outcome = await runCommand(text)
@@ -478,12 +369,8 @@ async function transcribeAndRun(recording: Recording | null, releasedAt: number)
     fail(outcome.message)
     return
   }
-  // Act before you speak. The command has already put the window in front by the time
-  // either of these lines runs — neither the pill nor the confirmation is allowed to sit
-  // between the user finishing their sentence and the window appearing.
-  //
-  // The panel went with it, so the dot's pill is what draws this: it is the one surface that
-  // outlives a successful command (see sendVoiceState).
+  // Act before you speak — the command has already switched windows by the time either of
+  // these lines runs. The panel is gone, so the dot's pill draws this.
   setState({ kind: 'done', message: outcome.message, heard: text })
   speak(outcome.message, 'success')
   since(`voice: key release -> ${outcome.message}`, releasedAt)
@@ -505,15 +392,10 @@ function audioFromRenderer(timeoutMs = AUDIO_TIMEOUT_MS): Promise<Recording | nu
   })
 }
 
-/** The dot's renderer has captured its first block: the device is open and audio is real.
- *
- *  This is the only signal either process has for that. `getUserMedia` resolving is not it —
- *  the graph still has to be built and pulled — so the recorder waits for a block rather than
- *  for a promise. */
+/** The dot's renderer captured its first block — the only real signal the mic is delivering
+ *  audio (a resolved `getUserMedia` promise is not, since the graph still has to be pulled). */
 export function reportMicLive(): void {
   micLive = true
-  // The one measurement this whole state exists for: everything before it is a word the user
-  // said into a device that was not there yet.
   since('voice: microphone live', armedAt)
   if (capturing && state.kind === 'arming') setState({ kind: 'listening' })
 }
@@ -526,16 +408,15 @@ export function receiveAudio(wav: Buffer, spoke: boolean): void {
   pendingAudio?.({ wav, spoke })
 }
 
-/** The dot's renderer could not record at all. A blocked microphone has to lead somewhere,
- *  so the message that goes with `micBlocked` is paired with a button in the search bar. */
+/** The dot's renderer could not record at all. A blocked mic needs somewhere to lead,
+ *  paired with a button in the search bar. */
 export function reportCaptureFailure(kind: VoiceFailure): void {
   const wasListening = capturing
   armed = false
   capturing = false
   armFailure = kind
   pendingAudio?.(null)
-  // A microphone that could not be opened during a press is not worth interrupting a tap
-  // over — the user was opening the panel, not asking to speak.
+  // Not worth interrupting a tap over — the user was opening the panel, not asking to speak.
   if (!wasListening) {
     log(`voice: microphone unavailable (${kind})`)
     return
@@ -562,8 +443,7 @@ async function fetchModel(): Promise<void> {
   if (isDownloading()) return
   setState({ kind: 'downloading', percent: 0 })
   const ok = await ensureModel(({ percent }) => {
-    // A later state — an error, a command — must not be overwritten by a progress event that
-    // was already in flight.
+    // A later state must not be overwritten by a progress event already in flight.
     if (state.kind === 'downloading') setState({ kind: 'downloading', percent })
   })
   if (!ok) {
@@ -572,15 +452,12 @@ async function fetchModel(): Promise<void> {
     return
   }
   setState({ kind: 'idle' })
-  // Load it now rather than making the next hold wait for both.
+  // Loaded now rather than making the next hold wait for both.
   startWhisperServer()
 }
 
-/** the highest-leverage mitigation, and the reason "open n8n" has any chance at all: whisper
- *  has never heard of the software on this machine, so it is told what is on it.
- *
- *  Open windows first — the thing someone is switching to is almost always already running —
- *  then the installed apps in the order the index holds them. */
+/** The highest-leverage fix for "whisper has never heard of this app" — open windows first
+ *  (most switches are to something already running), then the index in prompt order. */
 function whisperPrompt(): string {
   const names: string[] = []
   const seen = new Set<string>()
@@ -591,20 +468,8 @@ function whisperPrompt(): string {
     names.push(name.trim())
   }
   for (const window of listWindows()) add(window.app)
-  // Shortest first, and that is not a tie-break — it is the whole selection rule.
-  //
-  // The index is alphabetical, and taking it in that order meant the list ran out of budget at
-  // D. Measured on this machine: 26 of 140 names got in, they were "Application Stack
-  // Builder", "Character Map", "Computer Management" and "Control Panel", and everything from
-  // Discord onwards — Spotify, Skool, YouTube, Telegram, Notion — was never mentioned to
-  // whisper at all. That is why "open Skool" came back as "school": the one name that needed
-  // the help was the one name that could not fit.
-  //
-  // Short names are what people say out loud; long ones are system utilities nobody dictates.
-  // Sorting by length fits 42 names instead of 26 and reaches every application on this
-  // machine anyone would actually ask for. The names it pushes out are the long ones — "Visual
-  // Studio Code", "Google Chrome" — and those are covered by the window list above whenever
-  // they are open, which is when anyone asks for them by name.
+  // Shortest first — not a tie-break, the whole rule. Alphabetical order ran out of budget
+  // at D and never reached Spotify, Skool or YouTube; short names are what people say aloud.
   const byLength = [...indexedApps()].sort(
     (one, two) => one.name.length - two.name.length || one.name.localeCompare(two.name)
   )
@@ -613,23 +478,15 @@ function whisperPrompt(): string {
   let list = names.join(', ')
   if (list.length > PROMPT_MAX_CHARS) list = list.slice(0, list.lastIndexOf(', ', PROMPT_MAX_CHARS))
 
-  // Whole sentences in the shapes the commands are written in, not a bare vocabulary list: the
-  // prompt is prior *text* and whisper conditions on it as language. Giving it "Switch to
-  // Antigravity." makes both the verb and the name likelier, and the verb matters as much as
-  // the name — a command whose verb was misheard is a command that does not run.
-  // Whole sentences in the shapes the commands are written in — see below. The media ones are
-  // here because of a measured failure and they are the most valuable lines in the list: asked
-  // quietly for "next track on Spotify", whisper returned "Make a scene on Spotify", "Make a
-  // sound in this Spotify" and "Low Bangs, Spotify" on three consecutive attempts. Every one
-  // of those is fluent English, which is what a model does when it cannot hear well enough and
-  // falls back on guessing what a sentence probably was. The prompt is where that guess is
-  // biased, so a failure of this exact shape is the one thing a prompt can genuinely fix.
+  // Whole sentences, not a bare word list — the prompt conditions whisper as language, so
+  // the verb gets biased too. The media lines exist because of a measured failure: "next
+  // track on Spotify" came back as three different wrong sentences on three attempts.
   const examples = [
     `Switch to ${names[0] ?? 'Chrome'}.`,
     `Open ${names[1] ?? 'Notepad'}.`,
     'Close this window.',
-    // "pause" also comes back as "pose", which the commands accept — but it is cheaper to have
-    // whisper write the word than to keep collecting the spellings it writes instead.
+    // "pause" also comes back as "pose" (which the commands accept) — cheaper to bias the
+    // right spelling than to keep collecting the wrong ones.
     'Pause the music.',
     'Play music.',
     'Next track on Spotify.',

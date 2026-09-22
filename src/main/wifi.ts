@@ -1,48 +1,42 @@
-/** Saved WiFi networks, through `netsh` (FEATURE-system-commands.md).
+/** Saved WiFi networks, through `netsh`.
  *
- *  **The scope limit is the design.** Only networks Windows has already saved: Ezzy never
- *  handles a password, never adds a profile, never toggles the radio, and never needs admin.
- *  Everything here is something the user could type themselves.
+ *  The scope is the design: only networks Windows has already saved — Ezzy never handles
+ *  a password, adds a profile, toggles the radio, or needs admin.
  *
- *  **Nothing from a transcript reaches a command line.** `connectTo` is only ever given a name
- *  that came out of `savedProfiles()`, and the arguments go to `execFile` as argv elements, so
- *  there is no shell to parse them. A misheard SSID can fail to match; it cannot become a
- *  command.
+ *  Nothing from a transcript reaches a command line. `connectTo` is only ever given a
+ *  name that came out of `savedProfiles()`, and arguments go to `execFile` as argv
+ *  elements, so there is no shell to parse them.
  *
- *  **`netsh` output is localised, so nothing here reads a word of it.** The labels on the left
- *  of the colon are translated on a non-English Windows, and matching "All User Profile" would
- *  silently return zero networks on one. The structure is not translated: a profile line is an
- *  indented `label : value`, so the value is what follows the first colon. `SSID` and `BSSID`
- *  are acronyms that survive translation, and the anchor tells them apart. */
+ *  `netsh` output is localised, so nothing here reads a word of it — the labels are
+ *  translated on a non-English Windows, but the structure is not: a profile line is an
+ *  indented `label : value`, so the value is whatever follows the first colon. `SSID` and
+ *  `BSSID` survive translation as acronyms, and the anchor tells them apart. */
 
 import { execFile } from 'child_process'
 import { log, since } from './verbose'
 
-/** netsh answers in well under a second; anything longer is a wedged adapter, and a voice
- *  command must not wait on one. */
+/** netsh answers in well under a second; anything longer is a wedged adapter, and a
+ *  voice command must not wait on one. */
 const NETSH_TIMEOUT_MS = 5_000
 
-/** How long to wait for an association after asking for one. The feature note measures a
- *  connect at 2-5s, and `netsh` returns 0 for "request accepted" rather than "connected" — so
- *  success is confirmed by watching, not by the exit code. */
+/** How long to wait for an association — `netsh` returns 0 for "request accepted"
+ *  rather than "connected", so success is confirmed by watching, not the exit code. */
 const CONNECT_TIMEOUT_MS = 8_000
 const CONNECT_POLL_MS = 500
 
 let profiles: string[] = []
 let loaded = false
 
-/** The saved networks, from the cache after the first call.
- *
- *  Read on first use rather than at startup: this is a feature many sessions never touch, and
- *  the cold-start budget should not include a process spawn for one of them. The cost lands
- *  on the first "connect to …" instead, once. */
+/** The saved networks, from the cache after the first call. Read on first use rather
+ *  than at startup — most sessions never touch this, so the cost lands on the first
+ *  "connect to …" instead. */
 export async function savedProfiles(): Promise<string[]> {
   if (!loaded) await refreshProfiles()
   return profiles
 }
 
-/** Re-read them. Called after a name fails to match, because the likeliest reason for that is
- *  a network saved since Ezzy started. */
+/** Re-read them. Called after a name fails to match, since the likeliest reason is a
+ *  network saved since Ezzy started. */
 export async function refreshProfiles(): Promise<void> {
   const startedAt = performance.now()
   const output = await netsh(['wlan', 'show', 'profiles'])
@@ -53,8 +47,8 @@ export async function refreshProfiles(): Promise<void> {
   }
   const found: string[] = []
   for (const line of output.split(/\r?\n/)) {
-    // Structure, not vocabulary: an indented "label : value". A section heading ends at its
-    // colon and leaves nothing behind it, so it drops out here rather than being named.
+    // Structure, not vocabulary: an indented "label : value" — a section heading ends
+    // at its colon with nothing behind it, so it drops out here rather than being named.
     const colon = line.indexOf(':')
     if (colon === -1 || !/^\s/.test(line)) continue
     const value = line.slice(colon + 1).trim()
@@ -65,11 +59,8 @@ export async function refreshProfiles(): Promise<void> {
   since(`wifi: ${profiles.length} saved networks`, startedAt)
 }
 
-/** The network currently joined, or null when the adapter is not associated with one.
- *
- *  Anchored so `BSSID` cannot answer for `SSID`. When nothing is connected the line is absent
- *  entirely, which is why its absence is the answer rather than a state word that would have
- *  to be read in the user's language. */
+/** The network currently joined, or null. Anchored so `BSSID` cannot answer for `SSID`.
+ *  When nothing is connected the line is absent entirely, so its absence is the answer. */
 export async function currentNetwork(): Promise<string | null> {
   const output = await netsh(['wlan', 'show', 'interfaces'])
   if (output === null) return null
@@ -77,12 +68,9 @@ export async function currentNetwork(): Promise<string | null> {
   return found ? found[1] : null
 }
 
-/** Join a saved network and wait to see it happen.
- *
- *  `netsh` exits 0 for "request accepted", so the exit code says nothing about whether the
- *  machine actually associated — a radio that is off, a network out of range and a wrong key
- *  all return success and then quietly do nothing. Polling the interface is the only honest
- *  answer, and it is also what makes "it did not work" reportable instead of silent. */
+/** Join a saved network and wait to see it happen — the exit code alone says nothing:
+ *  a radio that is off, a network out of range, a wrong key all return success and do
+ *  nothing. Polling the interface is the only honest answer. */
 export async function connectTo(profile: string): Promise<boolean> {
   const startedAt = performance.now()
   // `name=` as one argv element: no quoting, no shell, and the value came from netsh itself.
@@ -118,16 +106,11 @@ function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
-/** Which saved network a spoken name means, or null.
- *
- *  Exported for its own sake: the plan puts resolution in the layer worth testing, and this is the
- *  part of the feature that decides what the machine connects to.
- *
- *  Deliberately generous in the middle and strict at the edges. Network names are not words —
- *  "Galaxy A20s1370p", "AAU-SFA-Student" — and whisper renders them as whatever it can, so a
- *  user saying "galaxy" has to reach a name they would never dictate in full. What it must not
- *  do is guess: an ambiguous name is answered by opening the network list, because connecting
- *  to a neighbour's saved network is a real failure and a silent one. */
+/** Which saved network a spoken name means, or null. Generous in the middle, strict at
+ *  the edges — network names are not words ("Galaxy A20s1370p"), so a user saying
+ *  "galaxy" has to reach a name they would never dictate in full, but an ambiguous name
+ *  must not guess: it opens the network list instead, since connecting to the wrong
+ *  saved network is a real and silent failure. */
 export function matchProfile(spoken: string, saved: string[]): string | null {
   const needle = simplify(spoken)
   if (needle === '') return null
@@ -141,13 +124,13 @@ export function matchProfile(spoken: string, saved: string[]): string | null {
   const anywhere = saved.filter((name) => simplify(name).includes(needle))
   if (anywhere.length === 1) return anywhere[0]
 
-  // More than one candidate is not a match. "aau" names six networks here, and picking the
-  // first would be a coin toss with the user's connection.
+  // More than one candidate is not a match — picking the first would be a coin toss
+  // with the user's connection.
   return null
 }
 
-/** Down to the letters and digits both sides have in common. Hyphens, underscores and spaces
- *  are things a speaker never says and whisper never writes the same way twice. */
+/** Down to the letters and digits both sides have in common — hyphens, underscores and
+ *  spaces are things a speaker never says and whisper never writes the same way twice. */
 function simplify(name: string): string {
   return name.toLowerCase().replace(/[^a-z0-9]/g, '')
 }

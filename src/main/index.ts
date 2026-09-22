@@ -43,9 +43,8 @@ function start(): void {
     electronApp.setAppUserModelId('com.ezzy.app')
     app.on('browser-window-created', (_, window) => optimizer.watchWindowShortcuts(window))
 
-    // The surfaces are transparent and always white-on-dark-glass, so nothing should follow
-    // the OS into light mode and quietly invert the text under them. Pinning the theme keeps
-    // `prefers-color-scheme` deterministic rather than leaving that to the machine's setting.
+    // The surfaces are transparent and always white-on-dark-glass, so nothing should
+    // follow the OS into light mode and invert the text under them.
     nativeTheme.themeSource = 'dark'
 
     // First, so that everything below this line — including anything that throws on the way
@@ -61,15 +60,14 @@ function start(): void {
     // thread's message loop, and Electron only has one running from here onward.
     startTracking()
     onPanelDataChanged(publishPanelData)
-    // Scanning the Start Menu touches a few hundred directories, so it is deliberately not
-    // awaited — the window list is what the panel needs in the first 50ms, and the apps
-    // section fills in behind it. The icon cache is read first so a warm start has icons on
-    // the very first panel rather than reading a few hundred of them again.
+    // Scanning the Start Menu touches a few hundred directories, so it is deliberately
+    // not awaited — the window list is what the panel needs in the first 50ms, and the
+    // apps section fills in behind it. The icon cache is read first so a warm start has
+    // icons on the very first panel.
     void loadIconCache().then(startAppIndex)
     const hotkey = registerHotkey(togglePanel)
-    // Push-to-talk hangs off the same hotkey: a tap toggles the panel, a hold listens. Nothing
-    // here loads a model or starts a process — that happens the first time the key is held, so
-    // a session that never uses voice never pays for it.
+    // Push-to-talk hangs off the same hotkey: a tap toggles the panel, a hold listens —
+    // nothing here loads a model until the key is actually held.
     initVoice()
     watchForResume(() => {
       refreshTray()
@@ -80,8 +78,7 @@ function start(): void {
       void refreshAppIndex()
     })
     createTray(quit, hotkey)
-    // Last, and on a timer of its own inside: the plan expects the first 48 hours to need it, and
-    // nothing about it belongs on the startup path.
+    // Last, and on a timer of its own inside — nothing about it belongs on the startup path.
     startUpdater()
 
     since('cold start -> tray ready', startedAt)
@@ -98,9 +95,8 @@ function start(): void {
     // Leaving a WinEvent hook behind makes Windows keep calling into a process that is on
     // its way out.
     stopTracking()
-    // Chunk D: "shut it down cleanly on quit". whisper-server is our child but not our
-    // responsibility to Windows — nothing kills it for us, and a stray one holds 300MB and
-    // a port for as long as the session lasts.
+    // whisper-server is our child but not Windows' responsibility — nothing kills it for
+    // us, and a stray one holds 300MB and a port for as long as the session lasts.
     stopWhisperServer()
   })
 }

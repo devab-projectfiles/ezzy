@@ -1,16 +1,12 @@
 import { useEffect, useRef, useState } from 'react'
 import type { VoiceState } from '../../shared/types'
 
-/** the search bar: its own 420x54 glass window, fully rounded, 11px above the panel.
+/** The search bar: its own 420x54 glass window, 11px above the panel. The only one of
+ *  the three that takes focus, which makes it the app's keyboard — text goes to main for
+ *  matching, navigation keys are forwarded to the unfocusable panel.
  *
- *  It is the only one of the three windows that takes focus (see windows.ts), which makes it
- *  the app's keyboard. The text goes to the main process, where the matching happens; the
- *  navigation keys are forwarded to the panel, which is unfocusable and so never sees a key
- *  event of its own. Nothing about the result list is known here.
- *
- *  It is also where voice reports itself.
- *  It does no recording — that is the dot window, which is always alive — and holds no state of
- *  its own about it: the main process sends one `VoiceState` and this draws it. */
+ *  Also where voice reports itself. It does no recording (that is the always-alive dot
+ *  window) and holds no state of its own — main sends one `VoiceState` and this draws it. */
 function SearchBar(): React.JSX.Element {
   const [query, setQuery] = useState('')
   const [voice, setVoice] = useState<VoiceState>({ kind: 'idle' })
@@ -79,10 +75,8 @@ function SearchBar(): React.JSX.Element {
           Settings
         </button>
       )}
-      {/* A button, not decoration: clicking it starts listening the way holding the hotkey
-          does, for anyone whose hands are already on the mouse. `keepFocus` below stbops the
-          click moving focus off the input, so the arrow keys keep working through it. */}
-
+      {/* A button, not decoration — clicking it starts listening the way holding the
+          hotkey does. `keepFocus` below stops the click moving focus off the input. */}
       <button
         type="button"
         className="searchbar__mic-button"
@@ -120,13 +114,9 @@ function SearchBar(): React.JSX.Element {
     }
   }
 
-  /** Clicking the glass around the input must not move focus off it — the pill is where the
-   *  keyboard lives while the panel is open, and a click landing on the padding would
-   *  otherwise leave the arrow keys going nowhere.
-   *
-   *  This runs on mousedown, which is before the click, so preventing the default keeps focus
-   *  in the input while the button's own `onClick` still fires. That is why the mic and the
-   *  settings button need nothing else to stay usable. */
+  /** Clicking the glass around the input must not move focus off it. Runs on mousedown,
+   *  before the click, so preventing the default keeps focus in the input while the
+   *  button's own `onClick` still fires — no extra handling needed on the buttons. */
   function keepFocus(event: React.MouseEvent<HTMLDivElement>): void {
     if (event.target === inputRef.current) return
     event.preventDefault()

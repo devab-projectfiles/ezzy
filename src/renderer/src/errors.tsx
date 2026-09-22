@@ -1,13 +1,10 @@
-/** The renderer half of the plan the "error boundary + a log file".
+/** Ezzy's windows are frameless, transparent and have no console anyone will open, so a
+ *  React error is normally invisible twice over — React unmounts the tree, and a
+ *  transparent window failing looks exactly like the dot having disappeared. Both
+ *  halves of this file exist to turn that into a line in the log file the tray can open.
  *
- *  Ezzy's windows are frameless, transparent and have no console anyone will ever open, so a
- *  React error is normally invisible twice over: React unmounts the tree, and the window is
- *  transparent, so the failure looks exactly like the dot having disappeared. Both halves of
- *  this file exist to turn that into a line in the log file the tray can open.
- *
- *  Nothing here tries to recover. A boundary that re-renders the same broken tree loops, and
- *  the panel is rebuilt from scratch on every open anyway — the honest fallback for an overlay
- *  is to draw nothing and say so in the log. */
+ *  Nothing here tries to recover — a boundary that re-renders the same broken tree
+ *  loops, so the honest fallback for an overlay is to draw nothing and say so. */
 
 import { Component, ErrorInfo, ReactNode } from 'react'
 

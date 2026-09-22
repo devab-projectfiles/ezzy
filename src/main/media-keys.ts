@@ -1,14 +1,7 @@
-/** The media keys, sent as `keybd_event` with the VK_MEDIA_* codes.
- *
- *  There is no integration here and there is not meant to be — the plan lists per-app APIs as an
- *  explicit non-goal. A media key is the OS-level thing every player already listens for:
- *  Windows hands it to whichever app owns the current media session, so "next" reaches
- *  Spotify, or a YouTube tab, or whatever was playing last, without Ezzy knowing any of them
- *  exist. That is also why nothing here checks whether anything is playing — the key is fired
- *  the same way a keyboard would fire it, and the app that cares decides.
- *
- *  `keybd_event` returns void: there is no failure to report. The confirmation therefore says
- *  what Ezzy did, not what happened to the music. */
+/** The media keys, sent as `keybd_event` with the VK_MEDIA_* codes — the OS-level thing
+ *  every player already listens for. Windows hands it to whichever app owns the current
+ *  media session, so nothing here checks what is playing; the app that cares decides.
+ *  `keybd_event` returns void, so the confirmation says what Ezzy did, not what happened. */
 
 import {
   APPCOMMAND_MEDIA_NEXTTRACK,
@@ -45,28 +38,17 @@ const APPCOMMAND: Record<MediaAction, number> = {
   previous: APPCOMMAND_MEDIA_PREVIOUSTRACK
 }
 
-/** A media command addressed to ONE window, rather than to the machine.
+/** A media command addressed to ONE window, rather than to the machine — the bare keys
+ *  above go to whoever most recently owned the media session, so with Spotify paused and
+ *  a video watched since, "play music" resumed the video instead. WM_APPCOMMAND is the
+ *  same command with a recipient on it.
  *
- *  The bare keys above go wherever Windows decides, which is whichever app most recently owned
- *  the media session — so with Spotify paused and a video watched since, "play music" resumed
- *  the video and "next track" skipped it. WM_APPCOMMAND is the same command with a recipient
- *  on it: every player handles it, because it is what a media key becomes after Windows has
- *  picked who it is for.
- *
- *  **Play and pause are separate here, where the recipient is known to honour them.** The
- *  toggle was the only thing sent for a while, on the reasoning that a "play" which silently
- *  does nothing is worse than one which pauses something already playing. That reasoning was
- *  never measured, and it was wrong for the player this is mostly aimed at: on Spotify, 46
- *  starts and 47 stops, each doing only its own half.
- *
- *  It matters because a toggle makes the confirmation a guess. Saying "play music" while
- *  music was playing paused it and Ezzy said "Playing" — reported as a bug, and it was one.
- *  Sending the half that was asked for makes the sentence true by construction. The toggle is
- *  still here for "toggle" and "play/pause", which genuinely mean either.
- *
- *  Skipping can genuinely do nothing — a single video with no playlist behind it has no next
- *  track — and that is not reportable either, for the same reason: the message is posted, and
- *  what the player made of it never comes back. */
+ *  Play and pause are separate here, where the recipient is known to honour them — on
+ *  Spotify, 46 starts and 47 stops, each only its own half, which is what lets the
+ *  confirmation be true rather than a guess (a toggle made "play music" answer "Playing"
+ *  while it was actually pausing). The toggle stays for "toggle"/"play/pause", which
+ *  genuinely mean either. Neither play/pause nor skip is reportable either way — the
+ *  message is posted, and what the player made of it never comes back. */
 export function mediaIn(hwnd: Hwnd, name: string, action: MediaAction): void {
   log(`media: ${action} -> ${name} (${hwnd})`)
   postAppCommand(hwnd, APPCOMMAND[action])

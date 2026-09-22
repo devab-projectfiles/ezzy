@@ -1,14 +1,12 @@
 /** whisper-server's lifecycle, and one POST of audio for one transcript.
  *
- *  Spawning `whisper-cli.exe` per command
- *  pays 150-600ms of model load *every time*. So the server is started once, holds the model
- *  in memory for as long as Ezzy runs, and every utterance is an HTTP POST to localhost. It is
- *  the difference between voice feeling like a feature and feeling like a wait.
+ *  Spawning `whisper-cli.exe` per command pays 150-600ms of model load every time, so the
+ *  server is started once and holds the model in memory for as long as Ezzy runs; every
+ *  utterance after that is an HTTP POST to localhost.
  *
- *  It is deliberately not started at app launch. the cold start budget is 2s to tray-ready
- *  and loading base.en costs a good part of that on a cold file cache, for a feature most
- *  sessions never use — so the server comes up the first time the hotkey is held, and stays
- *  up from then on. The second command onward pays nothing. */
+ *  Not started at app launch — loading the model costs a good part of the 2s cold-start
+ *  budget, for a feature most sessions never use — so it comes up the first time the
+ *  hotkey is held and stays up from then on. */
 
 import { ChildProcess, spawn } from 'child_process'
 import { request } from 'http'
@@ -19,65 +17,57 @@ import { log, since } from './verbose'
 import { hasBinaries, hasModel, modelPath, serverExePath } from './whisper-model'
 
 let child: ChildProcess | null = null
-/** Set the moment a start is asked for, because the spawn itself is a tick or two behind it —
- *  a release that lands in that gap must wait for the server rather than conclude there is
- *  none. Cleared when the process is up, or when it turns out there will not be one. */
+/** Set the moment a start is asked for, since the spawn itself lags a tick behind — a
+ *  release landing in that gap must wait for the server rather than conclude there is none. */
 let starting = false
 let port = 0
 let listening = false
 let waiters: Array<(ready: boolean) => void> = []
 
-/** Half the cores, floored at two and capped at eight. Whisper scales with threads up to a
- *  point and then contends; taking every core would also make the machine stutter for the
- *  second the transcription runs, on a background app. */
+/** Half the cores, floored at two and capped at eight — whisper contends past that
+ *  point, and taking every core would stutter the machine for the second a
+ *  transcription runs, on a background app. */
 const THREADS = Math.max(2, Math.min(8, Math.floor(cpus().length / 2)))
 
-/** How long the server gets to load the model before we give up on it. base.en is 141MB off
- *  disk — a second warm, several cold. Generous because the alternative to waiting is telling
- *  the user their command failed when it was about to work. */
+/** How long the server gets to load the model before giving up. Generous, since the
+ *  alternative to waiting is telling the user their command failed when it was about to
+ *  work. */
 const READY_TIMEOUT_MS = 30_000
 
 const READY_POLL_MS = 120
 
-/** How much of whisper's 30-second encoder window one utterance actually needs.
+/** How much of whisper's 30-second encoder window one utterance actually needs. Whisper
+ *  always pads to 30s and encodes all of it, so a 1.3s command costs the same as a
+ *  paragraph — `audio_ctx` shortens that window, and it is the single biggest lever on
+ *  the voice budget. Measured on small.en-q5_1 over four runs of the same 2.3s command:
+ *  512 frames averaged 1450ms, 384 averaged 1235ms (identical transcripts); 256 was no
+ *  better and less consistent; 192 was twice as slow as either. 384 is where the curve
+ *  flattens rather than turning back up.
  *
- *  Whisper always pads its input to 30s and encodes all of it, which is why a 1.3s command
- *  costs the same as a paragraph. `audio_ctx` shortens that window, and it is the single
- *  biggest lever on the voice budget — measured on base.en, 8 threads, over four utterances:
- *  the full 1500 frames took 1061-1090ms and 512 took 426-439ms, for identical transcripts.
- *
- *  Re-measured on small.en-q5_1, which is three times the model and made the encoder worth
- *  another look. Four runs of the same 2.3s command against the running server: 512 frames
- *  averaged 1450ms and 384 averaged 1235ms, transcripts identical. 256 was no better than 384
- *  and less consistent, and 192 was *twice as slow* as either — whatever fast path the encoder
- *  takes, it stops taking it somewhere below 256. So 384, which is where the curve flattens
- *  rather than where it turns back up.
- *
- *  The two numbers move together: 384 frames is a bit under 8 seconds of audio, so the cutoff
- *  drops with it. Anything longer is sent at full context — slower, and correct — rather than
- *  quietly truncated, which is the part that must not change. No spoken command comes near
- *  seven seconds; the recorder's own ceiling is fifteen. */
+ *  384 frames is a bit under 8s of audio, so the cutoff tracks it — anything longer is
+ *  sent at full context, slower but correct, never silently truncated. No spoken command
+ *  comes near 7s; the recorder's own ceiling is 15. */
 const SHORT_AUDIO_CTX = 384
 const SHORT_AUDIO_SECONDS = 7
 
-/** A transcription that has not come back by now is not coming back. Budgets 1200ms for
- *  the whole voice path, so this is a stuck-process guard rather than a deadline. */
+/** A transcription that has not come back by now is not coming back — a stuck-process
+ *  guard rather than a deadline (the voice path budgets 1200ms overall). */
 const INFERENCE_TIMEOUT_MS = 20_000
 
 export function isVoiceInstalled(): boolean {
   return hasBinaries()
 }
 
-/** Start the server if it is not already up. Returns immediately — the model load happens in
- *  the background and `whenReady` is what waits for it. */
+/** Start the server if it is not already up. Returns immediately — the model load
+ *  happens in the background and `whenReady` is what waits for it. */
 export function startWhisperServer(): void {
   if (child || starting || !hasBinaries() || !hasModel()) return
   const startedAt = performance.now()
   starting = true
 
   void freePort().then((chosen) => {
-    // Two holds of the hotkey in quick succession both reach here; the second must not spawn
-    // a second server on a second port.
+    // Two holds of the hotkey in quick succession both reach here — the second must not
+    // spawn a second server on a second port.
     if (child) return
     port = chosen
     const exe = serverExePath()
@@ -96,9 +86,8 @@ export function startWhisperServer(): void {
         '--language',
         'en',
         '--no-timestamps',
-        // Suppresses the "[BLANK_AUDIO]", "(upbeat music)" tags whisper emits for anything it
-        // does not hear as speech. They are noise in a transcript that is about to be matched
-        // against a command; the registry's normalisation drops the ones that get through anyway.
+        // Suppresses "[BLANK_AUDIO]", "(upbeat music)" tags whisper emits for anything it
+        // does not hear as speech; the registry's normalisation drops what gets through anyway.
         '--suppress-nst'
       ],
       {
@@ -118,9 +107,8 @@ export function startWhisperServer(): void {
       settle(false)
     })
     child.on('exit', (code) => {
-      // A crash mid-session is worth saying out loud: everything downstream of it just times
-      // out otherwise, and "voice stopped working an hour in" is impossible to diagnose from
-      // the symptom alone.
+      // A crash mid-session is worth saying out loud — otherwise everything downstream
+      // just times out with no way to diagnose it from the symptom alone.
       if (!listening) console.error(`[ezzy] whisper-server exited with code ${code}`)
       else log(`whisper-server exited with code ${code}`)
       child = null
@@ -133,8 +121,8 @@ export function startWhisperServer(): void {
   })
 }
 
-/** Wait for the server to answer. Resolves false if it never does, so the caller can say so
- *  rather than hanging on a promise that will not settle. */
+/** Wait for the server to answer. Resolves false if it never does, so the caller can say
+ *  so rather than hanging on a promise that will not settle. */
 export function whenReady(): Promise<boolean> {
   if (listening) return Promise.resolve(true)
   if (!child && !starting) return Promise.resolve(false)
@@ -157,9 +145,9 @@ function settle(ready: boolean): void {
   for (const resolve of pending) resolve(ready)
 }
 
-/** whisper-server binds its port before it has finished loading the model, so "the port is
- *  open" is not the same as "it can answer". Its root page is served from the same handler
- *  chain as inference, so a 200 from it means the model is in memory. */
+/** whisper-server binds its port before it finishes loading the model, so "the port is
+ *  open" is not the same as "it can answer". Its root page shares the inference handler
+ *  chain, so a 200 from it means the model is in memory. */
 async function pollUntilListening(startedAt: number): Promise<void> {
   const deadline = performance.now() + READY_TIMEOUT_MS
   while (child && performance.now() < deadline) {
@@ -197,9 +185,8 @@ function ping(): Promise<boolean> {
   })
 }
 
-/** Ask the OS for a port nobody is using. A fixed port would collide with whatever else on the
- *  machine picked the same number — and a second copy of Ezzy cannot happen, but a second
- *  whisper-server from some other app certainly can. */
+/** Ask the OS for a port nobody is using — a fixed port could collide with some other
+ *  app's own whisper-server on the same machine. */
 function freePort(): Promise<number> {
   return new Promise((resolve) => {
     const probe = createServer()
@@ -218,12 +205,13 @@ function sleep(ms: number): Promise<void> {
 
 // ------------------------------------------------------------------- inference
 
-/** Transcribe one utterance. `prompt` is the highest-leverage mitigation for whisper never
- *  having heard of your software — see `voice.ts`, which builds it from what is installed.
+/** Transcribe one utterance. `prompt` is the highest-leverage mitigation for whisper
+ *  never having heard of your software — see voice.ts, which builds it from what is
+ *  installed.
  *
- *  Node's http rather than Electron's net, which is the opposite of the choice made for the
- *  model download: this request never leaves the machine, and pushing it through Chromium's
- *  stack would subject localhost to the system proxy for no benefit. */
+ *  Node's http rather than Electron's net — the opposite choice from the model download —
+ *  since this request never leaves the machine and pushing localhost through Chromium's
+ *  stack would subject it to the system proxy for no benefit. */
 export async function transcribe(wav: Buffer, prompt: string): Promise<string | null> {
   if (!listening) return null
   const startedAt = performance.now()
@@ -274,26 +262,22 @@ export async function transcribe(wav: Buffer, prompt: string): Promise<string | 
   })
 }
 
-/** The server takes its parameters as multipart fields alongside the audio, which is also how
- *  the prompt gets in per request rather than being fixed at spawn — so the app names it is
- *  seeded with are the ones installed now, not the ones installed when Ezzy started. */
+/** The server takes its parameters as multipart fields alongside the audio, which is
+ *  also how the prompt gets in per request rather than fixed at spawn — so it always
+ *  reflects the apps installed now, not the ones installed when Ezzy started. */
 function multipart(boundary: string, wav: Buffer, prompt: string, seconds: number): Buffer {
   const fields: Array<[string, string]> = [
     ['response_format', 'json'],
     ['no_timestamps', 'true'],
     ['language', 'en'],
-    // Deterministic decoding. The fallback temperatures exist to recover from a bad sample on
-    // long-form audio; on a two-second command they only add a re-decode.
+    // Deterministic decoding — the fallback temperatures exist to recover from a bad
+    // sample on long-form audio, and on a two-second command they only add a re-decode.
     ['temperature', '0'],
-    // Beam search rather than greedy decoding. Measured at +50ms on this machine with
-    // audio_ctx below — the encoder is the expensive half and beams only touch the decoder —
-    // which is a small price for the case it exists to fix: a word the greedy path commits to
-    // early and then cannot back out of.
-    //
-    // Still true on the larger model, and worth restating because the obvious way to claw back
-    // its latency is to reach for this first: measured over the same utterance, beam 5 took
-    // 1935-1966ms and greedy took 1831-1863ms. A hundred milliseconds. The encoder is where
-    // the time goes, which is why `audio_ctx` is the lever and this is not.
+    // Beam search over greedy: measured +50ms with audio_ctx below (the encoder is the
+    // expensive half; beams only touch the decoder), a small price for the case it fixes
+    // — a word greedy commits to early and cannot back out of. Still true on the larger
+    // model: measured over the same utterance, beam 5 took 1935-1966ms and greedy
+    // 1831-1863ms — a hundred milliseconds, while audio_ctx is the real lever.
     ['beam_size', '5'],
     ['prompt', prompt]
   ]

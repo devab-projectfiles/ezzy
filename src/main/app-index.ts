@@ -1,17 +1,11 @@
-/** The installed-app index.
+/** The installed-app index. Two sources, since neither alone is complete:
  *
- *  Two sources, because neither one is complete:
+ *   * The two Start Menu trees, as `.lnk` shortcuts — where every desktop app puts itself.
+ *   * `Get-StartApps`, for Store/UWP apps with no shortcut on disk, launched through
+ *     `shell:AppsFolder\<AppID>` instead.
  *
- *   * The two Start Menu trees, as `.lnk` shortcuts. This is where every desktop app puts
- *     itself, it needs no COM and no elevation, and the shortcut file is what the shell
- *     itself is handed to launch the app with its intended working directory and arguments.
- *   * `Get-StartApps`, for everything with no shortcut on disk — Store and UWP apps, whose
- *     entries live in the AppsFolder shell namespace rather than in the file system. Those
- *     launch through `shell:AppsFolder\<AppID>` instead.
- *
- *  The shortcut scan runs first and wins ties. It is a few hundred `readdir` calls and
- *  finishes in milliseconds; the PowerShell call costs most of a second to spawn, so it is
- *  never what the first panel of a session waits on. */
+ *  The shortcut scan runs first and wins ties — a few hundred `readdir` calls, finishing
+ *  in milliseconds; the PowerShell call costs most of a second to spawn. */
 
 import { app, shell } from 'electron'
 import { execFile } from 'child_process'
@@ -26,28 +20,21 @@ import { log, since } from './verbose'
 
 const run = promisify(execFile)
 
-/** How an app is started. Held only in the main process: the renderer sees `id` and nothing
- *  else, so an id arriving over IPC can never be an arbitrary path to execute. */
+/** How an app is started. Held only in the main process — the renderer sees `id` and
+ *  nothing else, so an id arriving over IPC can never be an arbitrary path to execute. */
 export type AppLaunch = { kind: 'shortcut'; path: string } | { kind: 'appsFolder'; appId: string }
 
 export interface IndexedApp {
   id: string
   name: string
   launch: AppLaunch
-  /** The file to read the row's icon out of. Not the `.lnk` itself: the shell hands back the
-   *  generic "shortcut" document for one of those, which looks like a missing icon rather
-   *  than like the app. Resolved to the shortcut's own icon file, or its target executable.
-   *
-   *  Null until that resolution has happened — it is a synchronous COM call, so it is done
-   *  in the background icon pass rather than in the scan — and null for good for a Start
-   *  Apps entry, which has no file behind it at all. Resolved values ride the disk cache, so
-   *  a warm start does none of this work again. */
+  /** The file to read the row's icon from — not the `.lnk` itself, which the shell hands
+   *  back as a generic "shortcut" document. Resolved to the shortcut's own icon or its
+   *  target executable, in the background icon pass rather than the scan (it is a
+   *  synchronous COM call). Null for good for a Start Apps entry, which has no file. */
   iconPath: string | null
-  /** Extra names the user has given this app. Empty for almost everything.
-   *
-   *  Held on the entry rather than looked up during matching, so `search.ts` never has to know
-   *  that a config file exists — an alias reaches it as one more name, which is exactly what
-   *  it is. */
+  /** Extra names the user has given this app, held on the entry so search.ts never has to
+   *  know a config file exists — an alias reaches it as one more name. */
   aliases: string[]
 }
 
@@ -56,41 +43,27 @@ let apps: IndexedApp[] = []
 let aliases: Record<string, string[]> = {}
 let listeners: Array<() => void> = []
 
-/** Shortcuts that are technically apps but that nobody means when they say "open X".
- *
- *  The Start Menu is full of these and they sort early, so without the filter the section
- *  opens on "7-Zip Help" and "Administrative Tools" rather than on anything launchable. */
+/** Shortcuts that are technically apps but that nobody means when they say "open X" — the
+ *  Start Menu is full of these and they sort early, which without this filter puts
+ *  "7-Zip Help" ahead of anything launchable. */
 const NOISE_PREFIX =
   /^(uninstall|install |remove |readme|read me|documentation|release notes|website|home page|visit |licence|license|changelog|what's new|troubleshoot|register |activate |repair |modify )/i
 
 const NOISE_SUFFIX =
   /( help| manual| documentation| tools| console| command prompt| setup| uninstaller| readme| website| on the web| home page|\(64-bit\)|\(32-bit\))$/i
 
-/** Whole names that are pure plumbing whatever else is installed.
- *
- *  "File Explorer" and "Control Panel" used to be on this list and are not any more: they read
- *  as plumbing next to the Start Menu's other entries, but they are things people ask for by
- *  name — "open file explorer" came back as "I couldn't find File Explorer" purely because
- *  this pattern had removed it from the index. */
+/** Whole names that are pure plumbing whatever else is installed. "File Explorer" and
+ *  "Control Panel" are deliberately not on this list — people ask for them by name. */
 const NOISE_EXACT = /^(help|support|administrative tools|windows tools|command prompt|run)$/i
 
 /** The name a shortcut is actually for, when its filename carries more than that.
  *
- *  A browser writes an installed web app's shortcut from the page's `<title>`, and a title is
- *  a sentence: "Skool: Discover Communities or Create Your Own". The colon cannot go in a
- *  filename, so what lands on disk is "Skool  Discover Communities or Create Your Own" — the
- *  whole tagline, as the application's name, with a double space where the colon was.
- *
- *  That is wrong twice. The panel draws it as the row, and a spoken name is matched against
- *  it — and nothing anyone says resembles a 46-character sentence, so the app could not be
- *  reached by voice at all. Measured: "open skool" found it only because the sentence happens
- *  to *start* with the word; "open school", which is what whisper writes for it, found
- *  nothing.
- *
- *  Cutting at the double space is narrow on purpose. It is not a rule about long names — it is
- *  a rule about a gap that no keyboard produces and no installer intends, which is the
- *  signature of a character the filesystem refused. Measured against both Start Menu trees on
- *  this machine: one name of 140 changes, and it is that one. */
+ *  A browser writes an installed web app's shortcut from the page `<title>`, so a colon in
+ *  the title (which cannot go in a filename) lands on disk as a double space — "Skool
+ *  Discover Communities or Create Your Own" instead of "Skool". That is unreachable by
+ *  voice (nothing anyone says resembles a 46-character sentence) and only sometimes found
+ *  by typing. Cutting at the double space is narrow on purpose — the signature of a
+ *  character the filesystem refused, not a rule about long names. */
 function brandOf(name: string): string {
   const brand = name.split(/\s{2,}/)[0].trim()
   return brand === '' ? name.trim() : brand
@@ -100,17 +73,10 @@ function isNoise(name: string): boolean {
   return NOISE_PREFIX.test(name) || NOISE_SUFFIX.test(name) || NOISE_EXACT.test(name)
 }
 
-/** An uninstaller wearing the application's name.
- *
- *  The name filters above catch "Uninstall Notepad++"; they cannot catch this machine's
- *  "Antigravity IDE" shortcut, which is left over from an old install and points at
- *  `unins000.exe`. Nothing about the entry says so — it sorts next to the real app, it is
- *  indistinguishable in the panel, and both a click and "open antigravity ide" would have
- *  started an uninstaller. The only place the truth is written down is the target.
- *
- *  Reading the link is a synchronous COM call and it is not free: it took the Start Menu scan
- *  from 73ms to 219ms here. That is a background pass nothing waits on, and the alternative is
- *  an app whose voice commands can run an uninstaller. */
+/** An uninstaller wearing the application's name — the name filters above cannot catch a
+ *  leftover shortcut like "Antigravity IDE" that actually points at `unins000.exe`.
+ *  Reading the link costs real time in the scan (73ms -> 219ms here), which is a
+ *  background pass nothing waits on; the alternative is voice commands that can run one. */
 function isUninstaller(shortcut: string): boolean {
   try {
     const target = shell.readShortcutLink(shortcut).target
@@ -130,12 +96,12 @@ const UNINSTALLER_EXE = /^(unins\d*|uninst(all)?|setup|remove)\.exe$/i
 const SKIP_DIRECTORIES =
   /^(startup|administrative tools|windows administrative tools|windows system|windows tools|accessibility|windows powershell|windows accessories|maintenance)$/i
 
-/** A scan walks a few hundred directories, so it must never block the hotkey path. Depth is
- *  capped because a stray junction in the Start Menu tree would otherwise recurse forever. */
+/** A scan walks a few hundred directories, so it must never block the hotkey path. Capped
+ *  so a stray junction in the Start Menu tree cannot recurse forever. */
 const MAX_DEPTH = 5
 
-/** PowerShell start-up dominates this call. If it has not answered by now something is
- *  wrong with it, and the shortcut half of the index is a perfectly usable app list. */
+/** PowerShell start-up dominates this call — if it has not answered by now, the shortcut
+ *  half of the index is still a perfectly usable app list. */
 const START_APPS_TIMEOUT_MS = 15_000
 
 function cacheFilePath(): string {
@@ -151,11 +117,9 @@ function startMenuRoots(): string[] {
   return roots
 }
 
-/** Cached to disk, refreshed on startup. The cache is read first so the very
- *  first panel of a session has apps in it, then the rescan corrects it in the background. */
+/** Cached to disk, refreshed on startup — read first so the first panel of a session has
+ *  apps in it, then the rescan corrects it in the background. */
 export async function startAppIndex(): Promise<void> {
-  // The user's own names first, so the cache and the scan both build entries that already
-  // carry them rather than entries that get corrected a moment later.
   aliases = getConfig().aliases
   await loadCache()
   await refreshAppIndex()
@@ -165,12 +129,9 @@ async function loadCache(): Promise<void> {
   try {
     const raw = JSON.parse(await readFile(cacheFilePath(), 'utf8')) as unknown
     if (!Array.isArray(raw)) return
-    // The cache is a plain file on disk and can be edited or truncated; validate it rather
-    // than trusting it into the renderer — and, now that it carries launch instructions,
-    // rather than trusting it into the shell either.
-    // Normalised rather than trusted: the cache on disk predates aliases, so an entry from
-    // an older version arrives without the field, and `labelsOf` spreads it. Filling it here
-    // also means the user's names apply to a cold start, before any scan has run.
+    // Validated rather than trusted — this is a plain file on disk, and it carries launch
+    // instructions. Aliases are filled in here too, since an older cache predates the
+    // field and this also lets the user's names apply to a cold start.
     apps = withCustom(
       raw.filter(isIndexedApp).map((entry) => ({ ...entry, aliases: aliases[entry.id] ?? [] }))
     )
@@ -202,16 +163,15 @@ export async function refreshAppIndex(): Promise<void> {
   publish(found)
   since(`app index: ${found.size} shortcuts scanned`, startedAt)
 
-  // Icons for the shortcuts just found. Deliberately not awaited before publishing above:
-  // the names are what make the section usable, and they are already in the renderer's
-  // hands. The whole batch re-publishes once at the end.
+  // Not awaited before publishing above — the names are already usable, and this whole
+  // batch re-publishes once at the end with icons attached.
   void requestIcons([...found.values()], iconPathFor, () => {
     notify()
     void saveCache()
   })
 
-  // The Store half. It arrives second and adds only what the shortcut scan did not have,
-  // so a slow or failing PowerShell costs names nobody has installed rather than the index.
+  // Arrives second and adds only what the shortcut scan did not have, so a slow or
+  // failing PowerShell costs names nobody has installed rather than the index itself.
   const startApps = await collectStartApps()
   let added = 0
   for (const entry of startApps) {
@@ -225,9 +185,9 @@ export async function refreshAppIndex(): Promise<void> {
   await saveCache()
 }
 
-/** Written twice per refresh: once when the names are known, and again once the icon pass
- *  has resolved every shortcut's target — that second write is what makes a warm start skip
- *  the COM calls entirely. */
+/** Written twice per refresh: once when the names are known, again once the icon pass has
+ *  resolved every shortcut's target — the second write is what lets a warm start skip the
+ *  COM calls entirely. */
 async function saveCache(): Promise<void> {
   try {
     await writeFile(cacheFilePath(), JSON.stringify(apps), 'utf8')
@@ -237,8 +197,8 @@ async function saveCache(): Promise<void> {
 }
 
 function publish(found: Map<string, IndexedApp>): void {
-  // The hand-added ones go in on every publish, or a rescan would drop them until the next
-  // time settings changed.
+  // Hand-added apps go in on every publish, or a rescan would drop them until settings
+  // changed again.
   apps = withCustom([...found.values()]).sort((a, b) => a.name.localeCompare(b.name))
   notify()
 }
@@ -280,15 +240,10 @@ async function collect(
   }
 }
 
-/** Where an entry's icon actually lives, resolving and remembering it on first use.
- *
- *  `app.getFileIcon` on a `.lnk` returns the generic shortcut document — measured, and it is
- *  what made every app row look like an unrecognised file while the window rows, which point
- *  at real executables, came out right. Reading the link gives either an explicit icon file
- *  the installer set or the target executable, and the shell knows both of those.
- *
- *  Falls back to the shortcut itself rather than to nothing: a generic icon is still better
- *  than a row that will keep asking for one it can never have. */
+/** Where an entry's icon actually lives, resolved and remembered on first use.
+ *  `app.getFileIcon` on a `.lnk` returns the generic shortcut document, so the link is
+ *  read instead for an explicit icon file or the target executable. Falls back to the
+ *  shortcut itself rather than to nothing. */
 function iconPathFor(entry: IndexedApp): string | null {
   if (entry.iconPath !== null) return entry.iconPath
   if (entry.launch.kind !== 'shortcut') return null
@@ -297,12 +252,11 @@ function iconPathFor(entry: IndexedApp): string | null {
   try {
     const link = shell.readShortcutLink(shortcut)
     // An explicit icon is often a `.dll` or a multi-icon `.ico` addressed by index, which
-    // getFileIcon cannot select from — so it is only used when it is a file in its own right.
+    // getFileIcon cannot select from — only used when it is a file in its own right.
     if (link.icon && !link.iconIndex) entry.iconPath = link.icon
     else if (link.target) entry.iconPath = link.target
   } catch {
-    // Not every `.lnk` is a shell link the API will parse, and an installer can leave one
-    // pointing at something uninstalled.
+    // Not every `.lnk` is a shell link the API will parse.
   }
   return entry.iconPath
 }
@@ -312,11 +266,9 @@ interface StartAppRow {
   AppID?: unknown
 }
 
-/** UWP and anything else with no shortcut on disk.
- *
- *  `-NoProfile` matters: a user profile script can print to stdout and would corrupt the
- *  JSON. The output is forced to an array because ConvertTo-Json emits a bare object when
- *  the pipeline has exactly one row, which is rare here but not impossible. */
+/** UWP and anything else with no shortcut on disk. `-NoProfile` matters — a user profile
+ *  script printing to stdout would corrupt the JSON. Forced to an array since
+ *  ConvertTo-Json emits a bare object for a single-row pipeline. */
 async function collectStartApps(): Promise<IndexedApp[]> {
   const startedAt = performance.now()
   try {
@@ -337,15 +289,13 @@ async function collectStartApps(): Promise<IndexedApp[]> {
     const rows: IndexedApp[] = []
     const seen = new Set<string>()
     for (const row of parsed as StartAppRow[]) {
-      // Through `brandOf` for the same reason the shortcut scan is: this list carries the
-      // same web apps under the same page-title names, and without it the two sources
-      // disagree about what one app is called and both end up in the index.
+      // Through brandOf for the same reason as the shortcut scan — this list carries the
+      // same web apps under the same page-title names.
       const name = typeof row?.Name === 'string' ? brandOf(row.Name) : ''
       const appId = typeof row?.AppID === 'string' ? row.AppID.trim() : ''
       if (name === '' || appId === '' || isNoise(name)) continue
-      // Get-StartApps lists desktop apps too, with a shortcut path as the AppID. Those are
-      // already in the index from the file scan, and going through AppsFolder for them
-      // would lose the arguments the shortcut carries.
+      // Desktop apps appear here too with a shortcut path as the AppID — already in the
+      // index from the file scan, and AppsFolder would lose the shortcut's arguments.
       if (appId.includes('\\') || appId.includes('/')) continue
       const key = name.toLowerCase()
       if (seen.has(key)) continue
@@ -361,18 +311,14 @@ async function collectStartApps(): Promise<IndexedApp[]> {
     since(`Get-StartApps: ${rows.length} entries`, startedAt)
     return rows
   } catch (err) {
-    // A machine with PowerShell locked down still gets every desktop app from the file
-    // scan, so this is a smaller index rather than a broken one.
     console.error('[ezzy] Get-StartApps failed, using the shortcut scan alone:', err)
     return []
   }
 }
 
-/** The apps that are not currently running, given the window list's app names.
- *
- *  Matching is by normalised substring in either direction, because the two names come from
- *  different places and rarely agree exactly: the shortcut says "Google Chrome", the process
- *  says "chrome"; the shortcut says "Visual Studio Code", the process says "Code". */
+/** Apps not currently running, given the window list's app names. Matched by normalised
+ *  substring in either direction, since the two names rarely agree exactly ("Google
+ *  Chrome" the shortcut, "chrome" the process). */
 export function appsNotRunning(runningAppNames: string[]): IndexedApp[] {
   const running = runningAppNames
     .map(normalise)
@@ -389,9 +335,9 @@ function normalise(value: string): string {
   return value.toLowerCase().replace(/[^a-z0-9]/g, '')
 }
 
-/** Strip an indexed app down to what the renderer is allowed to see, and attach whatever
- *  icon has been read for it so far. Store apps have no file to read one from, so they keep
- *  the outline glyph. */
+/** Strip an indexed app down to what the renderer is allowed to see, with whatever icon
+ *  has been read so far. Store apps have no file to read one from, so they keep the
+ *  outline glyph. */
 export function toEzzyApp(entry: IndexedApp): EzzyApp {
   const icon = cachedIcon(entry.iconPath)
   return icon === undefined
@@ -399,14 +345,8 @@ export function toEzzyApp(entry: IndexedApp): EzzyApp {
     : { id: entry.id, name: entry.name, icon }
 }
 
-/** Every app the index knows about, running or not. The panel wants `appsNotRunning`, which
- *  is a different question — a voice command saying "open chrome" has to reach Chrome whether
- *  or not a window of it is already up. */
-/** Adopt the user's own names for things.
- *
- *  Applied to the entries in place and then republished, so a name added in settings is
- *  usable in the next breath rather than after a rescan — the scan takes five seconds and
- *  nothing about a name the user just typed needs re-reading the Start Menu. */
+/** Adopt the user's own names for things, in place and republished — usable in the next
+ *  breath rather than after a five-second rescan. */
 export function setAliases(next: Record<string, string[]>): void {
   aliases = next
   apps = apps.map((entry) => ({ ...entry, aliases: aliases[entry.id] ?? [] }))
@@ -424,23 +364,18 @@ export function appCatalogue(): AppInfo[] {
   }))
 }
 
-/** The prefix that marks an entry as one the user added. It is part of the id so that
- *  nothing has to be looked up to know where an entry came from — the settings window needs
- *  it to decide whether removing it is even offered. */
+/** Marks an entry as one the user added, as part of the id so nothing has to be looked up
+ *  to know where it came from. */
 export const CUSTOM_PREFIX = 'custom:'
 
-/** Fold the hand-added applications into the index.
- *
- *  Added last and only when nothing already there has that id, so a real Start Menu entry
- *  always wins: if an app later gains a shortcut, the scanned one is the better record — it
- *  carries a resolvable icon — and the hand-added copy quietly stops mattering. */
+/** Fold the hand-added applications into the index. Added last and only when nothing
+ *  already there has that id — a real Start Menu entry always wins, since it carries a
+ *  resolvable icon. */
 function withCustom(found: IndexedApp[]): IndexedApp[] {
   const custom = getConfig().customApps.map((entry): IndexedApp => ({
     id: `${CUSTOM_PREFIX}${entry.id}`,
     name: entry.name,
     launch: { kind: 'shortcut', path: entry.path },
-    // The shell reads an icon out of an executable perfectly well, and out of a shortcut
-    // via the same resolution every other entry uses.
     iconPath: entry.path,
     aliases: aliases[`${CUSTOM_PREFIX}${entry.id}`] ?? []
   }))
@@ -460,8 +395,8 @@ export function indexedApps(): IndexedApp[] {
   return apps
 }
 
-/** Resolve an id that came back from the renderer. Returns undefined for anything the index
- *  did not produce — which is the only check standing between an IPC message and the shell. */
+/** Resolve an id from the renderer. Undefined for anything the index did not produce —
+ *  the only check standing between an IPC message and the shell. */
 export function findApp(id: string): IndexedApp | undefined {
   return apps.find((entry) => entry.id === id)
 }
