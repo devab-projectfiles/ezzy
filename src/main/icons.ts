@@ -1,32 +1,18 @@
-/** Icons for the panel's rows. `app.getFileIcon` already knows what every `.lnk` and
- *  `.exe` looks like, so nothing here parses an ICO or a PE resource section — this just
- *  caches the answers, since reading a few hundred costs seconds cold and nothing warm.
- *
- *  Reading an icon is never on the path to a usable panel — every consumer asks for the
- *  cached value synchronously, gets `undefined` on a miss, and draws the outline glyph;
- *  the fetch lands later and the list re-publishes. Rows are capped upstream
- *  (MAX_APP_ROWS) rather than the icons being shrunk here, since the data URLs cross IPC
- *  on every keystroke. */
-
 import { app } from 'electron'
 import { readFile, writeFile } from 'fs/promises'
 import { join } from 'path'
 import { log, since } from './verbose'
 
-/** Absolute file path -> PNG data URL. */
+// Reading an icon is never on the path to a usable panel: every consumer asks for the cached
+// value synchronously, gets undefined on a miss, and draws the outline glyph; the fetch lands
+// later and the list re-publishes.
 const icons = new Map<string, string>()
-/** Paths the shell had nothing for. Remembered so a miss is not retried on every publish. */
 const missing = new Set<string>()
-/** In-flight reads, so two rows naming the same executable share one call. */
 const inFlight = new Map<string, Promise<void>>()
 let dirty = false
 let saveTimer: ReturnType<typeof setTimeout> | null = null
 
-/** getFileIcon crosses into the shell for every call. Eight at a time keeps a first-run
- *  scan of a few hundred shortcuts off the main thread's back without serialising it. */
 const SCAN_CONCURRENCY = 8
-
-/** Writing the cache after every icon would mean a few hundred writes during a first scan. */
 const SAVE_DEBOUNCE_MS = 2_000
 
 function cacheFilePath(): string {
@@ -38,7 +24,6 @@ export async function loadIconCache(): Promise<void> {
     const raw = JSON.parse(await readFile(cacheFilePath(), 'utf8')) as unknown
     if (typeof raw !== 'object' || raw === null) return
     for (const [path, value] of Object.entries(raw as Record<string, unknown>)) {
-      // A file on disk that anything could have edited — only take what is the right shape.
       if (typeof value === 'string' && value.startsWith('data:image/')) icons.set(path, value)
     }
     log(`icon cache: ${icons.size} icons`)
@@ -47,16 +32,13 @@ export async function loadIconCache(): Promise<void> {
   }
 }
 
-/** The cached icon, or undefined. Synchronous by design: this is called while assembling a
- *  panel payload, and the panel must never wait on the shell. */
+// Synchronous by design: called while assembling a panel payload, which must never wait
+// on the shell.
 export function cachedIcon(path: string | null | undefined): string | undefined {
   if (!path) return undefined
   return icons.get(path)
 }
 
-/** Read one icon if it is not already known. Resolves when the cache has been updated —
- *  or immediately, if there is nothing to do. `onReady` fires only when something changed,
- *  so a caller can re-publish its list without checking. */
 export function requestIcon(path: string, onReady?: () => void): Promise<void> {
   if (icons.has(path) || missing.has(path)) return Promise.resolve()
   const existing = inFlight.get(path)
@@ -74,8 +56,6 @@ export function requestIcon(path: string, onReady?: () => void): Promise<void> {
       onReady?.()
     })
     .catch(() => {
-      // A shortcut that points at something uninstalled, or a path we may not read. The
-      // row keeps its glyph; there is nothing to report.
       missing.add(path)
     })
     .finally(() => {
@@ -85,14 +65,9 @@ export function requestIcon(path: string, onReady?: () => void): Promise<void> {
   return read
 }
 
-/** Read a whole batch, bounded. Used after an app-index scan, where the list is long and
- *  the result is wanted eventually rather than now. `onReady` fires once at the end.
- *
- *  Takes the items rather than the paths, and works out the path inside the pool, because
- *  for a shortcut that step is itself expensive: resolving one is a synchronous COM call
- *  measured at ~26ms, and doing all of them up front blocked the main thread for two
- *  seconds — long enough for the hotkey to feel stuck if it were pressed in that window.
- *  In here each one sits between two awaits instead, so nothing waits on more than one. */
+// Takes the items rather than the paths and works out each path inside the pool: for a
+// shortcut that step is a ~26ms synchronous COM call, and doing all of them up front once
+// blocked the main thread for two seconds.
 export async function requestIcons<T>(
   items: T[],
   pathFor: (item: T) => string | null,
@@ -120,8 +95,6 @@ export async function requestIcons<T>(
   onReady?.()
 }
 
-/** Trailing, not leading: a first scan reads a few hundred icons over twenty seconds, and a
- *  leading debounce would write the whole growing file ten times on the way through. */
 function scheduleSave(): void {
   if (saveTimer !== null) clearTimeout(saveTimer)
   saveTimer = setTimeout(() => {

@@ -50,8 +50,6 @@ import {
 import { checkForUpdates, installUpdate, updateStatus } from './updater'
 import { refreshTray } from './tray'
 
-/** The pair the dot draws from. Read at the moment it is asked for or broadcast, so the two
- *  halves can never be a version apart. */
 function dotMark(): DotMark {
   const config = getConfig()
   const own = config.customLogos.find((logo) => logo.id === config.dotLogo)
@@ -62,80 +60,52 @@ export function registerIpc(): void {
   ipcMain.on(IPC.dotDragStart, (_event, x: number, y: number) => beginDotDrag({ x, y }))
   ipcMain.on(IPC.dotDragMove, (_event, x: number, y: number) => moveDotDrag({ x, y }))
   ipcMain.on(IPC.dotDragEnd, () => endDotDrag())
-  // The renderer measures the pill against its own text, so the main process's hover
-  // rectangle matches what is actually drawn.
   ipcMain.on(IPC.setPillWidth, (_event, width: number) => setPillWidth(width))
   ipcMain.handle(IPC.getPillSide, () => currentPillSide())
   ipcMain.on(IPC.panelClose, () => hidePanel())
-  // The panel is sized to its list, and only the renderer knows how tall that came out.
   ipcMain.on(IPC.setPanelHeight, (_event, height: number) => setPanelHeight(height))
-  // The panel shows the hotkey actually in force, which is not always the configured one.
   ipcMain.handle(IPC.getHotkey, () => activeHotkey() ?? getConfig().hotkey)
 
   ipcMain.handle(IPC.panelData, () => panelData())
   ipcMain.handle(IPC.focusWindow, (_event, id: number) => {
-    // Focus first, dismiss second. The search bar is the foreground window at this
-    // point, which is what makes SetForegroundWindow legal for us — hiding it first would
-    // hand the foreground back to the OS and put focus.ts back on its fallback path for no
-    // reason.
+    // Focus first, dismiss second: the search bar is the foreground window here, which is
+    // what makes SetForegroundWindow legal for us.
     const focused = focusWindow(id)
     if (focused) hidePanel()
-    // A row whose window died since the panel opened would otherwise stay on screen doing
-    // nothing every time it is clicked. Dropping it re-publishes the list, and the app it
-    // belonged to reappears under APPS where it can actually be launched.
     else if (dropIfGone(id)) publishPanelData(panelData())
     return focused
   })
   ipcMain.handle(IPC.launchApp, async (_event, id: string) => {
-    // Unlike focusing, dismiss first: a launch takes as long as the app takes to start, and
-    // leaving the panel up over it would read as the click not having registered.
+    // Unlike focusing, dismiss first: a launch takes as long as the app takes to start.
     hidePanel()
     return launchApp(id)
   })
   ipcMain.handle(IPC.openDirect, async () => {
     hidePanel()
-    // No target crosses the bridge — the main process opens the one it resolved from the
-    // query it was already holding.
     return openDirect()
   })
 
-  // Typing happens in the search-bar window and the results are drawn in the panel window,
-  // so the query has to pass through here whatever else it does. Matching runs in the main
-  // process for that reason; see search.ts.
   ipcMain.on(IPC.searchQuery, (_event, query: string) => {
     sendToPanel(IPC.panelChanged, setQuery(query))
   })
-  // The panel is deliberately unfocusable, so it never sees a key event of its own.
   ipcMain.on(IPC.searchNav, (_event, key: NavKey) => sendToPanel(IPC.panelNav, key))
 
-  // ------------------------------------------------------------------- voice
-  // The search bar draws the voice state and the dot's renderer does the recording, so both
-  // halves of push-to-talk cross here. Neither renderer decides anything: the dot is told when
-  // to record and hands back bytes, and the search bar is told what to display.
   ipcMain.handle(IPC.getVoiceState, () => voiceState())
-  // The device is open and audio is arriving. Only now is it honest to say "listening".
   ipcMain.on(IPC.voiceReady, () => reportMicLive())
   ipcMain.on(IPC.voiceAudio, (_event, wav: ArrayBuffer, spoke: boolean) =>
     receiveAudio(Buffer.from(wav), spoke)
   )
   ipcMain.on(IPC.voiceFailed, (_event, kind: VoiceFailure) => reportCaptureFailure(kind))
-  // A microphone Windows has blocked must lead to the setting, not to a dead button.
   ipcMain.on(IPC.openMicSettings, () => void openMicrophoneSettings())
-  // The mic glyph is a button now. Same machinery as the hotkey hold, different gesture —
-  // see toggleListening for why a click cannot simply reuse press-and-release.
   ipcMain.on(IPC.toggleVoice, () => toggleListening())
 
-  // Ezzy reads no gestures — Windows maps a three-finger tap to a shortcut, and this is
-  // the page where that is done.
   ipcMain.on(IPC.openTouchpadSettings, () => {
     void openShellTarget('ms-settings:devices-touchpad', 'touchpad settings')
   })
 
   ipcMain.on(IPC.openSettings, () => {
-    // Dismiss first, like a launch: the settings window takes the foreground, and leaving a
-    // panel hovering over it would be a launcher sitting on top of its own settings. The
-    // search bar's blur would hide it a moment later anyway — doing it here makes the order
-    // deterministic rather than a race between two windows.
+    // Dismiss first: the settings window takes the foreground, and leaving a panel hovering
+    // over it would be a launcher sitting on top of its own settings.
     hidePanel()
     openSettingsWindow()
   })
@@ -144,9 +114,6 @@ export function registerIpc(): void {
   ipcMain.handle(IPC.getDotLogo, () => dotMark())
   ipcMain.handle(IPC.getCommands, () => commandCatalogue())
   ipcMain.handle(IPC.getApps, () => appCatalogue())
-  // The dialog runs here rather than in the renderer, so what comes back is a path a person
-  // actually clicked rather than a string the renderer chose. The name is seeded from the
-  // file so the common case needs no typing at all.
   ipcMain.handle(IPC.pickApp, async () => {
     const picked = await dialog.showOpenDialog({
       title: 'Add an application',
@@ -160,8 +127,6 @@ export function registerIpc(): void {
     if (picked.canceled || path === undefined) return null
     return { id: randomUUID(), name: basename(path, extname(path)), path }
   })
-  // Reads the file and hands its text back, nothing more — the cleaning happens in the
-  // settings renderer, which has a DOM parser; this process does not.
   ipcMain.handle(IPC.pickLogo, async (): Promise<PickedLogo> => {
     const picked = await dialog.showOpenDialog({
       title: 'Choose a mark for the dot',
@@ -196,9 +161,6 @@ export function registerIpc(): void {
     if (patch.dotLogo !== undefined || patch.customLogos !== undefined) {
       sendDotLogo(dotMark())
     }
-    // The tray shows the hotkey in force in both its tooltip and its first menu item, and
-    // that is exactly what a settings change can invalidate. Rebuilding the menu is cheap
-    // enough that it is not worth working out whether this particular change needed it.
     refreshTray()
     return result
   })

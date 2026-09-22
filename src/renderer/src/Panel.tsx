@@ -2,31 +2,22 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react
 import { EMPTY_PANEL_DATA, PANEL_HEADROOM } from '../../shared/types'
 import type { DirectTarget, EzzyApp, EzzyWindow, PanelData } from '../../shared/types'
 
-/** One selectable thing, flattened across the sections so the arrow keys walk a single
- *  list. The section headers are drawn from this, not the other way round. */
 type Row =
   | { kind: 'direct'; key: string; direct: DirectTarget }
   | { kind: 'window'; key: string; window: EzzyWindow }
   | { kind: 'app'; key: string; app: EzzyApp }
 
-/** The first row — with no query, the window the user came from (the panel takes the
- *  foreground on open, so that window sits at the top of the MRU); with a query, the
- *  best match, by the same rule. */
 const DEFAULT_SELECTION = 0
 
 function Panel(): React.JSX.Element {
   const [data, setData] = useState<PanelData>(EMPTY_PANEL_DATA)
-  /** `null` means nothing is selected — the state left after a scroll moves the rows out
-   *  from under a stationary cursor. Hover selection has to be able to say "not on
-   *  anything" or it goes stale, pointing at a row the pointer has left. */
+  // null means nothing is selected: the state left after a scroll moves the rows out from
+  // under a stationary cursor.
   const [selected, setSelected] = useState<number | null>(0)
-  /** Bumped on every open, and used as a key so the entrance animations replay — the
-   *  panel is hidden and shown, never destroyed. */
   const [openCount, setOpenCount] = useState(0)
 
-  /** Where the live selection came from. Pointer selection is only true while the
-   *  pointer is actually on the row, so anything that breaks that (scrolling, the
-   *  pointer leaving) drops it. Keyboard selection persists until the keys move it. */
+  // Pointer selection drops when the pointer leaves the row (scrolling, mouse exit);
+  // keyboard selection persists until the keys move it.
   const selectionSource = useRef<'pointer' | 'keyboard'>('keyboard')
 
   const surfaceRef = useRef<HTMLDivElement>(null)
@@ -35,8 +26,6 @@ function Panel(): React.JSX.Element {
   const rows = toRows(data)
 
   useEffect(() => {
-    // The first paint happens before the panel is ever shown, so seed from the cache
-    // here; every later open arrives through onPanelShown below.
     window.ezzy.getPanelData().then((next) => {
       setData(next)
       setSelected(DEFAULT_SELECTION)
@@ -56,13 +45,10 @@ function Panel(): React.JSX.Element {
     return window.ezzy.onPanelChanged((next) => {
       setData((previous) => {
         setSelected((index) => {
-          // A new query is a new list, answered by its first row.
           if (next.query !== previous.query)
             return next.windows.length + next.apps.length === 0 && !next.direct
               ? null
               : DEFAULT_SELECTION
-          // Otherwise keep the selection on the row the user was pointing at — a title
-          // change or an unrelated launch must not move it mid-keystroke.
           if (index === null) return null
           const anchor = toRows(previous)[index]
           const moved = anchor ? toRows(next).findIndex((row) => row.key === anchor.key) : -1
@@ -78,7 +64,6 @@ function Panel(): React.JSX.Element {
     (index: number) => {
       const row = rows[index]
       if (!row) return
-      // If Windows refuses the switch the panel stays open, so the miss is visible.
       if (row.kind === 'window') window.ezzy.focusWindow(row.window.id)
       else if (row.kind === 'app') window.ezzy.launchApp(row.app.id)
       else window.ezzy.openDirect()
@@ -86,14 +71,12 @@ function Panel(): React.JSX.Element {
     [rows]
   )
 
-  // The keyboard belongs to the search bar — this window is deliberately unfocusable,
-  // so navigation keys arrive forwarded over IPC instead.
+  // This window is deliberately unfocusable, so navigation keys arrive forwarded over IPC.
   useEffect(() => {
     return window.ezzy.onNavigate((key) => {
       switch (key) {
         case 'down':
           selectionSource.current = 'keyboard'
-          // From nothing, the first Down lands on the first row, not the second.
           setSelected((index) =>
             rows.length === 0 ? null : index === null ? 0 : (index + 1) % rows.length
           )
@@ -109,7 +92,6 @@ function Panel(): React.JSX.Element {
           )
           return
         case 'enter':
-          // Nothing selected means nothing to activate.
           if (selected !== null) activate(selected)
           return
         default:
@@ -117,19 +99,11 @@ function Panel(): React.JSX.Element {
     })
   }, [rows, selected, activate])
 
-  // Both sections have a fixed row count, so this measures the same number every time —
-  // what keeps APPS pinned instead of sliding up when a window closes. Still measured
-  // rather than hardcoded, so the arithmetic stays in the stylesheet. The direct row is
-  // the one thing that does change the height, since it is only there sometimes.
   useLayoutEffect(() => {
     const surface = surfaceRef.current
-    // PANEL_HEADROOM more than the content needs, since panel.css holds the surface
-    // that far short of the window's bottom edge — without it the content clips.
     if (surface) window.ezzy.setPanelHeight(surface.scrollHeight + PANEL_HEADROOM)
   }, [data])
 
-  // Keep the selected row in view. Nothing is measured — the selection is painted by
-  // the row itself, so there is no overlay geometry to drift.
   useLayoutEffect(() => {
     const row = selected === null ? null : rowRefs.current[selected]
     row?.scrollIntoView({ block: 'nearest' })
@@ -142,12 +116,8 @@ function Panel(): React.JSX.Element {
   const appRows = rows.slice(directCount + data.windows.length)
 
   return (
-    // The pointer leaving the panel entirely is the other way a hover goes stale — a
-    // fast exit can skip straight out of the window past the sections below.
     <div className="panel" key={openCount} onMouseLeave={dropPointerSelection}>
       <div className="panel__surface" ref={surfaceRef}>
-        {/* A URL or existing path the query named outright — one row, no header, since
-            it belongs to the query rather than to either list. */}
         {directRows.length > 0 && (
           <div className="panel__direct" onMouseLeave={dropPointerSelection}>
             {renderRows(directRows, 0)}
@@ -169,14 +139,11 @@ function Panel(): React.JSX.Element {
         <span className="panel__divider" aria-hidden="true" />
         <p className="panel__section">
           APPS
-          {/* The only way into settings that does not need the tray — parked here since
-              this header has spare room next to it. */}
           <button
             type="button"
             className="panel__gear"
             title="Settings"
             aria-label="Settings"
-            // Outside the focus model, like the rows — this window cannot take focus.
             tabIndex={-1}
             onMouseDown={(event) => event.preventDefault()}
             onClick={window.ezzy.openSettings}
@@ -200,25 +167,17 @@ function Panel(): React.JSX.Element {
     </div>
   )
 
-  /** Give up a selection the pointer is no longer entitled to. A keyboard selection is
-   *  left alone — moving the mouse away after an arrow key must not clear it. */
   function dropPointerSelection(): void {
     if (selectionSource.current === 'pointer') setSelected(null)
   }
 
-  /** Scrolling slides the rows out from under a pointer that has not moved, which would
-   *  otherwise leave the highlight on a row the pointer has left.
-   *
-   *  On `wheel` rather than `scroll`: `scrollIntoView` also fires `scroll` when the
-   *  arrow keys walk past a section's edge, and clearing on that would wipe a selection
-   *  the arrow keys had just set. A wheel only comes from the user. */
+  // On `wheel` rather than `scroll`: `scrollIntoView` also fires `scroll` when the arrow
+  // keys walk past a section's edge, and clearing on that would wipe a selection they just set.
   function dropStaleHover(event: React.WheelEvent<HTMLDivElement>): void {
     const section = event.currentTarget
     if (section.scrollHeight > section.clientHeight) dropPointerSelection()
   }
 
-  /** Rows for one section. `offset` maps a position inside the section onto the flat
-   *  index the arrow keys and the selection use. */
   function renderRows(sectionRows: Row[], offset: number): React.JSX.Element {
     return (
       <>
@@ -232,14 +191,11 @@ function Panel(): React.JSX.Element {
                 rowRefs.current[index] = node
               }}
               className={`panel__row${index === selected ? ' is-selected' : ''}`}
-              // Focus is not the selection model here — the arrow keys drive `selected`
-              // and the row paints itself from that.
               tabIndex={-1}
               onMouseDown={(event) => event.preventDefault()}
-              // 18ms stagger, capped so a long list does not take a second to finish.
               style={{ animationDelay: `${Math.min(index, 10) * 18}ms` }}
-              // mousemove, not mouseenter — scrolling the list under a stationary
-              // cursor fires enter events and would yank the selection away.
+              // mousemove, not mouseenter: scrolling the list under a stationary cursor
+              // fires enter events and would yank the selection away.
               onMouseMove={() => {
                 selectionSource.current = 'pointer'
                 setSelected(index)
@@ -266,8 +222,7 @@ function Panel(): React.JSX.Element {
   }
 }
 
-/** Lucide's `settings` gear (lucide.dev, ISC), verbatim — path and viewBox theirs, only
- *  the stroke width nudged so it does not wash out at the 14px this renders at. */
+/** Lucide's `settings` gear (lucide.dev, ISC), verbatim. */
 function GearGlyph(): React.JSX.Element {
   return (
     <svg
@@ -301,8 +256,6 @@ function hint(row: Row): string {
   return row.kind === 'app' ? 'launch' : 'open'
 }
 
-/** Windows first, then apps not running — MRU and alphabetical with no query, match
- *  order with one. A direct hit on a URL or path leads. */
 function toRows(data: PanelData): Row[] {
   const rows: Row[] = []
   if (data.direct) rows.push({ kind: 'direct', key: `d${data.direct.label}`, direct: data.direct })
@@ -311,8 +264,6 @@ function toRows(data: PanelData): Row[] {
   return rows
 }
 
-/** The real icon where the shell had one, the outline glyph where it did not — a Store
- *  app with no file behind it, an elevated process, or one simply not read yet. */
 function RowIcon({ row }: { row: Row }): React.JSX.Element {
   const icon =
     row.kind === 'window' ? row.window.icon : row.kind === 'app' ? row.app.icon : undefined

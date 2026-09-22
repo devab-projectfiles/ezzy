@@ -30,63 +30,40 @@ import { clearQuery, panelData } from './panel-data'
 
 let dotWindow: BrowserWindow | null = null
 let panelWindow: BrowserWindow | null = null
-/** The second glass surface: the 420x54 pill above the panel. */
 let searchWindow: BrowserWindow | null = null
 let quitting = false
 let drag: DragState | null = null
-/** The panel's current height. It hugs its content, so the renderer drives this. */
 let panelHeight = PANEL_MIN_HEIGHT
 
-/** Top-left of the square the collapsed circle would occupy on its own. The single source
- *  of truth for the dot's position — the real window is wider (the pill) and its `x`
- *  depends on which way it opens, so reading the live rectangle back would drift the dot
- *  by the pill's width. */
+/** Top-left of the square the collapsed circle occupies. Reading the live rectangle back
+ *  would drift with the pill's own width, so this is the source of truth instead. */
 let dotAnchor: DotPosition = { x: 0, y: 0 }
 let pillSide: PillDirection = 'left'
-/** Whether the cursor is over the pill. Owned here rather than in the renderer: the window
- *  is click-through when idle, and a click-through window receives no mouse events at all —
- *  so main watches the cursor position directly instead. */
 let hovered = false
-/** Whether the pill is actually drawn open. Tracks `hovered` except after a press, which
- *  snaps it shut while the cursor is still on it — the hit rectangle shrinks with it. */
 let pillOpen = false
 let hoverTimer: ReturnType<typeof setInterval> | null = null
-/** Whether the pill is drawing a voice status rather than the dot mark. Owned here because
- *  this process decides to send one. */
 let dotStatus = false
-/** How far the dot window has been slid off its anchor to keep an open status pill on
- *  screen. Zero except when a status is up on a dot parked past a display edge. */
 let pillSlide = 0
-/** The pill's opened width, measured from its own content by the renderer. */
 let pillWidth = PILL_VISUAL
 
-/** The sizes Windows actually granted, captured once at creation. `setPosition()` followed
- *  by `getBounds()` at a fractional scale factor returns a size larger than was set — every
- *  move would otherwise grow the window, and a grown always-on-top window swallows clicks
- *  meant for whatever is underneath it. So a fixed size is passed on every move instead. */
+/** Granted once at creation and reused on every move — reading the size back at a
+ *  fractional scale factor returns a larger value than was set, which would grow the
+ *  window on every drag. */
 let pillFrame = { width: PILL_WINDOW, height: DOT_WINDOW }
-/** The collapsed circle's square footprint. Used for clamping and for anchoring the panel. */
 let dotFrame = { width: DOT_WINDOW, height: DOT_WINDOW }
-/** How much wider the window is than that square, i.e. how far the pill can open. */
 let pillDelta = PILL_DELTA
 
 interface DragState {
   pointerOrigin: DotPosition
   windowOrigin: DotPosition
-  /** The last position asked for, compared against the next move. */
   commanded: DotPosition
   startedAt: number
 }
 
 const IDLE: VoiceState = { kind: 'idle' }
-
-/** A drag still running after this long is a lost pointerup, not a patient user. */
 const MAX_DRAG_MS = 20_000
-
-/** Cursor sampling rate for hover, far cheaper than a pill-wide window swallowing clicks. */
 const HOVER_POLL_MS = 30
 
-/** Set from the tray Quit item so the close handlers stop hiding and let the app exit. */
 export function setQuitting(value: boolean): void {
   quitting = value
 }
@@ -104,8 +81,8 @@ export function createWindows(): void {
     transparent: true,
     backgroundColor: '#00000000',
     hasShadow: false,
-    // DWM's rounded rectangle would otherwise composite as an opaque dark plate behind a
-    // transparent window, at the system radius rather than ours — every corner is drawn in CSS.
+    // DWM's own rounded corners composite as an opaque plate on a transparent window;
+    // every corner here is drawn in CSS instead.
     roundedCorners: false,
     resizable: false,
     maximizable: false,
@@ -113,7 +90,6 @@ export function createWindows(): void {
     fullscreenable: false,
     skipTaskbar: true,
     alwaysOnTop: true,
-    // If the dot takes focus we lose track of which window was in front.
     focusable: false,
     show: false,
     webPreferences: webPreferences()
@@ -122,7 +98,6 @@ export function createWindows(): void {
   pillFrame = { width: granted.width, height: granted.height }
   dotFrame = { width: granted.height, height: granted.height }
   pillDelta = granted.width - granted.height
-  // Click-through until the cursor is actually over the pill.
   dotWindow.setIgnoreMouseEvents(true)
   applyAlwaysPresent(dotWindow)
   clampDotIntoBounds()
@@ -130,14 +105,8 @@ export function createWindows(): void {
   dotWindow.once('ready-to-show', () => dotWindow?.showInactive())
   loadRenderer(dotWindow, 'dot')
 
-  // The search bar and the panel are separate windows so the 11px gap between them shows
-  // the desktop rather than a seam. They move as one unit.
   searchWindow = createGlassWindow(SEARCH_HEIGHT)
   panelWindow = createGlassWindow(PANEL_MIN_HEIGHT)
-
-  // The search bar holds the text input and takes focus; the panel is unfocusable so a
-  // click on a row cannot pull focus out of the input mid-word. Arrow keys and Enter reach
-  // it by being forwarded (IPC.panelNav).
   panelWindow.setFocusable(false)
 
   searchWindow.on('blur', () => {
@@ -150,9 +119,6 @@ export function createWindows(): void {
   loadRenderer(panelWindow, 'panel')
 }
 
-/** One of the two glass surfaces — same window underneath, only height and contents differ.
- *  `transparent: true`, not acrylic: acrylic follows the Windows theme and frosts the
- *  surface into a milky slab, and needs a window region that is not anti-aliased. */
 function createGlassWindow(height: number): BrowserWindow {
   const win = new BrowserWindow({
     width: PANEL_WIDTH,
@@ -160,7 +126,6 @@ function createGlassWindow(height: number): BrowserWindow {
     frame: false,
     transparent: true,
     backgroundColor: '#00000000',
-    // The OS shadow draws around the window's square, not the rounded surface inside it.
     hasShadow: false,
     roundedCorners: false,
     resizable: false,
@@ -176,8 +141,6 @@ function createGlassWindow(height: number): BrowserWindow {
   return win
 }
 
-/** The only permission Ezzy has any use for is the microphone, for push-to-talk. Everything
- *  else is refused rather than left to Electron's more permissive default. */
 function applyPermissionPolicy(): void {
   session.defaultSession.setPermissionRequestHandler((_contents, permission, callback) => {
     if (permission !== 'media') log(`refused a "${permission}" permission request`)
@@ -191,9 +154,8 @@ function applyPermissionPolicy(): void {
 export function webPreferences(): Electron.WebPreferences {
   return {
     preload: join(__dirname, '../preload/index.js'),
-    // Chromium gates speech synthesis behind a user gesture; these windows are never
-    // clicked (dragged, or triggered by a global hotkey), so confirmations would be
-    // silently dropped without this.
+    // No user gesture ever reaches these windows, so speech synthesis needs this or
+    // Chromium queues and silently drops it.
     autoplayPolicy: 'no-user-gesture-required',
     contextIsolation: true,
     nodeIntegration: false,
@@ -201,8 +163,6 @@ export function webPreferences(): Electron.WebPreferences {
   }
 }
 
-/** The four pages, one per window. Settings is the odd one out — an ordinary framed window
- *  built in settings-window.ts, borrowing only the loading and security flags from here. */
 export type RendererPage = 'dot' | 'searchbar' | 'panel' | 'settings'
 
 export function loadRenderer(win: BrowserWindow, page: RendererPage): void {
@@ -221,7 +181,6 @@ export function loadRenderer(win: BrowserWindow, page: RendererPage): void {
 }
 
 function applyAlwaysPresent(win: BrowserWindow): void {
-  // The plain alwaysOnTop flag sits below too many things; this level clears most of them.
   win.setAlwaysOnTop(true, 'screen-saver')
   win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true })
   win.setSkipTaskbar(true)
@@ -239,21 +198,14 @@ function moveDotTo(position: DotPosition): void {
   applyDotBounds()
 }
 
-/** The one place the dot window is positioned. Always a pure move — resizing a transparent
- *  window on Windows re-creates its composited surface and flashes.
- *
- *  The pill opens leftward, so spare width sits on the left and the circle rides the right
- *  edge; parked against the left of a display it mirrors instead. */
+/** Always a pure move, never a resize — resizing a transparent window on Windows
+ *  re-creates its surface and flashes. */
 function applyDotBounds(): void {
   if (!dotWindow) return
   const display = screen.getDisplayMatching(dotBoundsAt(dotAnchor))
   const opensLeft = dotAnchor.x - pillDelta >= display.bounds.x
   const anchored = opensLeft ? dotAnchor.x - pillDelta : dotAnchor.x
 
-  // The dot tucks half past a screen edge when idle and slides fully on screen while its
-  // pill is open — otherwise an open pill's text runs off the edge with it ("Switching to
-  // Notepad" drew as "Switching to Notep"). Skipped during a drag, or the window would lag
-  // the cursor as it neared the edge; moveDotDrag folds any slide into the anchor instead.
   let x = anchored
   if (!drag && (dotStatus || pillOpen)) {
     const left = display.bounds.x
@@ -274,36 +226,24 @@ export function currentPillSide(): PillDirection {
   return pillSide
 }
 
-/** The renderer measures the pill against its own text and reports the result, so hover
- *  hit-testing matches what is actually drawn. */
 export function setPillWidth(width: number): void {
   pillWidth = Math.max(DOT_VISUAL, Math.min(Math.round(width), STATUS_VISUAL))
 }
 
-/** The pill's rectangle in screen coordinates. Grows once hovered, which gives the hover
- *  test hysteresis for free: the cursor must reach the circle to open the pill, but may
- *  then roam anywhere over it without closing it. */
 function pillScreenRect(): Electron.Rectangle {
   const inset = visualInset()
   const anchoredX = dotAnchor.x + inset
-  // Plus any slide: the circle is drawn at a fixed place inside the window, so a slid
-  // window is a moved circle.
   const circleX = anchoredX + pillSlide
   const width = pillOpen ? pillWidth : DOT_VISUAL
   const x = pillSide === 'left' ? circleX + DOT_VISUAL - width : circleX
   const y = dotAnchor.y + inset
   if (pillSlide === 0) return { x, y, width, height: DOT_VISUAL }
 
-  // Also covers where the circle was BEFORE the slide — opening the pill moves the window,
-  // and the cursor that opened it sits on the untucked circle's old position. Without this
-  // union the cursor lands outside the instant the window moves and the pair oscillates.
   const left = Math.min(x, anchoredX)
   const right = Math.max(x + width, anchoredX + DOT_VISUAL)
   return { x: left, y, width: right - left, height: DOT_VISUAL }
 }
 
-/** Stands down during a drag — reading the cursor is self-referential while the window is
- *  being moved under it. */
 export function watchCursor(): void {
   hoverTimer = setInterval(() => {
     if (!dotWindow || drag) return
@@ -333,19 +273,12 @@ function dotBoundsAt(position: DotPosition): Electron.Rectangle {
   return { ...position, ...dotFrame }
 }
 
-/** Transparent margin between the collapsed square and the glass circle drawn inside it.
- *  Derived from the granted frame rather than the constant — Windows rarely grants exactly
- *  the size asked for. */
 function visualInset(): number {
   return Math.round((dotFrame.width - DOT_VISUAL) / 2)
 }
 
-/** How much of the dot may be tucked past a display edge — half the collapsed square, which
- *  leaves exactly half the visible circle on screen. Tray > Reset dot position undoes it. */
 const OFF_SCREEN_ALLOWANCE = 0.5
 
-/** Clamped against the display's full bounds rather than its work area, so the dot can sit
- *  past the taskbar instead of stopping on top of it. */
 function clampBounds(bounds: Electron.Rectangle, display: Display): DotPosition {
   const area = display.bounds
   const slackX = Math.round(bounds.width * OFF_SCREEN_ALLOWANCE)
@@ -372,8 +305,6 @@ function restoreDotPosition(): DotPosition {
   return defaultDotPosition()
 }
 
-/** Right edge, vertically centred, with the visible circle — not the padded square — inset
- *  from the work area. */
 function defaultDotPosition(): DotPosition {
   const area = screen.getPrimaryDisplay().workArea
   return {
@@ -386,7 +317,6 @@ function persistDotPosition(): void {
   if (!dotWindow) return
   const bounds = dotBoundsAt(dotAnchor)
   const display = screen.getDisplayMatching(bounds)
-  // Clamped, so a position that is somehow off-screen is never restored next launch.
   const position = clampBounds(bounds, display)
   updateConfig({
     dotPositions: { ...getConfig().dotPositions, [String(display.id)]: position },
@@ -394,8 +324,6 @@ function persistDotPosition(): void {
   })
 }
 
-/** Re-clamp on display changes, or the dot ends up off-screen and unreachable. Not saved —
- *  Windows reports transient work areas while DPI contexts settle. */
 export function clampDotIntoBounds(): void {
   if (!dotWindow) return
   const live = dotWindow.getBounds()
@@ -417,15 +345,13 @@ export function watchDisplays(): void {
 
 // ---------------------------------------------------------------------- dragging
 
-// Driven entirely by screen coordinates the renderer reports from pointer events; the
-// window position is never read back mid-drag. Both are needed on a fractional scale
-// factor: setPosition() -> getBounds() rounds a pixel short each time, and
-// getCursorScreenPoint() moves in lockstep with this window, so a stationary mouse reports
-// a moving cursor. Together they walked the dot off the screen under a still mouse.
+// Driven by screen coordinates the renderer reports from pointer events, never by reading
+// the window position back mid-drag — on a fractional scale factor that rounds a pixel
+// short each time and the cursor position moves in lockstep with the window, which
+// together walked the dot off-screen under a still mouse.
 
 export function beginDotDrag(pointer: DotPosition): void {
   if (!dotWindow) return
-  // The renderer snaps the pill shut on press, so the hit rectangle follows it back down.
   pillOpen = false
   drag = {
     pointerOrigin: pointer,
@@ -442,8 +368,6 @@ export function moveDotDrag(pointer: DotPosition): void {
     endDotDrag()
     return
   }
-  // Any pill slide is folded into the anchor on the first real move rather than at the
-  // press, so the window does not jump and a stray click does not untuck a tucked dot.
   if (pillSlide !== 0) {
     dotAnchor = { x: dotAnchor.x + pillSlide, y: dotAnchor.y }
     drag.windowOrigin = { x: drag.windowOrigin.x + pillSlide, y: drag.windowOrigin.y }
@@ -468,7 +392,6 @@ export function endDotDrag(): void {
   persistDotPosition()
 }
 
-/** Tray rescue for a dot that has ended up somewhere unreachable. */
 export function resetDotPosition(): void {
   if (!dotWindow) return
   moveDotTo(defaultDotPosition())
@@ -479,7 +402,6 @@ export function resetDotPosition(): void {
 
 // ------------------------------------------------------------- search bar + panel
 
-/** The search bar sits 11px above the panel; both move as one unit anchored to the dot. */
 function layoutPair(): { search: Electron.Rectangle; panel: Electron.Rectangle } {
   const totalHeight = SEARCH_HEIGHT + SEARCH_PANEL_GAP + panelHeight
   const { x: left, y: top } = anchorToDot(PANEL_WIDTH, totalHeight)
@@ -494,9 +416,6 @@ function layoutPair(): { search: Electron.Rectangle; panel: Electron.Rectangle }
   }
 }
 
-/** Where a surface of this size opens next to the dot: whichever side has room, vertically
- *  centred, clamped into the work area. Measured from the visible circle, not the padded
- *  dot window, or the gap would silently include DOT_SLACK. */
 function anchorToDot(width: number, height: number): Electron.Rectangle {
   const inset = visualInset()
   const dot = {
@@ -524,8 +443,6 @@ function applyPairBounds(): void {
   panelWindow.setBounds(panel)
 }
 
-/** The panel hugs its list rather than being a fixed slab — the renderer measures its own
- *  content and reports it here, bounded between one row and ~8 before it scrolls. */
 export function setPanelHeight(height: number): void {
   const next = Math.round(Math.min(Math.max(height, PANEL_MIN_HEIGHT), PANEL_MAX_HEIGHT))
   if (next === panelHeight) return
@@ -542,8 +459,6 @@ export function togglePanel(): void {
   showPanel()
 }
 
-/** Push-to-talk reports on the search bar, so a hold that began with the panel shut has to
- *  bring it back up. Already-open is the common case and costs nothing. */
 export function showPanelForVoice(): void {
   if (panelWindow?.isVisible()) return
   showPanel()
@@ -552,30 +467,21 @@ export function showPanelForVoice(): void {
 function showPanel(): void {
   const startedAt = performance.now()
   if (!panelWindow || !searchWindow) return
-  // The search bar is about to draw whatever the pill was saying.
   sendToDot(IDLE)
   clearQuery()
   applyPairBounds()
-  // The list rides along with the show event instead of being fetched back — it is
-  // already in memory, so this costs one IPC hop instead of a round trip.
   panelWindow.webContents.send(IPC.panelShown, panelData())
   searchWindow.webContents.send(IPC.searchReset)
-  // The panel is unfocusable, so showInactive is what it gets; the search bar takes the
-  // foreground and every keystroke with it.
   panelWindow.showInactive()
   searchWindow.show()
   since('hotkey -> panel visible', startedAt)
 }
 
-/** Live updates while the panel is open. Skipped when hidden — the next show sends fresh
- *  data anyway. */
 export function publishPanelData(data: PanelData): void {
   if (!panelWindow || !panelWindow.isVisible()) return
   panelWindow.webContents.send(IPC.panelChanged, data)
 }
 
-/** A microphone opened from the search bar's own button has no other end once the panel
- *  goes with it. A listener rather than a call, since voice.ts imports this file. */
 let panelHiddenListener: (() => void) | null = null
 
 export function onPanelHidden(listener: () => void): void {
@@ -587,8 +493,6 @@ export function hidePanel(): void {
   panelWindow?.hide()
   searchWindow?.hide()
   clearQuery()
-  // Only when it was actually up — hidePanel is called defensively from several places,
-  // and firing on an already-closed panel would cancel a voice session mid-flight.
   if (wasOpen) panelHiddenListener?.()
 }
 
@@ -597,9 +501,6 @@ export function sendToPanel(channel: string, payload?: unknown): void {
   panelWindow.webContents.send(channel, payload)
 }
 
-/** Voice state goes to whichever surface is on screen — the search bar while the panel is
- *  up, the dot's own pill otherwise — never both. The pill is what survives the panel
- *  being dismissed, which is every successful command. */
 export function sendVoiceState(state: VoiceState): void {
   if (searchWindow?.isVisible()) {
     sendToDot(IDLE)
@@ -617,22 +518,16 @@ function sendToDot(state: VoiceState): void {
   applyDotBounds()
 }
 
-/** `speechSynthesis` is renderer-only, and the dot's renderer is the one always alive —
- *  the search bar exists only while the panel is open. */
 export function speakInDot(request: SpeechRequest): void {
   dotWindow?.webContents.send(IPC.speak, request)
 }
 
-/** Sent to all three — each window is its own document with its own stylesheet, so there
- *  is nothing shared to change centrally. Each also asks once on load, for a window
- *  created after the broadcast. */
 export function sendAppearance(appearance: Appearance): void {
   for (const win of [dotWindow, panelWindow, searchWindow]) {
     if (win && !win.isDestroyed()) win.webContents.send(IPC.appearance, appearance)
   }
 }
 
-/** Only the dot draws the mark, so unlike appearance this goes to one window. */
 export function sendDotLogo(mark: DotMark): void {
   if (dotWindow && !dotWindow.isDestroyed()) dotWindow.webContents.send(IPC.dotLogo, mark)
 }

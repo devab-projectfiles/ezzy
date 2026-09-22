@@ -1,12 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import type { VoiceState } from '../../shared/types'
 
-/** The search bar: its own 420x54 glass window, 11px above the panel. The only one of
- *  the three that takes focus, which makes it the app's keyboard — text goes to main for
- *  matching, navigation keys are forwarded to the unfocusable panel.
- *
- *  Also where voice reports itself. It does no recording (that is the always-alive dot
- *  window) and holds no state of its own — main sends one `VoiceState` and this draws it. */
 function SearchBar(): React.JSX.Element {
   const [query, setQuery] = useState('')
   const [voice, setVoice] = useState<VoiceState>({ kind: 'idle' })
@@ -14,21 +8,17 @@ function SearchBar(): React.JSX.Element {
 
   useEffect(() => {
     return window.ezzy.onSearchReset(() => {
-      // Only the field is cleared here: the main process drops the query itself when the
-      // panel opens or closes, so telling it again would just re-publish the same list.
       setQuery('')
-      // The window has just been shown and focused; the input inside it has to be told
-      // separately, and it has to happen after React has committed the cleared value or the
-      // caret lands after text that is about to disappear.
+      // Runs after React commits the cleared value, or the caret lands after text about
+      // to disappear.
       requestAnimationFrame(() => inputRef.current?.focus())
     })
   }, [])
 
-  // Autofocus for the very first open, which happens before any reset event is sent.
   useEffect(() => inputRef.current?.focus(), [])
 
-  // This window is hidden for most of a model download, and a hidden window is not sent state
-  // changes — so it asks for the current one every time it comes back up.
+  // A hidden window (most of a model download) is not sent state changes, so this asks for
+  // the current one every time it comes back up.
   useEffect(() => {
     const refresh = (): void => void window.ezzy.getVoiceState().then(setVoice)
     refresh()
@@ -54,12 +44,7 @@ function SearchBar(): React.JSX.Element {
         className={`searchbar__input${status ? ' is-status' : ''}`}
         type="text"
         value={query}
-        // The status replaces the placeholder rather than the field: the input keeps focus and
-        // keeps whatever was typed, so a voice command that misses leaves the user in a search
-        // bar they can just finish typing into.
         placeholder={status ?? 'Search or say a command'}
-        // The field is thrown away and rebuilt by the OS on every open; none of the
-        // browser's text conveniences belong on a launcher input.
         autoComplete="off"
         autoCorrect="off"
         spellCheck={false}
@@ -69,14 +54,11 @@ function SearchBar(): React.JSX.Element {
         }}
         onKeyDown={onKeyDown}
       />
-      {/* A microphone Windows has blocked must lead to the setting that unblocks it. */}
       {blocked && (
         <button type="button" className="searchbar__action" onClick={window.ezzy.openMicSettings}>
           Settings
         </button>
       )}
-      {/* A button, not decoration — clicking it starts listening the way holding the
-          hotkey does. `keepFocus` below stops the click moving focus off the input. */}
       <button
         type="button"
         className="searchbar__mic-button"
@@ -98,7 +80,6 @@ function SearchBar(): React.JSX.Element {
         window.ezzy.closePanel()
         return
       case 'ArrowDown':
-        // Otherwise the caret jumps to the end of the text on the way past.
         event.preventDefault()
         window.ezzy.navigate('down')
         return
@@ -114,9 +95,8 @@ function SearchBar(): React.JSX.Element {
     }
   }
 
-  /** Clicking the glass around the input must not move focus off it. Runs on mousedown,
-   *  before the click, so preventing the default keeps focus in the input while the
-   *  button's own `onClick` still fires — no extra handling needed on the buttons. */
+  // Runs on mousedown, before the click, so preventing the default keeps focus in the input
+  // while a button's own onClick still fires.
   function keepFocus(event: React.MouseEvent<HTMLDivElement>): void {
     if (event.target === inputRef.current) return
     event.preventDefault()
@@ -124,7 +104,6 @@ function SearchBar(): React.JSX.Element {
   }
 }
 
-/** 18px, 72% white. */
 function SearchGlyph(): React.JSX.Element {
   return (
     <svg className="searchbar__search" viewBox="0 0 18 18" aria-hidden="true">
@@ -139,8 +118,6 @@ function SearchGlyph(): React.JSX.Element {
   )
 }
 
-/** What the voice path is doing, in the words it should be read in. Null when there is
- *  nothing to say, which is most of the time. */
 function statusText(voice: VoiceState): string | null {
   switch (voice.kind) {
     case 'downloading':
@@ -158,8 +135,6 @@ function statusText(voice: VoiceState): string | null {
   }
 }
 
-/** 19px, 92% white. While listening it is the rim that pulses and not this glyph, so the
- *  only thing that changes here is its weight. */
 function MicGlyph({ state }: { state: VoiceState['kind'] }): React.JSX.Element {
   return (
     <svg

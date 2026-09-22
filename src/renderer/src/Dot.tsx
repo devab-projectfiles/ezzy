@@ -14,27 +14,20 @@ import cluster from '../assets/dots/cluster.svg?raw'
 import panels from '../assets/dots/panels.svg?raw'
 import { initSpeech, speak } from './speech'
 
-/** Pointer travel below this is a click with a shaky hand, not a drag. */
 const DRAG_THRESHOLD = 4
 
-/** The mark to draw. A choice of 'custom' with nothing saved falls back to the default rather
- *  than drawing an empty circle — the config file is hand-editable, and the two fields can be
- *  edited apart. */
+// A choice of 'custom' with nothing saved falls back to the default rather than an empty circle.
 function glyphFor(mark: DotMark): string {
   if (mark.markup !== null) return mark.markup
   return GLYPHS[mark.logo as BuiltInLogo] ?? GLYPHS.cards
 }
 
-/** The marks, inlined rather than loaded as files so the dot can tint them with
- *  `currentColor` — an <img> cannot inherit colour, and the pill dims its mark with the rest
- *  of itself. `cards` is the original and the only one dot.css animates, because it is the
- *  only one drawn as three pieces with ids. */
+// Inlined rather than loaded as files so the dot can tint them with `currentColor`.
 const GLYPHS: Record<BuiltInLogo, string> = { cards, orbit, cluster, panels }
 
 function Dot(): React.JSX.Element {
   const [dragging, setDragging] = useState(false)
   const [hovered, setHovered] = useState(false)
-  /** Suppresses the width transition, so a press can snap the pill shut with no animation. */
   const [instant, setInstant] = useState(false)
   const [side, setSide] = useState<PillDirection>('left')
   const [hotkey, setHotkey] = useState('')
@@ -45,13 +38,10 @@ function Dot(): React.JSX.Element {
   const contentRef = useRef<HTMLSpanElement>(null)
   const origin = useRef<{ x: number; y: number } | null>(null)
   const moved = useRef(false)
-  /** Set when a drag ends. The cursor is still on the pill then, and reopening under it is
-   *  not a hover the user asked for — so the pill stays shut until the cursor leaves. */
+  // Set when a drag ends: the cursor is still on the pill, and reopening under it isn't a
+  // hover the user asked for.
   const suppressed = useRef(false)
 
-  // `speechSynthesis` is renderer-only, and this is the renderer that never goes away —
-  // a confirmation almost always arrives just after the panel has been dismissed. Nothing
-  // about it is decided here; main/speech.ts sends the finished sentence.
   useEffect(() => {
     const stopWatchingVoices = initSpeech()
     const stopListening = window.ezzy.onSpeak(speak)
@@ -61,57 +51,42 @@ function Dot(): React.JSX.Element {
     }
   }, [])
 
-  // The pill itself carries voice feedback, rather than a card of its own — the main
-  // process only sends a state here when the search bar is not up to draw it, so the
-  // two never both speak.
   useEffect(() => {
     return window.ezzy.onVoiceState(setVoice)
   }, [])
 
-  // The pill shows the hotkey actually in force, which is not always the configured one.
   useEffect(() => {
     window.ezzy.getHotkey().then((accelerator) => setHotkey(accelerator.split('+').join(' + ')))
   }, [])
 
-  // Which window edge the circle rides on. It flips when the dot is dragged close enough to
-  // the left of a display that the pill would open off-screen.
   useEffect(() => {
     window.ezzy.getPillSide().then(setSide)
     return window.ezzy.onPillSide(setSide)
   }, [])
 
-  // Asks once and subscribes, for the same reason appearance does: this window is created
-  // before Settings exists, so it would miss a broadcast, and it outlives any single change.
   useEffect(() => {
     void window.ezzy.getDotLogo().then(setMark)
     return window.ezzy.onDotLogo(setMark)
   }, [])
 
   const status = statusFor(voice)
-  /** A status holds the pill open on its own — that is the whole point of it. */
   const expanded = hovered || status !== null
-  // Pulled out as strings because the effect below is keyed on them: `status` is a fresh
-  // object every render, and depending on it would re-measure and re-send the width on every
-  // pointer move of a drag.
+  // Pulled out as strings: `status` is a fresh object every render, and depending on it would
+  // re-measure on every pointer move of a drag.
   const message = status?.message ?? null
   const heard = status?.heard ?? null
 
-  // Open to exactly the content's width rather than a fixed 212px, so there is no dead space
-  // after the shortcut chip. Capped so the pill can never outgrow its window — and the cap
-  // differs by content: the hover label is short and fixed, a status is a whole sentence.
   useLayoutEffect(() => {
     const content = contentRef.current
     if (!content) return
     const cap = message === null ? PILL_VISUAL : STATUS_VISUAL
     const width = Math.min(DOT_VISUAL + content.offsetWidth, cap)
     setPillWidth(width)
-    // The main process hit-tests the cursor against this same rectangle.
     window.ezzy.setPillWidth(width)
   }, [hotkey, message, heard])
 
-  // Hover comes from the main process: the window is click-through while idle so that its
-  // mostly-empty rectangle does not swallow clicks, and a click-through window is never
-  // sent mouse events of its own.
+  // Hover comes from the main process: the window is click-through while idle so its
+  // mostly-empty rectangle doesn't swallow clicks.
   useEffect(() => {
     return window.ezzy.onDotHover((isHovered) => {
       if (isHovered) {
@@ -123,16 +98,14 @@ function Dot(): React.JSX.Element {
     })
   }, [])
 
-  // Restore the transition once the snapped-shut frame has been painted.
   useEffect(() => {
     if (!instant) return
     const id = setTimeout(() => setInstant(false), 0)
     return () => clearTimeout(id)
   }, [instant])
 
-  // Screen coordinates are reported from here rather than read in the main process: as the
-  // window moves under a still cursor, clientX and screenLeft shift by equal and opposite
-  // amounts, so screenX stays put where a main-process cursor read does not.
+  // Screen coordinates come from here, not the main process: as the window moves under a
+  // still cursor, screenX stays put where a main-process cursor read would not.
   const finish = (event: React.PointerEvent<HTMLButtonElement>): void => {
     if (!origin.current) return
     origin.current = null
@@ -142,15 +115,12 @@ function Dot(): React.JSX.Element {
       event.currentTarget.releasePointerCapture(event.pointerId)
     }
     window.ezzy.endDotDrag()
-    // The cursor is sitting on the pill wherever it was dropped. Reopening now would be the
-    // app talking to itself, so wait for the cursor to leave and come back.
     suppressed.current = true
   }
 
   const onPointerDown = (event: React.PointerEvent<HTMLButtonElement>): void => {
     if (event.button !== 0) return
     event.currentTarget.setPointerCapture(event.pointerId)
-    // Shut instantly on press — an animated close under a double-click reads as a stutter.
     setInstant(true)
     setHovered(false)
     origin.current = { x: event.screenX, y: event.screenY }
@@ -162,8 +132,8 @@ function Dot(): React.JSX.Element {
   const onPointerMove = (event: React.PointerEvent<HTMLButtonElement>): void => {
     const start = origin.current
     if (!start) return
-    // A pointerup that never arrives would otherwise leave the dot dragging forever, so
-    // the live button state is treated as the ground truth.
+    // A pointerup that never arrives would leave the dot dragging forever, so live button
+    // state is treated as ground truth.
     if (event.buttons === 0) {
       finish(event)
       return
@@ -195,24 +165,16 @@ function Dot(): React.JSX.Element {
         onPointerCancel={finish}
         onLostPointerCapture={finish}
       >
-        {/* The leading 56px is the mark's slot, and while a command is in flight it is the
-            state's instead — a tick, a mic, a failure. The pill saying something is the same
-            gesture as the pill showing its name, which is what keeps this one component. */}
         {status ? (
           <span className="pill__glyph pill__glyph--state">
             <StateGlyph kind={voice.kind} />
           </span>
         ) : (
-          // The chosen mark. dot.svg is still the default, and its three card ids are what
-          // dot.css animates — the alternatives are single paths and sit still.
           <span className="pill__glyph" dangerouslySetInnerHTML={{ __html: glyphFor(mark) }} />
         )}
 
         {status ? (
           <span className="pill__status" ref={contentRef}>
-            {/* What was heard, above what is being done about it. A mangled name is the
-                commonest reason a command misses, and "I couldn't find Sigma" only makes
-                sense next to the word that produced it. */}
             {heard && <span className="pill__heard">“{heard}”</span>}
             <span className="pill__message">{message}</span>
           </span>
@@ -228,13 +190,11 @@ function Dot(): React.JSX.Element {
   )
 }
 
-/** What the pill should be saying, or null when it should just be the dot. */
 function statusFor(voice: VoiceState): { message: string; heard: string | null } | null {
   switch (voice.kind) {
     case 'downloading':
       return { message: `Downloading speech… ${voice.percent}%`, heard: null }
-    // Not "Listening…". The microphone is still opening, and telling someone to talk into a
-    // device that is not capturing yet is how the first word went missing.
+    // Not "Listening…": the microphone is still opening.
     case 'arming':
       return { message: 'Getting ready…', heard: null }
     case 'listening':
@@ -250,7 +210,6 @@ function statusFor(voice: VoiceState): { message: string; heard: string | null }
   }
 }
 
-/** 22px in the mark's slot, currentColor — the pill tints it by state. */
 function StateGlyph({ kind }: { kind: VoiceState['kind'] }): React.JSX.Element {
   const stroke = { fill: 'none', stroke: 'currentColor', strokeWidth: 1.7 } as const
   switch (kind) {
@@ -277,9 +236,6 @@ function StateGlyph({ kind }: { kind: VoiceState['kind'] }): React.JSX.Element {
         </svg>
       )
     case 'arming':
-      // The same three dots as `thinking`, flickering together rather than travelling — this
-      // is a wait to be interrupted rather than one to be sat out, and the difference in the
-      // animation is what the user reads before they read the words.
       return (
         <svg viewBox="0 0 20 20" className="pill__dots pill__dots--arming">
           <circle cx="4.6" cy="10" r="1.5" fill="currentColor" />
@@ -288,8 +244,6 @@ function StateGlyph({ kind }: { kind: VoiceState['kind'] }): React.JSX.Element {
         </svg>
       )
     case 'thinking':
-      // Three dots rather than a ring: this is a wait of a few hundred milliseconds, and a
-      // spinner at that length reads as something having gone wrong.
       return (
         <svg viewBox="0 0 20 20" className="pill__dots">
           <circle cx="4.6" cy="10" r="1.5" fill="currentColor" />
@@ -298,8 +252,6 @@ function StateGlyph({ kind }: { kind: VoiceState['kind'] }): React.JSX.Element {
         </svg>
       )
     default:
-      // Listening — the same mark the search bar shows, so the microphone looks like one
-      // thing wherever it appears.
       return (
         <svg viewBox="0 0 20 20">
           <rect x="7.4" y="2.8" width="5.2" height="9.4" rx="2.6" {...stroke} />

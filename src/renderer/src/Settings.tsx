@@ -17,18 +17,6 @@ import panels from '../assets/dots/panels.svg?raw'
 import HotkeyField from './HotkeyField'
 import { cleanLogo } from './logo'
 
-/** The settings window: a nav down the left, one page of rows on the right.
- *
- *  **Every setting is declared as data**, not as JSX nested inside the page that shows it.
- *  That is what makes the search work: a query filters the same list the pages are built
- *  from, so a setting can never be findable on its own page and invisible to the search, and
- *  adding one is a row in an array rather than an edit in two places. The command registry
- *  makes the same trade for the same reason.
- *
- *  It holds no state of its own beyond what is being edited. Every change goes to the main
- *  process and the snapshot that comes back is what gets drawn — which matters for the hotkey,
- *  where what you asked for and what Windows gave you are not always the same thing. */
-
 type Page = 'general' | 'voice' | 'commands' | 'apps' | 'appearance' | 'updates'
 
 interface NavItem {
@@ -37,17 +25,12 @@ interface NavItem {
   icon: React.JSX.Element
 }
 
-/** One setting, wherever it is being drawn. `control` is what sits on the right of the row;
- *  the label and the detail are the row's own, so the search has text to match without asking
- *  a control what it is called. */
 interface Row {
   id: string
   page: Page
-  /** The heading this row sits under, as Claude's settings group Profile and Preferences. */
   section: string
   name: string
   detail: string
-  /** Words a user might search for that are not in the name or the detail. */
   keywords?: string
   control: React.JSX.Element
   disabled?: boolean
@@ -71,10 +54,7 @@ function Settings(): React.JSX.Element {
     return window.ezzy.onUpdateStatus(setUpdate)
   }, [])
 
-  // Polled as well as subscribed — Chromium fills this list asynchronously and answers
-  // getVoices() with nothing until it has (measured: three empty reads before one
-  // returned 3). voiceschanged fires while the engine is waking, so a window opened
-  // after that (like this one, on demand) would otherwise sit on an empty list forever.
+  // Polled as well as subscribed: getVoices() answers empty until Chromium finishes loading.
   useEffect(() => {
     let tries = 0
     const read = (): void => {
@@ -141,9 +121,7 @@ function Settings(): React.JSX.Element {
             key={item.page}
             type="button"
             className={`settings__nav-item${!searching && item.page === page ? ' is-current' : ''}`}
-            // Picking a page is also how you leave a search: the result you were looking at
-            // belongs to a page, and staying in the filtered list after choosing one would
-            // leave the nav highlighting nothing.
+
             onClick={() => {
               setQuery('')
               setPage(item.page)
@@ -189,9 +167,6 @@ function Settings(): React.JSX.Element {
             ? null
             : groupBy(shown, searching).map(([heading, group]) => (
                 <section key={heading} className="settings__section">
-                  {/* A page whose only group repeats its own name says it twice. The heading earns
-                  its place when it divides a page — General's Shortcut and Startup — and not
-                  when it is the page. */}
                   {heading !== titleOf(page) && <h2 className="settings__heading">{heading}</h2>}
                   {group.map((row) => (
                     <div
@@ -232,13 +207,11 @@ function Settings(): React.JSX.Element {
   async function change(patch: Partial<EzzyConfig>): Promise<void> {
     const result = await window.ezzy.setSettings(patch)
     setSnapshot(result.snapshot)
-    // Cleared by any change that is not a hotkey change: the message is about one attempt,
-    // and leaving it under the field while the user toggles speech reads as a live problem.
+    // Cleared by any change that is not a hotkey change, not just a fresh hotkey attempt.
     setHotkeyError(patch.hotkey === undefined ? null : result.hotkeyError)
   }
 }
 
-/** Every setting there is, in the order the pages show them. */
 function buildRows(
   snapshot: SettingsSnapshot,
   update: UpdateStatus,
@@ -542,9 +515,8 @@ function buildRows(
   ]
 }
 
-/** Rows under their section headings, in first-seen order. While searching the heading names
- *  the PAGE instead, because a section name on its own — "Voice", "Updates" — does not say
- *  where the result lives. */
+/** While searching, the heading names the page instead of the section — a section name alone
+ *  ("Voice", "Updates") doesn't say where the result lives. */
 function groupBy(rows: Row[], searching: boolean): Array<[string, Row[]]> {
   const groups = new Map<string, Row[]>()
   for (const row of rows) {
@@ -578,11 +550,6 @@ const GROUPS: Array<[CommandInfo['group'], string, string]> = [
   ['system', 'The machine', 'Settings pages, networks and power.']
 ]
 
-/** What Ezzy understands, read out of the registry rather than written out here.
- *
- *  There is exactly one list of commands in this app and this draws it, so a command cannot
- *  be added without appearing here and cannot be removed and left behind. The examples are
- *  the command's own, and the first of them is the phrasing its pattern is written around. */
 interface CommandsProps {
   commands: CommandInfo[]
   phrases: Record<string, string[]>
@@ -617,10 +584,6 @@ function Commands({ commands, phrases, onChange }: CommandsProps): React.JSX.Ele
   )
 }
 
-/** A row of names: the ones that came with the thing, then the ones the user added, then a
- *  way to add another. Shared by commands and applications because it is the same gesture in
- *  both places — a phrase for a command and an alias for an app are both "another way to say
- *  this", and they should not look or behave differently. */
 function Names({
   fixed,
   mine,
@@ -631,7 +594,6 @@ function Names({
   fixed: string[]
   mine: string[]
   placeholder: string
-  /** Why this cannot be added, or null. Only commands have a reason to refuse one. */
   check?: (value: string) => Promise<string | null>
   onChange: (next: string[]) => void
 }): React.JSX.Element {
@@ -715,12 +677,6 @@ function Names({
   }
 }
 
-/** Applications, and the names the user has given them.
- *
- *  There are 140 of these on this machine, so the page does not open as a wall of them: it
- *  shows what has actually been customised and asks you to search for the rest. An alias is
- *  almost always added in response to something specific going wrong — "it hears school when
- *  I say Skool" — so arriving with a search box is arriving in the right place. */
 function Apps({
   apps,
   aliases,
@@ -742,16 +698,10 @@ function Apps({
           app.name.toLowerCase().includes(needle) ||
           (aliases[app.id] ?? []).some((name) => name.toLowerCase().includes(needle))
       )
-    : // What the user has actually touched: anything renamed, and anything they added by
-      // hand. Listing only the renamed ones hid an app the moment it was added, which is
-      // exactly when someone wants to see it.
-      apps.filter((app) => app.custom || (aliases[app.id] ?? []).length > 0)
+    : apps.filter((app) => app.custom || (aliases[app.id] ?? []).length > 0)
 
   return (
     <>
-      {/* The count belongs out here, not in the placeholder. It answers "did Ezzy find my
-          apps?", which is a question about the scan — and a placeholder disappears the moment
-          anyone types, which is exactly when they were reading it. */}
       <p className="settings__blurb">
         Ezzy found {apps.length} applications on this PC. Give one another name and it will answer
         to that too — typed or spoken, for when what you say and what it hears are not the same
@@ -767,8 +717,6 @@ function Apps({
           spellCheck={false}
           onChange={(event) => setFilter(event.target.value)}
         />
-        {/* For anything the scan cannot see: a portable executable, or something installed
-            somewhere the Start Menu never hears about. */}
         <button type="button" className="settings__button" onClick={() => void addApp()}>
           Add an app…
         </button>
@@ -811,8 +759,6 @@ function Apps({
     const picked = await window.ezzy.pickApp()
     if (picked === null) return
     await onCustom([...custom, picked])
-    // Show it, or a page that only lists what has been renamed would swallow the thing the
-    // user just added.
     setFilter(picked.name)
   }
 
@@ -822,11 +768,8 @@ function Apps({
   }
 }
 
-/** One command, with the wordings the user has added to it.
- *
- *  A phrase is checked by the main process before it is saved — it is the only half that knows
- *  what the patterns already understand — so the reason a phrase is refused appears under the
- *  field rather than the phrase being quietly dropped. */
+/** A phrase is checked by the main process before saving — it's the only half that knows
+ *  what the patterns already understand. */
 function Command({
   command,
   mine,
@@ -851,18 +794,8 @@ function Command({
   )
 }
 
-/** A dropdown drawn by the page rather than by Windows.
- *
- *  A native `select` opens a popup the operating system paints, and no stylesheet reaches
- *  inside it: on a dark window it came up as a light sheet with white text on it, so the
- *  voices were listed and unreadable. `color-scheme: dark` fixed the reading of it and not
- *  the look — it was still a Windows menu in the middle of an application that does not have
- *  any others.
- *
- *  So it is a button and a list, which is a small amount of code for complete control of how
- *  it looks. What that costs is the behaviour a native select gets for nothing, so the parts
- *  worth having are put back by hand: Escape closes it, a click anywhere else closes it, the
- *  arrows move through it and Enter takes the highlighted one. */
+/** Drawn by the page rather than by Windows: a native `select` on a dark window came up as
+ *  an unstyleable light popup. */
 function Dropdown({
   value,
   options,
@@ -884,7 +817,7 @@ function Dropdown({
     const away = (event: MouseEvent): void => {
       if (!box.current?.contains(event.target as Node)) setOpen(false)
     }
-    // Capture, so it closes before a click lands on whatever is underneath.
+    // Capture: closes before the click lands on whatever is underneath.
     document.addEventListener('mousedown', away, true)
     return () => document.removeEventListener('mousedown', away, true)
   }, [open])
@@ -992,9 +925,7 @@ function Slider({
         className="settings__slider"
         type="range"
         aria-label={label}
-        // How much of the track is behind the thumb. The browser knows, and gives no way to
-        // ask, so the track is painted from this instead of from a native fill nobody can
-        // restyle.
+        // The browser has no way to ask how much track is behind the thumb, so this paints it.
         style={{ '--fill': `${((value - min) / (max - min)) * 100}%` } as React.CSSProperties}
         value={value}
         min={min}
@@ -1007,11 +938,6 @@ function Slider({
   )
 }
 
-/** Say a sample here rather than asking the dot to say one.
- *
- *  It is the same Chromium and the same installed voices, so what is heard is what the dot
- *  would produce — and going through the dot would mean a preview that cannot be heard while
- *  the settings window has focus is indistinguishable from one that is broken. */
 function preview(config: EzzyConfig, voices: SpeechSynthesisVoice[]): void {
   const synth = window.speechSynthesis
   synth.cancel()
@@ -1031,13 +957,10 @@ function preview(config: EzzyConfig, voices: SpeechSynthesisVoice[]): void {
 interface SwitchProps {
   checked: boolean
   disabled?: boolean
-  /** The row already shows the name, so the control needs its own only for a screen reader. */
   label: string
   onChange: (checked: boolean) => void
 }
 
-/** The marks, drawn at the size they are actually worn so the choice is made on what the dot
- *  will look like rather than on a blown-up preview. Same source as the dot itself. */
 const LOGO_PREVIEWS: Record<BuiltInLogo, string> = { cards, orbit, cluster, panels }
 
 const LOGO_NAMES: Record<BuiltInLogo, string> = {
@@ -1080,8 +1003,7 @@ function LogoPicker({
 
   function remove(id: string): void {
     setProblem(null)
-    // Dropping the one being worn would leave the dot pointing at nothing, so the choice
-    // falls back in the same breath as the removal rather than in a second write.
+    // Falls back in the same write: dropping the one worn would leave the dot pointing at nothing.
     onOwn(
       own.filter((logo) => logo.id !== id),
       value === id ? 'cards' : undefined
@@ -1098,9 +1020,7 @@ function LogoPicker({
             role="radio"
             aria-checked={logo === value}
             aria-label={LOGO_NAMES[logo]}
-            // Not `title`: the OS tooltip cannot be styled, arrives after its own delay and
-            // draws in the platform's colours, which is the one thing on this page that does
-            // not look like the rest of it. The label is drawn from CSS instead.
+            // Not `title`: the OS tooltip can't be styled. The label is drawn from CSS instead.
             data-label={LOGO_NAMES[logo]}
             className={`settings__logo${logo === value ? ' is-selected' : ''}`}
             onClick={() => onChange(logo)}
@@ -1119,8 +1039,6 @@ function LogoPicker({
               onClick={() => onChange(logo.id)}
               dangerouslySetInnerHTML={{ __html: logo.markup }}
             />
-            {/* On the swatch rather than in a menu: there is one thing to do to a mark you
-                added, and hiding it behind a second click would be the longer road to it. */}
             <button
               type="button"
               className="settings__logo-remove"
@@ -1131,8 +1049,6 @@ function LogoPicker({
             </button>
           </span>
         ))}
-        {/* Always here, so adding a second mark does not mean losing the first. It only goes
-            when there is no room left, and then it says so rather than disappearing. */}
         <button
           type="button"
           className="settings__logo settings__logo--add"
@@ -1206,8 +1122,6 @@ function updateText(status: UpdateStatus, version: string): string {
   }
 }
 
-/** 16px, currentColor, drawn rather than imported — the app ships no icon set and four
- *  outlines are not a reason to start one. */
 const stroke = {
   fill: 'none',
   stroke: 'currentColor',

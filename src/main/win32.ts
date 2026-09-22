@@ -1,10 +1,6 @@
-/** The Win32 calls this app needs, bound through koffi. A thin, typed wrapper over
- *  user32/kernel32/dwmapi — no policy, no caching. Which windows count lives in
- *  window-tracker.ts; the foreground dance lives in focus.ts.
- *
- *  HWNDs, HANDLEs and thread ids cross as `uintptr_t`. Window handles carry only 32
- *  significant bits on Windows, so they arrive as ordinary safe integers and can be
- *  compared, used as Map keys and sent over IPC as plain numbers. */
+/** The Win32 calls this app needs, bound through koffi. Window handles cross as
+ *  `uintptr_t` — they carry only 32 significant bits on Windows, so they arrive as
+ *  ordinary safe integers usable as Map keys and sent over IPC as plain numbers. */
 
 import koffi from 'koffi'
 
@@ -13,43 +9,23 @@ const kernel32 = koffi.load('kernel32.dll')
 const dwmapi = koffi.load('dwmapi.dll')
 const powrprof = koffi.load('powrprof.dll')
 
-/** A window handle. Zero is the null handle, treated as "no window" everywhere below. */
 export type Hwnd = number
-
-// ------------------------------------------------------------------ constants
 
 export const GWL_EXSTYLE = -20
 export const WS_EX_TOOLWINDOW = 0x0000_0080
 export const WS_EX_NOACTIVATE = 0x0800_0000
-/** Click-through: the window is skipped in hit-testing, so no mouse event lands on it. */
 export const WS_EX_TRANSPARENT = 0x0000_0020
-
-/** GetAncestor flags. */
 export const GA_ROOTOWNER = 3
-
-/** DwmGetWindowAttribute: UWP parks suspended apps as cloaked windows, invisible but
- *  still passing every IsWindowVisible check. */
 export const DWMWA_CLOAKED = 14
-
 export const SW_RESTORE = 9
-
-/** The polite "please close" a title-bar X sends. Not TerminateProcess — the app gets
- *  to run its own close handler and refuse. */
 export const WM_CLOSE = 0x0010
-
-/** The message a media key turns into once Windows has decided who it is for. Sending it
- *  ourselves is how play/pause reaches ONE named player instead of whoever owns the
- *  machine's media session — `keybd_event` cannot do that. */
 export const WM_APPCOMMAND = 0x0319
 export const APPCOMMAND_MEDIA_PLAY_PAUSE = 14
 export const APPCOMMAND_MEDIA_NEXTTRACK = 11
 export const APPCOMMAND_MEDIA_PREVIOUSTRACK = 12
-/** Play and pause as two commands, not one toggle — measured on Spotify, 46 started it
- *  and 47 stopped it, each only its own half. */
 export const APPCOMMAND_MEDIA_PLAY = 46
 export const APPCOMMAND_MEDIA_PAUSE = 47
 
-/** The WinEvents we subscribe to. Subscribe, never poll EnumWindows. */
 export const EVENT_SYSTEM_FOREGROUND = 0x0003
 export const EVENT_OBJECT_CREATE = 0x8000
 export const EVENT_OBJECT_DESTROY = 0x8001
@@ -59,27 +35,15 @@ export const EVENT_OBJECT_NAMECHANGE = 0x800c
 export const EVENT_OBJECT_CLOAKED = 0x8017
 export const EVENT_OBJECT_UNCLOAKED = 0x8018
 
-/** The event refers to the window itself, not a control or caret inside it. */
 export const OBJID_WINDOW = 0
 export const CHILDID_SELF = 0
-
-/** Out-of-context hooks arrive as ordinary messages on the thread that registered them,
- *  so that thread must pump messages — Electron's main thread already runs one, which is
- *  what makes this work without a DLL injected into every process on the machine. */
 export const WINEVENT_OUTOFCONTEXT = 0x0000
 
 const PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
-
-/** keybd_event flags, for the synthetic ALT in focus.ts and the media keys in media-keys.ts. */
 const KEYEVENTF_KEYUP = 0x0002
-/** The key belongs to the extended set — the grey block, arrows, every VK_MEDIA_*. Without
- *  this Windows reports the wrong scan code and some apps ignore the key. */
 const KEYEVENTF_EXTENDEDKEY = 0x0001
 const VK_MENU = 0x12
 
-// ------------------------------------------------------------------- bindings
-
-// Registered by name in koffi's type table; the prototypes below refer to it as 'RECT'.
 koffi.struct('RECT', {
   left: 'int32_t',
   top: 'int32_t',
@@ -146,8 +110,6 @@ const fn = {
   )
 }
 
-// --------------------------------------------------------------------- window
-
 export function isWindow(hwnd: Hwnd): boolean {
   return fn.IsWindow(hwnd)
 }
@@ -160,9 +122,6 @@ export function isIconic(hwnd: Hwnd): boolean {
   return fn.IsIconic(hwnd)
 }
 
-/** One reused buffer rather than sizing with GetWindowTextLengthW first, which would
- *  double the cross-process calls for a limit no real window reaches. Safe because every
- *  caller decodes before the next call. */
 const titleBuffer = new Uint16Array(512)
 
 export function getWindowTitle(hwnd: Hwnd): string {
@@ -200,8 +159,6 @@ export function getShellWindow(): Hwnd {
   return fn.GetShellWindow()
 }
 
-/** True when DWM is hiding the window — how UWP parks a suspended app. A non-zero
- *  HRESULT means the attribute is unsupported, not the same as "cloaked". */
 export function isCloaked(hwnd: Hwnd): boolean {
   const out = [0]
   if (fn.DwmGetWindowAttribute(hwnd, DWMWA_CLOAKED, out, 4) !== 0) return false
@@ -219,9 +176,7 @@ export function getWindowThreadId(hwnd: Hwnd): number {
   return fn.GetWindowThreadProcessId(hwnd, pidOut)
 }
 
-/** Full path of a process's executable, or null when protected or already gone.
- *  PROCESS_QUERY_LIMITED_INFORMATION works without elevation, which matters since plenty
- *  of ordinary windows belong to processes we cannot open. */
+/** PROCESS_QUERY_LIMITED_INFORMATION works without elevation. */
 export function getProcessImagePath(pid: number): string | null {
   const handle = fn.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid)
   if (!handle) return null
@@ -235,8 +190,7 @@ export function getProcessImagePath(pid: number): string | null {
   }
 }
 
-/** A full sweep of top-level windows. Used exactly once, to seed the cache at startup —
- *  the WinEvent hooks keep it current after that. Never poll this. */
+/** Used once, to seed the cache at startup — WinEvent hooks keep it current after that. */
 export function enumerateTopLevelWindows(): Hwnd[] {
   const found: Hwnd[] = []
   const callback = koffi.register((hwnd: Hwnd): boolean => {
@@ -251,10 +205,7 @@ export function enumerateTopLevelWindows(): Hwnd[] {
   return found
 }
 
-/** The first child window belonging to a different process than `hwnd`. UWP apps are
- *  hosted — the visible window belongs to ApplicationFrameHost.exe, and the real app sits
- *  in a child window underneath. Without this every Store app would be subtitled
- *  "Application Frame Host". */
+/** A UWP window belongs to ApplicationFrameHost.exe; the app itself is a child window. */
 export function findHostedChildProcessId(hwnd: Hwnd, hostPid: number): number {
   let found = 0
   const callback = koffi.register((child: Hwnd): boolean => {
@@ -273,8 +224,6 @@ export function findHostedChildProcessId(hwnd: Hwnd, hostPid: number): number {
   return found
 }
 
-// ------------------------------------------------------------------ foreground
-
 export function getForegroundWindow(): Hwnd {
   return fn.GetForegroundWindow()
 }
@@ -291,23 +240,10 @@ export function showWindow(hwnd: Hwnd, command: number): boolean {
   return fn.ShowWindow(hwnd, command)
 }
 
-/** Ask a window to close, the way its title-bar X does. Posted rather than sent —
- *  SendMessage would block Ezzy's message loop until the other app finished closing, and
- *  a "save your changes?" dialog would freeze the launcher behind it. The return value
- *  only says the message was queued. */
 export function closeWindow(hwnd: Hwnd): boolean {
   return fn.PostMessageW(hwnd, WM_CLOSE, 0, 0)
 }
 
-/** Send one APPCOMMAND to one window. `lParam` carries the command in its high word (the
- *  low word's key/mouse flags are zero here); `wParam` is the window the command came
- *  from, conventionally the target itself.
- *
- *  Posted, not sent, for the same reason as `closeWindow` — the return value only says
- *  the message was queued, not that the player acted on it, which is why confirmations
- *  say what Ezzy asked for rather than what happened. An app that does not handle it
- *  passes it to DefWindowProc, which walks it to the shell — the same routing a bare
- *  media key would have had. */
 export function postAppCommand(hwnd: Hwnd, command: number): boolean {
   return fn.PostMessageW(hwnd, WM_APPCOMMAND, hwnd, command << 16)
 }
@@ -324,44 +260,23 @@ export function currentThreadId(): number {
   return fn.GetCurrentThreadId()
 }
 
-/** A synthetic ALT press. Windows treats it as user input, which releases the foreground
- *  lock for a moment — the fallback half of the workaround in focus.ts. */
 export function tapAltKey(): void {
   fn.keybd_event(VK_MENU, 0, 0, 0)
   fn.keybd_event(VK_MENU, 0, KEYEVENTF_KEYUP, 0)
 }
 
-/** Press and release one extended key, as if the keyboard had — used for the VK_MEDIA_*
- *  codes. Windows delivers them to whichever app owns the current media session, which is
- *  why this works without Ezzy knowing or caring what is playing. */
 export function tapExtendedKey(vk: number): void {
   fn.keybd_event(vk, 0, KEYEVENTF_EXTENDEDKEY, 0)
   fn.keybd_event(vk, 0, KEYEVENTF_EXTENDEDKEY | KEYEVENTF_KEYUP, 0)
 }
 
-/** Whether a key is physically down right now. Push-to-talk needs a key release, and
- *  Electron's globalShortcut only ever reports a press (RegisterHotKey delivers
- *  WM_HOTKEY and nothing else) — the alternative to polling is a WH_KEYBOARD_LL hook,
- *  meaning every keystroke on the machine passes through our process. This reads one key
- *  on a timer instead, only while the hotkey is held.
- *
- *  Only the high bit is read — the low bit ("pressed since the last call") is consumed by
- *  reading it, which would make the result depend on who called last. */
 export function isKeyDown(vk: number): boolean {
   return (fn.GetAsyncKeyState(vk) & 0x8000) !== 0
 }
 
-/** Suspend the machine — sleep, or hibernate when asked. `force` is false, so
- *  applications get their usual chance to object, the same as the Start menu's own Sleep.
- *
- *  Worth knowing: on a machine with hibernation enabled, Windows may honour a sleep
- *  request with hibernation anyway — documented behaviour of this call and of
- *  `rundll32 powrprof.dll,SetSuspendState`, which every other launcher uses too. */
 export function suspend(hibernate: boolean): boolean {
   return fn.SetSuspendState(hibernate, false, false)
 }
-
-// ----------------------------------------------------------------- win events
 
 export type WinEventCallback = (
   event: number,
@@ -374,9 +289,6 @@ export interface WinEventHook {
   unhook(): void
 }
 
-/** Subscribe to a WinEvent range. The koffi callback is registered rather than transient,
- *  so it outlives this call and stays valid until `unhook()` — letting it be collected
- *  would leave Windows calling into freed memory. Returns null if Windows refuses the hook. */
 export function subscribeWinEvent(
   min: number,
   max: number,
@@ -384,8 +296,6 @@ export function subscribeWinEvent(
 ): WinEventHook | null {
   const pointer = koffi.register(
     (_hook: number, event: number, hwnd: Hwnd, idObject: number, idChild: number): void => {
-      // Runs inside Windows' message dispatch on the main thread — an exception here
-      // would unwind through native frames, so nothing is allowed to escape.
       try {
         callback(event, hwnd, idObject, idChild)
       } catch (err) {

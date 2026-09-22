@@ -46,11 +46,7 @@
      that token did not touch it — the search bar was still wearing an 18% white band across
      its top-left corner after every other surface had stopped. If the sheens ever come back,
      they come back together from the token. */
-  background: linear-gradient(
-    114deg,
-    rgba(255, 255, 255, 0) 0%,
-    rgba(255, 255, 255, 0) 100%
-  );
+  background: linear-gradient(114deg, rgba(255, 255, 255, 0) 0%, rgba(255, 255, 255, 0) 100%);
 }
 
 /* The glass set's own sheen. Written out here because this element does not take
