@@ -131,10 +131,6 @@ function Settings(): React.JSX.Element {
             {item.label}
           </button>
         ))}
-        <button type="button" className="settings__nav-foot" onClick={window.ezzy.openLogFile}>
-          <LogIcon />
-          Open log file
-        </button>
       </nav>
 
       <main className="settings__content">
@@ -219,7 +215,7 @@ function buildRows(
   voices: SpeechSynthesisVoice[],
   change: (patch: Partial<EzzyConfig>) => Promise<void>
 ): Row[] {
-  const { config, packaged, activeHotkey, version, logPath } = snapshot
+  const { config, packaged, activeHotkey, version } = snapshot
   return [
     {
       id: 'hotkey',
@@ -496,21 +492,6 @@ function buildRows(
             Check
           </button>
         )
-    },
-    {
-      id: 'log',
-      page: 'updates',
-      section: 'Diagnostics',
-      // A log file users can attach to issues has to be findable without knowing
-      // where %APPDATA% is.
-      name: 'Log file',
-      detail: logPath,
-      keywords: 'diagnostics debug verbose',
-      control: (
-        <button type="button" className="settings__button" onClick={window.ezzy.openLogFile}>
-          Open
-        </button>
-      )
     }
   ]
 }
@@ -1205,14 +1186,5 @@ const NAV: NavItem[] = [
     )
   }
 ]
-
-function LogIcon(): React.JSX.Element {
-  return (
-    <svg viewBox="0 0 16 16" aria-hidden="true">
-      <path d="M3.4 2.4h6l3.2 3.2v8H3.4z" {...stroke} />
-      <path d="M9.2 2.4v3.4h3.4M5.6 9h4.8M5.6 11.3h3.2" {...stroke} />
-    </svg>
-  )
-}
 
 export default Settings

@@ -2,12 +2,11 @@
 // transparent, unfocusable furniture that must never appear in the taskbar.
 
 import { BrowserWindow, app } from 'electron'
-import icon from '../../resources/icon.png?asset'
+import icon from '../../resources/icon.ico?asset'
 import { Appearance, EzzyConfig, IPC, SettingsResult, SettingsSnapshot } from '../shared/types'
 import { getConfig, updateConfig } from './config'
 import { activeHotkey, reapplyHotkey } from './hotkey'
 import { applyLoginItem } from './login-item'
-import { logFilePath } from './logger'
 import { onUpdateStatus } from './updater'
 import { releaseVoice } from './voice'
 import { loadRenderer, webPreferences } from './windows'
@@ -74,8 +73,7 @@ export function settingsSnapshot(): SettingsSnapshot {
     config: getConfig(),
     activeHotkey: activeHotkey(),
     version: app.getVersion(),
-    packaged: app.isPackaged,
-    logPath: logFilePath()
+    packaged: app.isPackaged
   }
 }
 

@@ -39,7 +39,7 @@ import {
   toggleListening,
   voiceState
 } from './voice'
-import { logRendererError, openLogFile } from './logger'
+import { logRendererError } from './logger'
 import {
   sendAppearanceToSettings,
   applySettings,
@@ -165,7 +165,6 @@ export function registerIpc(): void {
     return result
   })
   ipcMain.on(IPC.closeSettings, () => closeSettingsWindow())
-  ipcMain.on(IPC.openLogFile, () => void openLogFile())
   ipcMain.on(IPC.reportError, (_event, page: string, message: string) => {
     logRendererError(page, message)
   })

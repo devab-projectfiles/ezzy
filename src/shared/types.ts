@@ -144,7 +144,6 @@ export interface SettingsSnapshot {
   activeHotkey: string | null
   version: string
   packaged: boolean
-  logPath: string
 }
 
 export interface SettingsResult {
@@ -234,7 +233,6 @@ export const IPC = {
   getSettings: 'settings:get',
   setSettings: 'settings:set',
   closeSettings: 'settings:close',
-  openLogFile: 'log:open',
   reportError: 'log:renderer-error',
   updateStatus: 'update:status',
   getUpdateStatus: 'update:get-status',
@@ -288,7 +286,6 @@ export interface EzzyApi {
   getSettings(): Promise<SettingsSnapshot>
   setSettings(patch: Partial<EzzyConfig>): Promise<SettingsResult>
   closeSettings(): void
-  openLogFile(): void
   reportError(page: string, message: string): void
   getUpdateStatus(): Promise<UpdateStatus>
   onUpdateStatus(callback: (status: UpdateStatus) => void): () => void

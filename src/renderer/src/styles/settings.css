@@ -146,8 +146,7 @@ body {
   color: var(--text-faint);
 }
 
-.settings__nav-item,
-.settings__nav-foot {
+.settings__nav-item {
   display: flex;
   align-items: center;
   gap: 10px;
@@ -162,16 +161,14 @@ body {
   cursor: pointer;
 }
 
-.settings__nav-item svg,
-.settings__nav-foot svg {
+.settings__nav-item svg {
   flex: none;
   width: 16px;
   height: 16px;
   color: var(--text-faint);
 }
 
-.settings__nav-item:hover,
-.settings__nav-foot:hover {
+.settings__nav-item:hover {
   background: rgba(255, 255, 255, 0.05);
   color: var(--text-strong);
 }
@@ -184,12 +181,6 @@ body {
 
 .settings__nav-item.is-current svg {
   color: var(--text-strong);
-}
-
-/* Pinned to the bottom of the nav, the way the reference keeps its last item there. */
-.settings__nav-foot {
-  margin-top: auto;
-  font-size: 13px;
 }
 
 /* -------------------------------------------------------------------- the content */

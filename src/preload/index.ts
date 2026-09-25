@@ -103,7 +103,6 @@ const ezzy: EzzyApi = {
   getSettings: () => ipcRenderer.invoke(IPC.getSettings),
   setSettings: (patch) => ipcRenderer.invoke(IPC.setSettings, patch),
   closeSettings: () => ipcRenderer.send(IPC.closeSettings),
-  openLogFile: () => ipcRenderer.send(IPC.openLogFile),
   reportError: (page, message) => ipcRenderer.send(IPC.reportError, page, message),
   getUpdateStatus: () => ipcRenderer.invoke(IPC.getUpdateStatus),
   onUpdateStatus: (callback) => {
