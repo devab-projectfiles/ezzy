@@ -118,19 +118,21 @@ which is the price of knowing what to open.
 **Why Spotify cannot do the same.** Ezzy puts Spotify on the results for what you named
 and stops there, and that is a limit rather than an oversight. Starting a *named* track needs
 a playable id (`spotify:track:…`), and turning "daft punk" into an id means the Spotify Web
-API — an explicit non-goal (see `PLAN.md` §1), and Premium-only for playback besides. The
-obvious shortcut, firing a play key after the search, was built and removed: a media key is
-not addressed to anything, so Windows hands it to whatever owns the current media session. It
-resumes — or pauses — the track that was already there, and never the artist you just asked
-for.
+API — a deliberate non-goal, and Premium-only for playback besides. The obvious shortcut,
+firing a play key after the search, was built and removed: a media key is not addressed to
+anything, so Windows hands it to whatever owns the current media session. It resumes — or
+pauses — the track that was already there, and never the artist you just asked for.
 
 "play spotify" still opens Spotify itself, and "play" on its own is still the media key. A
 name that matches something on this machine wins over a search for that name; naming the
-service ("… on spotify") always means the search.
+service ("… on spotify") always means the search. "play spotify" / "pause youtube" / "next
+song on spotify" address a named app directly — they resume or skip inside it rather than
+searching, and never launch anything except that naming an app with no window open still
+falls through to opening it.
 
-The speech model (`ggml-base.en.bin`, ~141MB) downloads the first time you hold the hotkey,
-with progress shown on the dot. Voice can be turned off entirely in Settings, and off means
-off: no microphone, no download, and the speech engine is shut down.
+The speech model (`ggml-small.en-q5_1.bin`, ~181MB) downloads the first time you hold the
+hotkey, with progress shown on the dot. Voice can be turned off entirely in Settings, and off
+means off: no microphone, no download, and the speech engine is shut down.
 
 ### Three-finger tap
 
@@ -140,21 +142,43 @@ Windows can map a touchpad gesture to a shortcut, which is the nicest way to ope
 then record **Alt+Space**. Ezzy's own Settings window has a **Set up** button that opens that
 page for you.
 
-Ezzy reads no gestures itself and never will (`PLAN.md` §1) — Windows turns the tap into the
-shortcut, and Ezzy only ever sees the shortcut.
+Ezzy reads no gestures itself and never will — Windows turns the tap into the shortcut, and
+Ezzy only ever sees the shortcut.
 
 ## Settings
 
-Right-click the tray icon → **Settings…**
+Right-click the tray icon → **Settings…**. A search box at the top filters every setting and
+every command across all six pages, so you never have to know which page something lives on.
 
+**General**
 - **Shortcut** — click the field and press the keys you want. (Alt+Space cannot be *recorded*,
   because Windows opens its own system menu on that combination — use **Reset** to go back to
   it.)
+- **Touchpad gesture** — opens the Windows page for mapping a three-finger tap to the shortcut.
+- **Start Ezzy when Windows starts** — on by default; only takes effect in an installed build.
+
+**Voice**
 - **Voice commands** — the whole voice feature, on or off.
 - **Show the panel while listening** — off by default, so a spoken command does not throw a
   window list over what you were reading. The dot itself reports what it heard.
-- **Speak confirmations** — says what it did, and why a command missed.
-- **Start Ezzy when Windows starts** — on by default.
+- **Pause music while listening** — stops your music for the second or two Ezzy is recording,
+  so the microphone does not turn it into a command you did not give.
+- **Speak confirmations**, and under **How it sounds**: which installed **voice** reads them,
+  its **speed** and **volume**, a **Try it** button, and whether the phrasing is varied instead
+  of the same sentence every time.
+
+**Commands** — every command Ezzy understands, with its own examples, and a box to add the
+extra wordings you actually say (checked against what Ezzy already understands before it
+saves).
+
+**Apps** — every installed application, searchable, with a box to give any of them another
+name it should also answer to, and a button to add one Ezzy's scan did not find.
+
+**Appearance** — glass surfaces on or off (flat, single-colour otherwise), and which mark the
+floating dot wears, including up to two marks of your own from an SVG.
+
+**Updates** — the current version, a **Check** button, and Scoop installs are told to update
+through Scoop instead.
 
 Everything is stored in `%APPDATA%\Ezzy\config.json`, which you can also edit by hand.
 
@@ -202,9 +226,6 @@ npm install
 npm run fetch:whisper   # whisper.cpp binaries, not committed to git
 npm run dev             # or: npm run dev:verbose, for the timing instrumentation
 ```
-
-`PLAN.md` is the spec — it explains what is built, what was deliberately cut, and the Win32
-gotchas that are already solved. Read it before changing anything.
 
 ```bash
 npm run typecheck
