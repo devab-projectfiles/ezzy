@@ -9,7 +9,7 @@ import { activeHotkey, reapplyHotkey } from './hotkey'
 import { applyLoginItem } from './login-item'
 import { onUpdateStatus } from './updater'
 import { releaseVoice } from './voice'
-import { loadRenderer, webPreferences } from './windows'
+import { loadRenderer, sendCapture, webPreferences } from './windows'
 
 // The minimum is where the layout stops working, not a round number: below ~720 the 236px
 // nav starts eating the control column.
@@ -87,6 +87,10 @@ export function applySettings(patch: Partial<EzzyConfig>): SettingsResult {
     applyLoginItem()
   }
   if (patch.voice !== undefined && patch.voice !== before.voice) releaseVoice()
+  // Closes a mic held open under the old value, so a shorter one (or Off) applies at once.
+  if (patch.micReadySeconds !== undefined && patch.micReadySeconds !== before.micReadySeconds) {
+    sendCapture('release')
+  }
 
   let hotkeyError: string | null = null
   if (patch.hotkey !== undefined && patch.hotkey !== before.hotkey) {

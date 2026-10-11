@@ -37,6 +37,7 @@ export interface EzzyConfig {
   voice: boolean
   voicePanel: boolean
   duckMusic: boolean
+  micReadySeconds: number
   voiceName: string | null
   speechRate: number
   speechVolume: number
@@ -61,6 +62,7 @@ export const DEFAULT_CONFIG: EzzyConfig = {
   dotLogo: 'cards',
   customLogos: [],
   duckMusic: true,
+  micReadySeconds: 20,
   voiceName: null,
   speechRate: 1.08,
   speechVolume: 0.85,
@@ -135,7 +137,9 @@ export type VoiceState =
   | { kind: 'done'; message: string; heard: string }
   | { kind: 'error'; message: string; micBlocked: boolean; heard?: string }
 
-export type VoiceCapture = 'arm' | 'listen' | 'stop' | 'cancel'
+export type VoiceCapture = 'arm' | 'listen' | 'stop' | 'cancel' | 'release'
+
+export const MIC_READY_MAX_SECONDS = 60
 
 export type VoiceFailure = 'denied' | 'no-device' | 'failed'
 
@@ -274,7 +278,7 @@ export interface EzzyApi {
   openDirect(): Promise<boolean>
   onVoiceState(callback: (state: VoiceState) => void): () => void
   getVoiceState(): Promise<VoiceState>
-  onVoiceCapture(callback: (capture: VoiceCapture) => void): () => void
+  onVoiceCapture(callback: (capture: VoiceCapture, readyMs: number) => void): () => void
   reportMicLive(): void
   sendVoiceAudio(wav: ArrayBuffer, spoke: boolean): void
   reportVoiceFailure(kind: VoiceFailure): void

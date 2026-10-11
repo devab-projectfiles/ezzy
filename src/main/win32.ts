@@ -15,6 +15,7 @@ export const GWL_EXSTYLE = -20
 export const WS_EX_TOOLWINDOW = 0x0000_0080
 export const WS_EX_NOACTIVATE = 0x0800_0000
 export const WS_EX_TRANSPARENT = 0x0000_0020
+export const WS_EX_TOPMOST = 0x0000_0008
 export const GA_ROOTOWNER = 3
 export const DWMWA_CLOAKED = 14
 export const SW_RESTORE = 9
@@ -40,6 +41,10 @@ export const CHILDID_SELF = 0
 export const WINEVENT_OUTOFCONTEXT = 0x0000
 
 const PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+const HWND_TOPMOST = -1
+const SWP_NOSIZE = 0x0001
+const SWP_NOMOVE = 0x0002
+const SWP_NOACTIVATE = 0x0010
 const KEYEVENTF_KEYUP = 0x0002
 const KEYEVENTF_EXTENDEDKEY = 0x0001
 const VK_MENU = 0x12
@@ -82,6 +87,9 @@ const fn = {
     'bool __stdcall PostMessageW(uintptr_t hwnd, uint32_t msg, uintptr_t wparam, intptr_t lparam)'
   ),
   ShowWindow: user32.func('bool __stdcall ShowWindow(uintptr_t hwnd, int cmd)'),
+  SetWindowPos: user32.func(
+    'bool __stdcall SetWindowPos(uintptr_t hwnd, intptr_t after, int x, int y, int cx, int cy, uint32_t flags)'
+  ),
   AttachThreadInput: user32.func(
     'bool __stdcall AttachThreadInput(uint32_t attach, uint32_t attachTo, bool join)'
   ),
@@ -238,6 +246,15 @@ export function bringWindowToTop(hwnd: Hwnd): boolean {
 
 export function showWindow(hwnd: Hwnd, command: number): boolean {
   return fn.ShowWindow(hwnd, command)
+}
+
+export function isTopmost(hwnd: Hwnd): boolean {
+  return (getExStyle(hwnd) & WS_EX_TOPMOST) !== 0
+}
+
+/** Re-applies always-on-top straight to the window, without activating it. */
+export function makeTopmost(hwnd: Hwnd): boolean {
+  return fn.SetWindowPos(hwnd, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE)
 }
 
 export function closeWindow(hwnd: Hwnd): boolean {

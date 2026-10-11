@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { DOT_LOGOS, MAX_CUSTOM_LOGOS } from '../../shared/types'
+import { DOT_LOGOS, MAX_CUSTOM_LOGOS, MIC_READY_MAX_SECONDS } from '../../shared/types'
 import type {
   AppInfo,
   BuiltInLogo,
@@ -319,6 +319,28 @@ function buildRows(
       )
     },
     {
+      id: 'mic-ready',
+      page: 'voice',
+      section: 'Voice',
+      name: 'Keep the microphone ready',
+      detail:
+        'How long the microphone stays open after a command, so the next one starts listening at once instead of “Getting ready…”. Windows shows its microphone indicator while it is open.',
+      keywords: 'warm ready getting ready delay wait latency timeout indicator',
+      disabled: !config.voice,
+      control: (
+        <Slider
+          value={config.micReadySeconds}
+          min={0}
+          max={MIC_READY_MAX_SECONDS}
+          step={5}
+          label="Keep the microphone ready"
+          format={(value) => (value === 0 ? 'Off' : `${value}s`)}
+          disabled={!config.voice}
+          onChange={(micReadySeconds) => void change({ micReadySeconds })}
+        />
+      )
+    },
+    {
       id: 'voice-name',
       page: 'voice',
       section: 'How it sounds',
@@ -475,7 +497,8 @@ function buildRows(
       page: 'updates',
       section: 'Updates',
       name: updateText(update, version),
-      detail: 'Updates install the next time you quit Ezzy.',
+      detail:
+        'Ezzy checks on its own every few hours and downloads a new version in the background. It installs the next time you quit Ezzy, or straight away with Restart.',
       keywords: 'version upgrade check',
       control:
         update.kind === 'ready' ? (
@@ -1097,7 +1120,7 @@ function updateText(status: UpdateStatus, version: string): string {
     case 'unsupported':
       return status.reason
     case 'error':
-      return `Update check failed: ${status.message}`
+      return status.message
     default:
       return `Ezzy ${version}`
   }

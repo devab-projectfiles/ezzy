@@ -163,6 +163,10 @@ every command across all six pages, so you never have to know which page somethi
   window list over what you were reading. The dot itself reports what it heard.
 - **Pause music while listening** — stops your music for the second or two Ezzy is recording,
   so the microphone does not turn it into a command you did not give.
+- **Keep the microphone ready** — how long the microphone stays open after a command (Off to
+  60 seconds, 20 by default), so the next command starts listening at once instead of
+  spending a second on "Getting ready…". Windows shows its microphone indicator while it is
+  open.
 - **Speak confirmations**, and under **How it sounds**: which installed **voice** reads them,
   its **speed** and **volume**, a **Try it** button, and whether the phrasing is varied instead
   of the same sentence every time.
@@ -177,8 +181,11 @@ name it should also answer to, and a button to add one Ezzy's scan did not find.
 **Appearance** — glass surfaces on or off (flat, single-colour otherwise), and which mark the
 floating dot wears, including up to two marks of your own from an SVG.
 
-**Updates** — the current version, a **Check** button, and Scoop installs are told to update
-through Scoop instead.
+**Updates** — the current version and a **Check** button. Ezzy also checks on its own, ten
+seconds after it starts and every six hours after that. A newer version downloads in the
+background and installs the next time you quit Ezzy, or straight away with **Restart**. A
+background check that fails stays silent; only a check you asked for tells you why. Scoop
+installs are told to update through Scoop instead.
 
 Everything is stored in `%APPDATA%\Ezzy\config.json`, which you can also edit by hand.
 
@@ -190,6 +197,10 @@ between a fix and a guessing game.
 
 - **The dot is gone.** Tray menu → Show, or → Reset dot position if it ended up off-screen
   after a monitor changed.
+- **The dot or the panel sits behind other windows.** Windows can drop a window's
+  always-on-top status over a long session (sleep, the lock screen). Ezzy checks for this
+  every two seconds and puts it back, and logs each time it happens; tray menu → Show forces
+  it at once.
 - **The hotkey does nothing.** Something else owns it. The tray tooltip shows the shortcut
   actually in force; change it in Settings.
 - **Voice says the microphone is blocked.** Windows Settings → Privacy & security →

@@ -7,10 +7,14 @@ import { setQuitting } from './windows'
 
 const FIRST_CHECK_MS = 10_000
 const INTERVAL_MS = 6 * 60 * 60 * 1000
+const ERROR_SHOWN_MS = 12_000
 
 let status: UpdateStatus = { kind: 'idle' }
 let listeners: Array<(status: UpdateStatus) => void> = []
 let timer: ReturnType<typeof setInterval> | null = null
+let clearErrorTimer: ReturnType<typeof setTimeout> | null = null
+// Only a check someone asked for reports a failure; the background ones fail silently.
+let manualCheck = false
 
 export function updateStatus(): UpdateStatus {
   return status
@@ -22,6 +26,8 @@ export function onUpdateStatus(listener: (status: UpdateStatus) => void): () => 
 }
 
 function setStatus(next: UpdateStatus): void {
+  if (clearErrorTimer) clearTimeout(clearErrorTimer)
+  clearErrorTimer = null
   status = next
   for (const listener of listeners) listener(next)
 }
@@ -35,11 +41,12 @@ export function startUpdater(): void {
   autoUpdater.autoDownload = true
   autoUpdater.autoInstallOnAppQuit = true
 
-  autoUpdater.on('checking-for-update', () => setStatus({ kind: 'checking' }))
   autoUpdater.on('update-not-available', () => {
+    manualCheck = false
     setStatus({ kind: 'current', version: app.getVersion() })
   })
   autoUpdater.on('update-available', (info) => {
+    manualCheck = false
     setStatus({ kind: 'available', version: info.version })
   })
   autoUpdater.on('download-progress', (progress) => {
@@ -62,11 +69,17 @@ export function stopUpdater(): void {
 
 export function checkForUpdates(): void {
   if (!supported()) return
+  if (status.kind === 'available' || status.kind === 'downloading' || status.kind === 'ready') {
+    return
+  }
+  manualCheck = true
+  setStatus({ kind: 'checking' })
   check()
 }
 
+// A failed check both emits 'error' and rejects; the event is the one that reports it.
 function check(): void {
-  autoUpdater.checkForUpdates().catch((err: Error) => onError(err.message))
+  autoUpdater.checkForUpdates().catch(() => {})
 }
 
 // setQuitting first, same as the tray's Quit — every window intercepts its own `close` and
@@ -78,9 +91,36 @@ export function installUpdate(): void {
   autoUpdater.quitAndInstall()
 }
 
-function onError(message: string): void {
-  console.error(`[ezzy] update check failed: ${message}`)
-  setStatus({ kind: 'error', message })
+function onError(raw: string): void {
+  console.error(`[ezzy] update check failed: ${raw.replace(/\s+/g, ' ').slice(0, 300)}`)
+  const wasManual = manualCheck
+  manualCheck = false
+  if (!wasManual) {
+    if (
+      status.kind === 'checking' ||
+      status.kind === 'available' ||
+      status.kind === 'downloading'
+    ) {
+      setStatus({ kind: 'idle' })
+    }
+    return
+  }
+  setStatus({ kind: 'error', message: describeFailure(raw) })
+  clearErrorTimer = setTimeout(() => setStatus({ kind: 'idle' }), ERROR_SHOWN_MS)
+}
+
+// electron-updater's message is the whole HTTP exchange, headers and all — fine for the log,
+// unreadable in a settings row.
+function describeFailure(raw: string): string {
+  if (/\b404\b|releases\.atom|latest\.yml|No published versions/i.test(raw)) {
+    return 'No updates have been published yet'
+  }
+  if (
+    /ENOTFOUND|EAI_AGAIN|ECONN|ETIMEDOUT|ERR_INTERNET_DISCONNECTED|ERR_NAME_NOT_RESOLVED/i.test(raw)
+  ) {
+    return 'Couldn’t reach the update server — check your connection'
+  }
+  return 'Couldn’t check for updates right now'
 }
 
 function supported(): boolean {

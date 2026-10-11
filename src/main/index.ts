@@ -10,9 +10,11 @@ import {
   setQuitting,
   showDot,
   stopWatchingCursor,
+  stopWatchingTopmost,
   togglePanel,
   watchCursor,
-  watchDisplays
+  watchDisplays,
+  watchTopmost
 } from './windows'
 import { restartTracking, startTracking, stopTracking } from './window-tracker'
 import { onPanelDataChanged } from './panel-data'
@@ -56,6 +58,12 @@ function start(): void {
     createWindows()
     watchDisplays()
     watchCursor()
+    watchTopmost()
+    // Logged so a report of invisible windows says whether the GPU process went down under them.
+    app.on('child-process-gone', (_event, details) => {
+      if (details.reason === 'clean-exit') return
+      console.error(`[ezzy] ${details.type} process gone: ${details.reason}`)
+    })
     // Hooks are registered after app.whenReady because SetWinEventHook delivers through the
     // thread's message loop, and Electron only has one running from here onward.
     startTracking()
@@ -92,6 +100,7 @@ function start(): void {
     unregisterHotkey()
     stopUpdater()
     stopWatchingCursor()
+    stopWatchingTopmost()
     // Leaving a WinEvent hook behind makes Windows keep calling into a process that is on
     // its way out.
     stopTracking()

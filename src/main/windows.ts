@@ -27,6 +27,7 @@ import {
 import { getConfig, updateConfig } from './config'
 import { log, since } from './verbose'
 import { clearQuery, panelData } from './panel-data'
+import { Hwnd, isTopmost, makeTopmost } from './win32'
 
 let dotWindow: BrowserWindow | null = null
 let panelWindow: BrowserWindow | null = null
@@ -63,6 +64,11 @@ interface DragState {
 const IDLE: VoiceState = { kind: 'idle' }
 const MAX_DRAG_MS = 20_000
 const HOVER_POLL_MS = 30
+const TOPMOST_CHECK_MS = 2_000
+const RELOAD_BACKOFF_MS = 10_000
+const RELOAD_DELAY_MS = 500
+
+let topmostTimer: ReturnType<typeof setInterval> | null = null
 
 export function setQuitting(value: boolean): void {
   quitting = value
@@ -173,6 +179,27 @@ export function loadRenderer(win: BrowserWindow, page: RendererPage): void {
   win.webContents.on('did-fail-load', (_e, code, description) => {
     console.error(`[ezzy] ${page} failed to load: ${code} ${description}`)
   })
+  // A dead renderer leaves its window blank — invisible, since these are transparent — until
+  // the app restarts. Reloaded once; a second crash straight after is left alone, not looped.
+  let reloadedAt = -RELOAD_BACKOFF_MS
+  win.webContents.on('render-process-gone', (_e, details) => {
+    console.error(`[ezzy] ${page} renderer gone: ${details.reason} (exit ${details.exitCode})`)
+    if (quitting || win.isDestroyed() || details.reason === 'clean-exit') return
+    if (performance.now() - reloadedAt < RELOAD_BACKOFF_MS) {
+      console.error(`[ezzy] ${page} crashed again right after reloading; not retrying`)
+      return
+    }
+    reloadedAt = performance.now()
+    // Deferred: the dead renderer is still being torn down when this event fires.
+    setTimeout(() => {
+      if (!quitting && !win.isDestroyed()) loadPage(win, page)
+    }, RELOAD_DELAY_MS)
+  })
+  win.on('unresponsive', () => console.error(`[ezzy] ${page} stopped responding`))
+  loadPage(win, page)
+}
+
+function loadPage(win: BrowserWindow, page: RendererPage): void {
   if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
     win.loadURL(`${process.env['ELECTRON_RENDERER_URL']}/${page}.html`)
   } else {
@@ -189,6 +216,35 @@ function applyAlwaysPresent(win: BrowserWindow): void {
     event.preventDefault()
     win.hide()
   })
+}
+
+function hwndOf(win: BrowserWindow): Hwnd {
+  return Number(win.getNativeWindowHandle().readBigUInt64LE(0))
+}
+
+// Windows can strip always-on-top over a long session (sleep/resume, the lock screen), and
+// Electron never notices: a dot left behind every app, and a panel opening under the window
+// you were in, until a restart. Checked against the real window style, not Electron's flag.
+function restoreTopmost(win: BrowserWindow | null, name: string): void {
+  if (!win || win.isDestroyed()) return
+  const hwnd = hwndOf(win)
+  if (isTopmost(hwnd)) return
+  console.warn(`[ezzy] the ${name} lost always-on-top, restoring it`)
+  makeTopmost(hwnd)
+}
+
+export function watchTopmost(): void {
+  topmostTimer = setInterval(() => {
+    if (dotWindow?.isVisible()) restoreTopmost(dotWindow, 'dot')
+    if (searchWindow?.isVisible()) restoreTopmost(searchWindow, 'search bar')
+    if (panelWindow?.isVisible()) restoreTopmost(panelWindow, 'panel')
+  }, TOPMOST_CHECK_MS)
+}
+
+export function stopWatchingTopmost(): void {
+  if (topmostTimer === null) return
+  clearInterval(topmostTimer)
+  topmostTimer = null
 }
 
 // ---------------------------------------------------------------- dot position
@@ -472,6 +528,10 @@ function showPanel(): void {
   applyPairBounds()
   panelWindow.webContents.send(IPC.panelShown, panelData())
   searchWindow.webContents.send(IPC.searchReset)
+  // Before showing: showInactive keeps a window's place in the z-order, which for one that
+  // lost always-on-top is underneath the app in front.
+  restoreTopmost(panelWindow, 'panel')
+  restoreTopmost(searchWindow, 'search bar')
   panelWindow.showInactive()
   searchWindow.show()
   since('hotkey -> panel visible', startedAt)
@@ -533,11 +593,12 @@ export function sendDotLogo(mark: DotMark): void {
 }
 
 export function sendCapture(capture: VoiceCapture): void {
-  dotWindow?.webContents.send(IPC.voiceCapture, capture)
+  dotWindow?.webContents.send(IPC.voiceCapture, capture, getConfig().micReadySeconds * 1000)
 }
 
 export function showDot(): void {
   if (!dotWindow) return
   clampDotIntoBounds()
+  restoreTopmost(dotWindow, 'dot')
   dotWindow.showInactive()
 }

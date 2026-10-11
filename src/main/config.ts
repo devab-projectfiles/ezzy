@@ -9,7 +9,8 @@ import {
   DOT_LOGOS,
   DotPosition,
   EzzyConfig,
-  MAX_CUSTOM_LOGOS
+  MAX_CUSTOM_LOGOS,
+  MIC_READY_MAX_SECONDS
 } from '../shared/types'
 import { log } from './verbose'
 
@@ -143,6 +144,12 @@ function normalise(raw: Partial<EzzyConfig>): EzzyConfig {
     dotLogo: readDotLogo(raw.dotLogo, customLogos),
     customLogos,
     duckMusic: typeof raw.duckMusic === 'boolean' ? raw.duckMusic : DEFAULT_CONFIG.duckMusic,
+    micReadySeconds: clamp(
+      raw.micReadySeconds,
+      0,
+      MIC_READY_MAX_SECONDS,
+      DEFAULT_CONFIG.micReadySeconds
+    ),
     voiceName: typeof raw.voiceName === 'string' ? raw.voiceName : DEFAULT_CONFIG.voiceName,
     // Clamped rather than trusted: the file is editable, and a rate of 40 is a voice nobody
     // can understand with no way to see why.

@@ -6,10 +6,6 @@ import { isSpeaking } from './speech'
 const SAMPLE_RATE = 16_000
 const BUFFER_FRAMES = 1024
 
-/** Device stays warm this long after a command, so a second one in a row does not pay
- *  225-400ms to reopen it. */
-const KEEP_WARM_MS = 20_000
-
 /** Pre-roll kept from a warm graph, covering the gap between key-down and this running. */
 const PREROLL_MS = 500
 const PREROLL_BLOCKS = Math.ceil((PREROLL_MS / 1000) * (SAMPLE_RATE / BUFFER_FRAMES))
@@ -43,6 +39,10 @@ let idleTimer: ReturnType<typeof setTimeout> | null = null
 let wanted = false
 let autoStop: AutoStop | null = null
 let announced = false
+// How long the device stays open after a command (a setting), so the next one skips the
+// 0.5-1.6s it takes to open. Arrives with every capture message.
+let readyMs = 0
+let reusedWarm = false
 
 interface AutoStop {
   startedAt: number
@@ -53,10 +53,13 @@ interface AutoStop {
 }
 
 export function listenForCapture(): void {
-  window.ezzy.onVoiceCapture((capture) => {
+  window.ezzy.onVoiceCapture((capture, keepReadyMs) => {
+    readyMs = keepReadyMs
     if (capture === 'arm') void start()
     else if (capture === 'listen') void start(true)
-    else void stop(capture === 'stop')
+    else if (capture === 'release') {
+      if (!wanted) release()
+    } else void stop(capture === 'stop')
   })
 }
 
@@ -71,7 +74,8 @@ async function start(handsFree = false): Promise<void> {
   if (idleTimer) clearTimeout(idleTimer)
   idleTimer = null
 
-  if (context && processor && stream?.active) {
+  reusedWarm = context !== null && processor !== null && stream?.active === true
+  if (reusedWarm) {
     chunks = preroll
     preroll = []
     announce()
@@ -141,7 +145,10 @@ async function stop(send: boolean): Promise<void> {
   const recorded = chunks
   chunks = []
   if (!send) {
-    release()
+    // A tap opened the mic only to close it — but if it was already warm from a command, a
+    // tap is no reason to throw that away.
+    if (reusedWarm) keepWarm()
+    else release()
     return
   }
 
@@ -166,11 +173,15 @@ function announce(): void {
 }
 
 function keepWarm(): void {
+  if (readyMs <= 0) {
+    release()
+    return
+  }
   if (idleTimer) clearTimeout(idleTimer)
   idleTimer = setTimeout(() => {
     idleTimer = null
     release()
-  }, KEEP_WARM_MS)
+  }, readyMs)
 }
 
 function release(): void {

@@ -84,7 +84,8 @@ const ezzy: EzzyApi = {
   },
   getVoiceState: () => ipcRenderer.invoke(IPC.getVoiceState),
   onVoiceCapture: (callback) => {
-    const handler = (_event: unknown, capture: VoiceCapture): void => callback(capture)
+    const handler = (_event: unknown, capture: VoiceCapture, readyMs: number): void =>
+      callback(capture, readyMs)
     ipcRenderer.on(IPC.voiceCapture, handler)
     return () => void ipcRenderer.removeListener(IPC.voiceCapture, handler)
   },

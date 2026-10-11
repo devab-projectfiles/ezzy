@@ -102,6 +102,7 @@ function endButtonSession(): void {
 export function releaseVoice(): void {
   if (getConfig().voice) return
   cancelCapture()
+  sendCapture('release')
   stopWhisperServer()
   if (state.kind !== 'idle') setState({ kind: 'idle' })
 }
