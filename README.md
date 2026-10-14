@@ -36,7 +36,7 @@ your user only, so there is no UAC prompt, and it updates itself from then on.
 
 **Windows will show a blue "Windows protected your PC" screen.** Ezzy is not code-signed — a
 certificate costs a few hundred dollars a year and needs a hardware token, and this is a free
-MIT-licensed app. To get past it:
+open-source app. To get past it:
 
 > Click **More info**, then **Run anyway**.
 
@@ -267,4 +267,6 @@ sit beside your Scoop install instead of replacing it.
 
 ## License
 
-MIT.
+GNU General Public License v3.0 or later — see [LICENSE](LICENSE). You can use, change and
+share Ezzy freely; if you distribute a modified version, its source has to be published under
+the same license.

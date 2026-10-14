@@ -5,7 +5,7 @@
   "description": "Floating launcher and window switcher for Windows.",
   "main": "./out/main/index.js",
   "author": "Ezzy",
-  "license": "MIT",
+  "license": "GPL-3.0-or-later",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/devab-projectfiles/ezzy.git"
