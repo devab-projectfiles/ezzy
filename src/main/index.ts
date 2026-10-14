@@ -22,6 +22,7 @@ import { refreshAppIndex, startAppIndex } from './app-index'
 import { loadIconCache } from './icons'
 import { initVoice } from './voice'
 import { stopWhisperServer } from './stt'
+import { stopMediaSessions } from './media-sessions'
 import { since } from './verbose'
 import { startLogging } from './logger'
 import { applyLoginItem } from './login-item'
@@ -107,6 +108,7 @@ function start(): void {
     // whisper-server is our child but not Windows' responsibility — nothing kills it for
     // us, and a stray one holds 300MB and a port for as long as the session lasts.
     stopWhisperServer()
+    stopMediaSessions()
   })
 }
 

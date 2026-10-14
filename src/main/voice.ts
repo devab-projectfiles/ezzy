@@ -16,6 +16,7 @@ import {
 } from './commands/registry'
 import { getConfig } from './config'
 import { activeHotkey, watchHold } from './hotkey'
+import { stopMediaSessions, warmMediaSessions } from './media-sessions'
 import { hush, speak } from './speech'
 import {
   isVoiceInstalled,
@@ -104,6 +105,7 @@ export function releaseVoice(): void {
   cancelCapture()
   sendCapture('release')
   stopWhisperServer()
+  stopMediaSessions()
   if (state.kind !== 'idle') setState({ kind: 'idle' })
 }
 
@@ -139,13 +141,15 @@ function armCapture(): void {
   hush()
   sendCapture('arm')
   startWhisperServer()
+  // The helper's first answer takes ~0.5s and the hold is 350ms, so it starts on the press.
+  if (getConfig().duckMusic) warmMediaSessions()
 }
 
 function cancelCapture(): void {
   if (!armed) return
   armed = false
   capturing = false
-  restoreAfterListening()
+  void restoreAfterListening()
   sendCapture('cancel')
 }
 
@@ -199,9 +203,9 @@ async function finishListening(): Promise<void> {
   armed = false
   const releasedAt = performance.now()
   sendCapture('stop')
-  restoreAfterListening()
+  const restored = restoreAfterListening()
   setState({ kind: 'thinking' })
-  await transcribeAndRun(await audioFromRenderer(), releasedAt)
+  await transcribeAndRun(await audioFromRenderer(), releasedAt, restored)
 }
 
 async function listenHandsFree(): Promise<void> {
@@ -238,16 +242,20 @@ async function listenHandsFree(): Promise<void> {
   quieten()
 
   const recording = await audioFromRenderer(HANDS_FREE_TIMEOUT_MS)
-  restoreAfterListening()
+  const restored = restoreAfterListening()
   const finishedAt = performance.now()
   capturing = false
   armed = false
   endButtonSession()
   if (state.kind === 'listening' || state.kind === 'arming') setState({ kind: 'thinking' })
-  await transcribeAndRun(recording, finishedAt)
+  await transcribeAndRun(recording, finishedAt, restored)
 }
 
-async function transcribeAndRun(recording: Recording | null, releasedAt: number): Promise<void> {
+async function transcribeAndRun(
+  recording: Recording | null,
+  releasedAt: number,
+  restored: Promise<void>
+): Promise<void> {
   if (!recording || recording.wav.length < MIN_AUDIO_BYTES) {
     if (state.kind === 'thinking') fail('I didn’t catch that')
     return
@@ -286,6 +294,7 @@ async function transcribeAndRun(recording: Recording | null, releasedAt: number)
   }
   heard = text
 
+  await restored
   const outcome = await runCommand(text)
   if (outcome === null) {
     fail(`I didn’t understand "${text}"`)

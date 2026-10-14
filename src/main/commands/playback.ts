@@ -3,7 +3,8 @@
  *  music" once Spotify is paused and a browser video has played since. */
 
 import { MediaAction, mediaIn } from '../media-keys'
-import { log } from '../verbose'
+import { pausePlaying, resumePaused } from '../media-sessions'
+import { log, since } from '../verbose'
 import { EzzyWindow } from '../../shared/types'
 import { listWindows } from '../window-tracker'
 import { hidePanel } from '../windows'
@@ -128,26 +129,52 @@ export function mediaToPlayer(action: MediaAction): string | null {
   return player.app
 }
 
-let ducked: EzzyWindow | null = null
+/** What a hold stopped: whatever the media-session helper paused, or — when it could not
+ *  answer — the one Spotify window the title check found. */
+type Ducked = 'sessions' | EzzyWindow | null
+
+let ducking: Promise<Ducked> | null = null
 
 /** Echo cancellation cannot substitute for this — measured, it still let the mic catch
- *  the music and cost 227ms more to open. Only a player whose state can be read is
- *  touched (today, Spotify). */
+ *  the music and cost 227ms more to open. Pauses everything Windows says is playing, so a
+ *  YouTube video or a song in Media Player stops too; see media-sessions.ts. */
 export function duckForListening(): void {
-  if (ducked) return
-  const player = musicPlayerWindow()
-  if (!player || playbackState(player) !== 'playing') return
-  mediaIn(player.id, player.app, 'pause')
-  ducked = player
-  log(`voice: paused ${player.app} so it can hear`)
+  if (ducking) return
+  const startedAt = performance.now()
+  ducking = pausePlaying().then((apps) => {
+    if (apps === null) return duckSpotify()
+    if (apps.length === 0) return null
+    since(`voice: paused ${apps.join(', ')} so it can hear`, startedAt)
+    return 'sessions'
+  })
 }
 
-export function restoreAfterListening(): void {
-  const player = ducked
-  if (!player) return
-  ducked = null
-  mediaIn(player.id, player.app, 'play')
-  log(`voice: started ${player.app} again`)
+/** Settles once the music is back, so a command heard over it ("pause the music") acts on
+ *  the player as it was before the hold instead of racing the resume. */
+export function restoreAfterListening(): Promise<void> {
+  const pending = ducking
+  if (!pending) return Promise.resolve()
+  ducking = null
+  return pending.then(async (ducked) => {
+    if (ducked === null) return
+    if (ducked === 'sessions') {
+      const apps = await resumePaused()
+      log(`voice: started ${apps && apps.length > 0 ? apps.join(', ') : 'nothing'} again`)
+      return
+    }
+    mediaIn(ducked.id, ducked.app, 'play')
+    log(`voice: started ${ducked.app} again`)
+  })
+}
+
+/** Without the helper (PowerShell blocked by policy), only a player whose state can be read
+ *  is touched, and that is Spotify alone. */
+function duckSpotify(): EzzyWindow | null {
+  const player = windowForApp(SPOTIFY)
+  if (!player || playbackState(player) !== 'playing') return null
+  mediaIn(player.id, player.app, 'pause')
+  log(`voice: paused ${player.app} so it can hear`)
+  return player
 }
 
 export interface Did {
