@@ -322,7 +322,7 @@ function buildRows(
       section: 'Voice',
       name: 'Pause music while listening',
       detail:
-        'Music and videos stop for the second or two Ezzy is recording, then carry on. Off, the microphone hears them and sometimes turns them into a command you did not give.',
+        'Music and videos stop while Ezzy listens and works out what you said, then carry on — unless you asked it to play something else. Off, the microphone hears them and sometimes turns them into a command you did not give.',
       keywords: 'duck spotify youtube video echo interrupt',
       disabled: !config.voice,
       control: (

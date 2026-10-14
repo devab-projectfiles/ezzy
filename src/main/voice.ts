@@ -6,12 +6,13 @@ import { app } from 'electron'
 import { VoiceFailure, VoiceState } from '../shared/types'
 import { indexedApps } from './app-index'
 import { registerBuiltinCommands } from './commands/builtin'
-import { duckForListening, restoreAfterListening } from './commands/playback'
+import { duckForListening, forgetPaused, restoreAfterListening } from './commands/playback'
 import {
   isSilenceArtefact,
   normaliseTranscript,
   runCommand,
   setCustomPhrases,
+  startsPlayback,
   verifyExamples
 } from './commands/registry'
 import { getConfig } from './config'
@@ -147,9 +148,11 @@ function armCapture(): void {
 
 function cancelCapture(): void {
   if (!armed) return
+  // A tap never paused anything, and the music may still be off for a command being
+  // transcribed — that command decides when it comes back, not the tap.
+  if (capturing) void restoreAfterListening()
   armed = false
   capturing = false
-  void restoreAfterListening()
   sendCapture('cancel')
 }
 
@@ -203,9 +206,12 @@ async function finishListening(): Promise<void> {
   armed = false
   const releasedAt = performance.now()
   sendCapture('stop')
-  const restored = restoreAfterListening()
   setState({ kind: 'thinking' })
-  await transcribeAndRun(await audioFromRenderer(), releasedAt, restored)
+  try {
+    await transcribeAndRun(await audioFromRenderer(), releasedAt)
+  } finally {
+    await restoreUnlessListening()
+  }
 }
 
 async function listenHandsFree(): Promise<void> {
@@ -242,20 +248,26 @@ async function listenHandsFree(): Promise<void> {
   quieten()
 
   const recording = await audioFromRenderer(HANDS_FREE_TIMEOUT_MS)
-  const restored = restoreAfterListening()
   const finishedAt = performance.now()
   capturing = false
   armed = false
   endButtonSession()
   if (state.kind === 'listening' || state.kind === 'arming') setState({ kind: 'thinking' })
-  await transcribeAndRun(recording, finishedAt, restored)
+  try {
+    await transcribeAndRun(recording, finishedAt)
+  } finally {
+    await restoreUnlessListening()
+  }
 }
 
-async function transcribeAndRun(
-  recording: Recording | null,
-  releasedAt: number,
-  restored: Promise<void>
-): Promise<void> {
+/** The music stays off through transcription and comes back once the command is known —
+ *  or never, if the command started something else. A hold that began in the meantime owns
+ *  the pause now, and resuming here would play the music over its recording. */
+function restoreUnlessListening(): Promise<void> {
+  return capturing ? Promise.resolve() : restoreAfterListening()
+}
+
+async function transcribeAndRun(recording: Recording | null, releasedAt: number): Promise<void> {
   if (!recording || recording.wav.length < MIN_AUDIO_BYTES) {
     if (state.kind === 'thinking') fail('I didn’t catch that')
     return
@@ -294,8 +306,12 @@ async function transcribeAndRun(
   }
   heard = text
 
-  await restored
+  // A media command runs against the player as the user left it, so the music comes back
+  // first — unless this command starts something new, which it would only play over.
+  const switching = startsPlayback(text)
+  if (!switching) await restoreUnlessListening()
   const outcome = await runCommand(text)
+  if (switching && outcome?.ok) forgetPaused()
   if (outcome === null) {
     fail(`I didn’t understand "${text}"`)
     return

@@ -165,6 +165,7 @@ export function registerBuiltinCommands(): void {
       'Toggles playback. It picks who gets it: a dedicated music player if one is running, Spotify if not, and the plain media key only when neither is - which is where a browser video ends up. It says which app it reached.',
     examples: ['play music', 'pause the music', 'pause', 'stop the music', 'resume'],
     match: PLAY_PAUSE,
+    startsPlayback: (groups) => wantedHalf(groups[1]) === 'play',
     describe: () => playPauseSaid,
     run: async (groups) => {
       const player = musicPlayerWindow()

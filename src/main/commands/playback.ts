@@ -62,6 +62,7 @@ export function registerPlaybackCommands(resolveTarget: ResolveTarget): void {
       'play the music on spotify'
     ],
     match: PLAYBACK,
+    startsPlayback: (groups) => !PAUSE_VERB.has(groups[1]),
     describe: () => lastSaid,
     run: async (groups, ctx) => {
       const service = serviceOf(groups)
@@ -165,6 +166,14 @@ export function restoreAfterListening(): Promise<void> {
     mediaIn(ducked.id, ducked.app, 'play')
     log(`voice: started ${ducked.app} again`)
   })
+}
+
+/** For a command that started something new: the paused music stays paused for good. The
+ *  helper starts a fresh list on its next pause, so a later resume cannot bring it back. */
+export function forgetPaused(): void {
+  if (!ducking) return
+  ducking = null
+  log('voice: leaving the paused music off — the command started something else')
 }
 
 /** Without the helper (PowerShell blocked by policy), only a player whose state can be read

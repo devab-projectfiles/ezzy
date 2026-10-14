@@ -32,6 +32,7 @@ const SCRIPT = [
   'while ($null -ne ($line = [Console]::In.ReadLine())) {',
   '  $done = @()',
   "  if ($line -eq 'pause') {",
+  '    $paused = @()',
   '    foreach ($s in $manager.GetSessions()) {',
   '      try {',
   '        if ($s.GetPlaybackInfo().PlaybackStatus -ne $Playing) { continue }',

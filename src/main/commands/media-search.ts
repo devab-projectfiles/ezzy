@@ -17,7 +17,7 @@ export type ResolveTarget = (target: string, ctx: CommandContext, strict?: boole
 /** `you ?tube` rather than `youtube`: whisper writes the brand as one word most of the
  *  time and "You Tube" some of the time. */
 const YOUTUBE =
-  /^(?:play|search|find|watch|look\s+up)\s+(?:(?:on\s+)?you ?tube\s+(?:for\s+)?(.+)|(.+?)\s+on\s+you ?tube)$/
+  /^(?:play|search|find|watch|listen\s+to|look\s+up)\s+(?:(?:on\s+)?you ?tube\s+(?:for\s+)?(.+)|(.+?)\s+on\s+you ?tube)$/
 
 const SPOTIFY_SEARCH =
   /^(?:play|search|find|look\s+up|listen\s+to)\s+(?:(?:on\s+)?spotify\s+(?:for\s+)?(.+)|(.+?)\s+on\s+spotify)$/
@@ -47,6 +47,7 @@ export function registerMediaSearchCommands(resolveTarget: ResolveTarget): void 
       'search youtube for rust tutorial'
     ],
     match: YOUTUBE,
+    startsPlayback: (groups) => PLAY_VERB.test(groups[0]),
     describe: (groups) =>
       lastYouTubeRun === 'played'
         ? `Playing ${spoken(query(groups))} on YouTube`
@@ -91,6 +92,8 @@ export function registerMediaSearchCommands(resolveTarget: ResolveTarget): void 
       'listen to miles davis on spotify'
     ],
     match: SPOTIFY_SEARCH,
+    // Only results open, but asking to play means switching — the old music stays off.
+    startsPlayback: (groups) => PLAY_VERB.test(groups[0]),
     describe: (groups) => `Searching Spotify for ${spoken(query(groups))}`,
     run: async (groups, ctx) => {
       const q = query(groups)
@@ -111,6 +114,7 @@ export function registerMediaSearchCommands(resolveTarget: ResolveTarget): void 
       'Searches Spotify for whatever follows the word play - unless those words name something installed on this machine, in which case it opens that instead.',
     examples: ['play daft punk', 'play bohemian rhapsody'],
     match: SPOTIFY,
+    startsPlayback: () => true,
     describe: (groups) =>
       lastRun === 'opened'
         ? `Opening ${spoken(groups[1].trim())}`

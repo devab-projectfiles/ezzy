@@ -22,6 +22,9 @@ export interface Command {
   group: CommandGroup
   /** Whether the pattern captures free text — what makes a custom phrase possible at all. */
   takesTarget: boolean
+  /** True when running it starts something playing. The music a hold paused then stays
+   *  paused, instead of coming back underneath what was just asked for. */
+  startsPlayback?: (groups: RegExpMatchArray) => boolean
 }
 
 export type CommandGroup = 'media' | 'windows' | 'system'
@@ -86,30 +89,45 @@ export function verifyExamples(): void {
 }
 
 export async function runCommand(text: string): Promise<CommandOutcome | null> {
-  const canonical = phrases.get(text)
-  if (canonical !== undefined) {
-    log(`phrase: "${text}" -> "${canonical}"`)
-    text = canonical
+  const found = commandFor(text)
+  if (!found) return null
+  const { command, groups, transcript } = found
+  if (transcript !== text) log(`phrase: "${text}" -> "${transcript}"`)
+  const outcome: { failure: string | null } = { failure: null }
+  const ctx: CommandContext = {
+    transcript,
+    failed: (reason) => {
+      outcome.failure = reason
+    }
   }
+  log(`command ${command.id} matched "${transcript}"`)
+  try {
+    await command.run(groups, ctx)
+  } catch (err) {
+    console.error(`[ezzy] command ${command.id} threw:`, err)
+    return { ok: false, message: 'Something went wrong running that' }
+  }
+  if (outcome.failure !== null) return { ok: false, message: outcome.failure }
+  return { ok: true, message: command.describe(groups) }
+}
+
+/** Asked before the command runs, while the music a hold paused is still paused. */
+export function startsPlayback(text: string): boolean {
+  const found = commandFor(text)
+  return found?.command.startsPlayback?.(found.groups) ?? false
+}
+
+interface Found {
+  command: Command
+  groups: RegExpMatchArray
+  transcript: string
+}
+
+function commandFor(text: string): Found | null {
+  text = phrases.get(text) ?? text
   for (const command of commands) {
     const groups = command.match.exec(text)
-    if (!groups) continue
-    const outcome: { failure: string | null } = { failure: null }
-    const ctx: CommandContext = {
-      transcript: text,
-      failed: (reason) => {
-        outcome.failure = reason
-      }
-    }
-    log(`command ${command.id} matched "${text}"`)
-    try {
-      await command.run(groups, ctx)
-    } catch (err) {
-      console.error(`[ezzy] command ${command.id} threw:`, err)
-      return { ok: false, message: 'Something went wrong running that' }
-    }
-    if (outcome.failure !== null) return { ok: false, message: outcome.failure }
-    return { ok: true, message: command.describe(groups) }
+    if (groups) return { command, groups, transcript: text }
   }
   return null
 }
@@ -127,6 +145,7 @@ const SILENCE_ARTEFACTS = [
   /^(?:thanks|thank you)(?: (?:so|very) much)? for watching\b/,
   /^(?:please )?(?:like (?:and )?)?subscribe(?: to (?:my|our|the) channel)?$/,
   /^click the bell\b/,
+  /^(?:(?:you can )?(?:find|check out) )?(?:the )?links? (?:is |are )?in the description\b/,
   /^(?:for more information|more videos)\b/,
   /^amara\.org\b/,
   /^www\.[^ ]*$/,
