@@ -1,9 +1,8 @@
-// Stamp the Scoop manifest against the zip that was just built (PLAN.md §8 chunk F).
+// Stamp the Scoop manifest against the zip that was just built.
 //
-// §3 picks Scoop as the distribution channel precisely because it needs no code-signing
-// certificate, and §9 explains why that matters: an unsigned .exe gets a full-screen
-// SmartScreen warning and non-technical people close the tab. `scoop install ezzy` has no
-// such warning.
+// Scoop is offered precisely because it needs no code-signing certificate, and that matters:
+// an unsigned .exe gets a full-screen SmartScreen warning and non-technical people close the
+// tab. `scoop install ezzy` has no such warning.
 //
 // A Scoop manifest carries the sha256 of the file it fetches, so it cannot be written by hand
 // before the release exists and cannot be left stale after it does — a wrong hash is a hard

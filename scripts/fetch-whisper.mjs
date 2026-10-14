@@ -1,7 +1,7 @@
-// Fetch the whisper.cpp Windows binaries into resources/whisper (PLAN.md §8 chunk D,
-// "bundle whisper.cpp").
+// Fetch the whisper.cpp Windows binaries into resources/whisper, which the installer
+// bundles.
 //
-// CLAUDE.md: never commit binaries — they are fetched by a script and gitignored. Run
+// Binaries are never committed — they are fetched by this script and gitignored. Run
 // `npm run fetch:whisper` once after cloning, and again only when RELEASE below moves.
 //
 // The release zip carries 38 files, most of them demos and test harnesses. Only the server

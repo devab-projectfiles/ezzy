@@ -131,7 +131,7 @@
 }
 
 /* While it is listening the button holds the state, so it is obvious which click stops it —
-   the rim keeps the the plan pulse and the glyph stays still. */
+   the rim keeps the listening pulse and the glyph stays still. */
 .searchbar__mic-button[aria-pressed='true'] {
   background: rgba(255, 255, 255, 0.16);
 }
@@ -143,7 +143,7 @@
   color: var(--glyph-mic);
 }
 
-/* While listening, pulse the RIM (1.6s), not the icon. The rim is the::after ring
+/* While listening, pulse the RIM (1.6s), not the icon. The rim is the ::after ring
    above, so the pulse is on that element and nothing else moves — a pulsing glyph reads as a
    spinner, and this is not a wait, it is an open microphone. */
 .searchbar.is-listening::after {

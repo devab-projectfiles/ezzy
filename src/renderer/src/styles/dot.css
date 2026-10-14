@@ -151,10 +151,9 @@
 
 /* ---------------------------------------------------------------- the pill carrying state
 
-   the plan ends the hover-pill section with "later the same pill carries state — a waveform while
-   listening, 'didn't catch that' on a failed command. Keep it as one reusable component."
-   Chunk E is that later, and this is the whole of it: the same capsule, the same opening
-   motion, the same glass. Only what sits in it changes.
+   The hover pill was always meant to carry state later — a waveform while listening, "didn't
+   catch that" on a failed command — as one reusable component. This is the whole of it: the
+   same capsule, the same opening motion, the same glass. Only what sits in it changes.
 
    Two lines rather than one, both clipped: the transcript is what explains a miss, and a
    sentence that ran off the end of the pill would explain nothing. */

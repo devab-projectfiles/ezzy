@@ -91,7 +91,7 @@
 
    `auto`, not `scroll`: a section with no overflow does not scroll at all, so spinning the
    wheel over four windows when four are open does nothing — which is the behaviour asked
-   for, and it comes free from the browser. And the plan rule out CUSTOM scroll handling; two
+   for, and it comes free from the browser. Nothing here handles scrolling by hand; two
    native scrollers are still ordinary scroll events, and two-finger scroll works in each. */
 .panel__scroll {
   position: relative;
@@ -214,7 +214,7 @@
    by the section instead of floating over a header. */
 /* The selection is painted by the selected row itself. There is no overlay element.
 
-   the plan asks for one element that SLIDES between rows, and that is what this was. It produced a
+   The plan asked for one element that SLIDES between rows, and that is what this was. It produced a
    second, unfilled outline on an unrelated row, intermittently, and three attempts to explain
    it were wrong: it was not two React elements (instrumenting the DOM across a stress run and
    a live reproduction never found more than one), it was not stale hot-reload state (it
@@ -272,7 +272,7 @@
   color: var(--icon-selected);
 }
 
-/* A real icon extracted from the shortcut or the executable (chunk C). It replaces the
+/* A real icon extracted from the shortcut or the executable. It replaces the
    outline glyph in the same 19px box, so nothing about the row's geometry changes.
 
    The shell hands these back at 32px, which is more than this box needs at 1x and about

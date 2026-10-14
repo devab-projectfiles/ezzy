@@ -13,8 +13,8 @@ export default defineConfig({
     },
     build: {
       rollupOptions: {
-        // Dot, search bar and panel are three separate always-on-top windows (PLAN.md §6);
-        // settings is the fourth window and the only ordinary one (§8 chunk F).
+        // Dot, search bar and panel are three separate always-on-top windows; settings is
+        // the fourth window and the only ordinary one.
         input: {
           dot: resolve('src/renderer/dot.html'),
           searchbar: resolve('src/renderer/searchbar.html'),

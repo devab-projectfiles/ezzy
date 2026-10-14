@@ -9,7 +9,7 @@ files:
   - '!{.eslintcache,eslint.config.mjs,.prettierignore,.prettierrc.yaml,dev-app-update.yml,CHANGELOG.md,README.md}'
   - '!{.env,.env.*,.npmrc,pnpm-lock.yaml}'
   - '!{tsconfig.json,tsconfig.node.json,tsconfig.web.json}'
-# PLAN.md §5: native binaries cannot live in the asar, so whisper ships beside it and is
+# Native binaries cannot live in the asar, so whisper ships beside it and is
 # resolved through process.resourcesPath at runtime. Fetched by scripts/fetch-whisper.mjs —
 # an installer built without running that has no voice in it.
 extraResources:
@@ -19,15 +19,15 @@ extraResources:
       - '**/*'
 asarUnpack:
   - resources/**
-  # PLAN.md §5: native binaries cannot be loaded from inside the asar. koffi resolves its
+  # Native binaries cannot be loaded from inside the asar. koffi resolves its
   # own .node at runtime, so leaving it packed is the classic "works in dev, broken in the
   # installer" failure — the window list would simply be empty in a packaged build.
   - node_modules/koffi/**
 win:
   executableName: Ezzy
-  # §8 chunk F asks for both. The installer is what most people download and the only target
+  # Both targets ship. The installer is what most people download and the only target
   # electron-updater can update in place; the zip is what the Scoop manifest fetches, and what
-  # anyone who will not run an unsigned installer (§9, SmartScreen) can unpack and run.
+  # anyone who will not click past SmartScreen to run an unsigned installer can unpack and run.
   target:
     - nsis
     - zip
@@ -39,7 +39,7 @@ nsis:
   uninstallDisplayName: ${productName}
   createDesktopShortcut: always
   # Per-user, so the installer never raises a UAC prompt on top of the SmartScreen warning it
-  # already has to get past (§9). It also keeps electron-updater able to replace the install
+  # already has to get past. It also keeps electron-updater able to replace the install
   # without elevation, which is the whole point of shipping updates at all.
   perMachine: false
   oneClick: false
@@ -64,7 +64,7 @@ linux:
 appImage:
   artifactName: ${name}-${version}.${ext}
 npmRebuild: false
-# §3: electron-updater against GitHub Releases, which needs no server and no certificate.
+# electron-updater reads GitHub Releases, which needs no server and no certificate.
 # electron-builder writes latest.yml alongside the installer here; that file is the feed.
 publish:
   provider: github
