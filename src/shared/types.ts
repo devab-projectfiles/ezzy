@@ -32,6 +32,7 @@ export type PickedLogo =
 
 export interface EzzyConfig {
   hotkey: string
+  dotClickOpensPanel: boolean
   openAtLogin: boolean
   speech: boolean
   voice: boolean
@@ -54,6 +55,7 @@ export interface EzzyConfig {
 
 export const DEFAULT_CONFIG: EzzyConfig = {
   hotkey: 'Alt+Space',
+  dotClickOpensPanel: false,
   openAtLogin: true,
   speech: true,
   voice: true,
@@ -197,6 +199,7 @@ export const IPC = {
   dotDragStart: 'dot:drag-start',
   dotDragMove: 'dot:drag-move',
   dotDragEnd: 'dot:drag-end',
+  dotClick: 'dot:click',
   setPillWidth: 'dot:set-pill-width',
   dotHover: 'dot:hover',
   getPillSide: 'dot:get-pill-side',
@@ -250,6 +253,7 @@ export interface EzzyApi {
   startDotDrag(screenX: number, screenY: number): void
   moveDotDrag(screenX: number, screenY: number): void
   endDotDrag(): void
+  clickDot(): void
   setPillWidth(width: number): void
   onDotHover(callback: (hovered: boolean) => void): () => void
   getPillSide(): Promise<PillDirection>

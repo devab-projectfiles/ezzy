@@ -18,6 +18,7 @@ const ezzy: EzzyApi = {
   startDotDrag: (x, y) => ipcRenderer.send(IPC.dotDragStart, x, y),
   moveDotDrag: (x, y) => ipcRenderer.send(IPC.dotDragMove, x, y),
   endDotDrag: () => ipcRenderer.send(IPC.dotDragEnd),
+  clickDot: () => ipcRenderer.send(IPC.dotClick),
   setPillWidth: (width) => ipcRenderer.send(IPC.setPillWidth, width),
   getPillSide: () => ipcRenderer.invoke(IPC.getPillSide),
   onPillSide: (callback) => {

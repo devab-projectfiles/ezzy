@@ -25,7 +25,8 @@ import {
   publishPanelData,
   sendToPanel,
   setPanelHeight,
-  setPillWidth
+  setPillWidth,
+  togglePanel
 } from './windows'
 import { activeHotkey } from './hotkey'
 import { focusWindow } from './focus'
@@ -60,6 +61,9 @@ export function registerIpc(): void {
   ipcMain.on(IPC.dotDragStart, (_event, x: number, y: number) => beginDotDrag({ x, y }))
   ipcMain.on(IPC.dotDragMove, (_event, x: number, y: number) => moveDotDrag({ x, y }))
   ipcMain.on(IPC.dotDragEnd, () => endDotDrag())
+  ipcMain.on(IPC.dotClick, () => {
+    if (getConfig().dotClickOpensPanel) togglePanel()
+  })
   ipcMain.on(IPC.setPillWidth, (_event, width: number) => setPillWidth(width))
   ipcMain.handle(IPC.getPillSide, () => currentPillSide())
   ipcMain.on(IPC.panelClose, () => hidePanel())

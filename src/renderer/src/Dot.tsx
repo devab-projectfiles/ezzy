@@ -106,8 +106,9 @@ function Dot(): React.JSX.Element {
 
   // Screen coordinates come from here, not the main process: as the window moves under a
   // still cursor, screenX stays put where a main-process cursor read would not.
-  const finish = (event: React.PointerEvent<HTMLButtonElement>): void => {
+  const finish = (event: React.PointerEvent<HTMLButtonElement>, released = false): void => {
     if (!origin.current) return
+    const wasDrag = moved.current
     origin.current = null
     moved.current = false
     setDragging(false)
@@ -116,6 +117,8 @@ function Dot(): React.JSX.Element {
     }
     window.ezzy.endDotDrag()
     suppressed.current = true
+    // A press and release that never became a drag; main decides whether that opens the panel.
+    if (released && !wasDrag) window.ezzy.clickDot()
   }
 
   const onPointerDown = (event: React.PointerEvent<HTMLButtonElement>): void => {
@@ -161,7 +164,7 @@ function Dot(): React.JSX.Element {
         style={{ width: expanded ? pillWidth : DOT_VISUAL }}
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
-        onPointerUp={finish}
+        onPointerUp={(event) => finish(event, true)}
         onPointerCancel={finish}
         onLostPointerCapture={finish}
       >

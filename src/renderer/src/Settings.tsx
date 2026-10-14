@@ -251,6 +251,22 @@ function buildRows(
       )
     },
     {
+      id: 'dot-click',
+      page: 'general',
+      section: 'The dot',
+      name: 'Click the dot to open the panel',
+      detail:
+        'A click opens the panel, the same as a tap of the shortcut, and a second click closes it. Off, the dot only moves when you drag it.',
+      keywords: 'click mouse dot pill open show panel tap',
+      control: (
+        <Switch
+          checked={config.dotClickOpensPanel}
+          label="Click the dot to open the panel"
+          onChange={(dotClickOpensPanel) => void change({ dotClickOpensPanel })}
+        />
+      )
+    },
+    {
       id: 'startup',
       page: 'general',
       section: 'Startup',

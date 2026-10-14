@@ -133,6 +133,10 @@ function normalise(raw: Partial<EzzyConfig>): EzzyConfig {
       typeof raw.hotkey === 'string' && raw.hotkey.trim().length > 0
         ? raw.hotkey.trim()
         : DEFAULT_CONFIG.hotkey,
+    dotClickOpensPanel:
+      typeof raw.dotClickOpensPanel === 'boolean'
+        ? raw.dotClickOpensPanel
+        : DEFAULT_CONFIG.dotClickOpensPanel,
     openAtLogin:
       typeof raw.openAtLogin === 'boolean' ? raw.openAtLogin : DEFAULT_CONFIG.openAtLogin,
     speech: typeof raw.speech === 'boolean' ? raw.speech : DEFAULT_CONFIG.speech,

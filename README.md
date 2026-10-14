@@ -4,8 +4,8 @@ A floating dot that switches windows and launches apps, for Windows.
 
 When a lot is open, the taskbar overflows and hides the thing you want. Switching means
 minimising, hunting, or going out to the desktop and back. Ezzy is a small always-on-top dot
-that sits over everything: click it, press **Alt+Space**, or hold Alt+Space and say what you
-want. Every open window and every installed app is one keystroke away, and you never leave
+that sits over everything: press **Alt+Space** (or click the dot, if you turn that on), or hold
+Alt+Space and say what you want. Every open window and every installed app is one keystroke away, and you never leave
 the app you were in.
 
 - **Window switcher** — every real open window, most-recently-used first. Type two letters,
@@ -51,7 +51,8 @@ Nothing here sends anything anywhere; see [Privacy](#privacy).
 
 | | |
 |---|---|
-| **Alt+Space** (or click the dot) | Open the panel |
+| **Alt+Space** | Open the panel |
+| Click the dot | Also opens the panel, once turned on in **Settings → General** |
 | Type | Filters open windows and installed apps together |
 | ↑ ↓, Enter | Move and pick — Enter focuses a window or launches an app |
 | Esc | Close |
@@ -155,6 +156,8 @@ every command across all six pages, so you never have to know which page somethi
   because Windows opens its own system menu on that combination — use **Reset** to go back to
   it.)
 - **Touchpad gesture** — opens the Windows page for mapping a three-finger tap to the shortcut.
+- **Click the dot to open the panel** — off by default. On, a click opens the panel and a
+  second click closes it; a drag still just moves the dot.
 - **Start Ezzy when Windows starts** — on by default; only takes effect in an installed build.
 
 **Voice**
